@@ -21,3 +21,10 @@ npm-debug.log*
 .DS_Store
 coverage/
 *.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+
+# datos sensibles: docs/ contiene el Excel real de pacientes — NUNCA versionar
+docs/
