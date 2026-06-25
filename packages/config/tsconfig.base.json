@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "@registro/config base",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {}
+}
