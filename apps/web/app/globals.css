@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+/* Tailwind CSS 4: el tema se define con @theme (variables CSS), sin tailwind.config.js. */
+@theme {
+  --color-marca: #0f766e;
+  --color-alerta: #b91c1c;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-white text-gray-900 antialiased;
+}

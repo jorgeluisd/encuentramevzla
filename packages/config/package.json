@@ -1,0 +1,23 @@
+{
+  "name": "@registro/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "tsconfig.base.json",
+    "eslint-preset.js"
+  ],
+  "exports": {
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    "./eslint": "./eslint-preset.js"
+  },
+  "scripts": {
+    "lint": "echo \"(config) sin lint propio\" && exit 0",
+    "typecheck": "echo \"(config) sin typecheck propio\" && exit 0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "typescript-eslint": "^8.20.0",
+    "eslint": "^9.18.0"
+  }
+}
