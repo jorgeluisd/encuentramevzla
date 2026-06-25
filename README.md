@@ -1,4 +1,6 @@
-# Registro Hospitalario de Pacientes
+# EncuéntrameVzla — Registro Hospitalario de Pacientes
+
+**Proyecto:** EncuéntrameVzla · **Dominio:** `encuentramevzla.com`
 
 > Proyecto humanitario, **sin fines de lucro**. Buscador con **privacidad mediada** que ayuda
 > a cerrar el círculo de personas desaparecidas tras un terremoto en Venezuela: una familia
