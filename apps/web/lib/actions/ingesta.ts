@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { canUpload, type IngestionSummary } from "@evzla/core";
 import {
   ingestPatientListUseCase,
@@ -46,6 +47,8 @@ export async function subirExcelAction(
       fileBytes,
       uploadedBy: member.id,
     });
+    // Regenera el home estático para refrescar el sello "última actualización".
+    revalidatePath("/");
     return { ok: true, resumen, uploadedByEmail: member.email };
   } catch (error) {
     return {
