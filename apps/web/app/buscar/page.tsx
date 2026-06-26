@@ -1,12 +1,13 @@
 import Link from "next/link";
+import { createAnonClient } from "@/lib/supabase/anon";
 
 /**
  * `/buscar` — Resultados de la búsqueda mediada.
  *
- * STUB: el copy es real, la llamada al RPC está esbozada pero comentada.
- * Cuando se conecte, invocará `public.buscar_paciente(termino)` (SECURITY DEFINER),
- * que devuelve SOLO { hospital_nombre, hospital_telefono_mesa, confianza } o el
- * marcador { requiere_contacto_humano: true } para menores/fallecidos.
+ * Invoca `public.buscar_paciente(termino)` (SECURITY DEFINER) con la anon key.
+ * El RPC devuelve SOLO { hospital_nombre, hospital_telefono_mesa, confianza } o el
+ * marcador { requiere_contacto_humano: true } para menores/fallecidos. El cliente
+ * anónimo NO puede tocar ninguna tabla: la privacidad la garantiza el motor.
  */
 
 interface Coincidencia {
@@ -21,13 +22,41 @@ type ResultadoRpc =
   | { tipo: "sin_resultados" }
   | { tipo: "termino_invalido" };
 
+interface FilaRpc {
+  resultado: {
+    termino_invalido?: boolean;
+    requiere_contacto_humano?: boolean;
+    hospital_nombre?: string;
+    hospital_telefono_mesa?: string | null;
+    confianza?: number;
+  };
+}
+
 async function buscar(termino: string): Promise<ResultadoRpc> {
-  // TODO: conectar con Supabase y llamar al RPC mediado.
-  // const supabase = createBrowserClient();
-  // const { data, error } = await supabase.rpc("buscar_paciente", { termino });
-  // ...mapear `data` a ResultadoRpc...
   if (termino.trim().length < 4) return { tipo: "termino_invalido" };
-  return { tipo: "sin_resultados" };
+
+  const supabase = createAnonClient();
+  const { data, error } = await supabase.rpc("buscar_paciente", { termino });
+  if (error) {
+    // No filtramos detalle al usuario; lo dejamos en logs del servidor.
+    console.error("[buscar] error RPC:", error.message);
+    return { tipo: "sin_resultados" };
+  }
+
+  const objetos = ((data as FilaRpc[] | null) ?? []).map((f) => f.resultado);
+  if (objetos.some((o) => o?.termino_invalido)) return { tipo: "termino_invalido" };
+  if (objetos.some((o) => o?.requiere_contacto_humano))
+    return { tipo: "requiere_contacto_humano" };
+
+  const filas: Coincidencia[] = objetos
+    .filter((o) => o && o.hospital_nombre)
+    .map((o) => ({
+      hospital_nombre: o.hospital_nombre as string,
+      hospital_telefono_mesa: o.hospital_telefono_mesa ?? null,
+      confianza: Number(o.confianza) || 0,
+    }));
+
+  return filas.length ? { tipo: "coincidencias", filas } : { tipo: "sin_resultados" };
 }
 
 export default async function BuscarPage({
