@@ -95,16 +95,25 @@ La privacidad de los pacientes es un **requisito innegociable** del diseño:
 
 ## Estado y pendientes
 
-Migración a Onion + Screaming **completa** (`@evzla/core` puro · `@evzla/db` · infra + composition
-en `@evzla/web`; scope `@registro/*` eliminado). 319 pacientes en producción (337 filas del Excel,
-deduplicadas). Nombres de tablas/columnas en **inglés**; migraciones consolidadas en `0001`-`0003`.
-Búsqueda por nombre y cédula. typecheck 4/4 · 41 tests · build OK.
+**MVP funcional desplegado en Vercel** (rama `main`). Arquitectura Onion + Screaming completa
+(`@evzla/core` puro · `@evzla/db` · infra + composition en `@evzla/web`). 319 pacientes en
+producción. Calidad: typecheck 4/4 · **77 tests** · build OK. Specs `0001`–`0010`; migraciones
+`0001`–`0004`.
 
-**Decisión resuelta (con consentimiento de la residente):** el buscador **muestra nombres de
-adultos vivos** agrupados por hospital (opción "abierta"); **menores y fallecidos nunca** muestran
-nombre. Ver `specs/0005-buscador-nombres-y-dedupe.md` y `adr/0002-apertura-de-nombres-adultos.md`.
-Implementado en el RPC `search_patient` (migración `0003`) + `/buscar` + `/confianza`, **aplicado en
-producción**.
+**Implementado:**
+- **Buscador público** mobile-first: nombres de adultos vivos agrupados por hospital (opción
+  "abierta", consentida por la residente); menores/fallecidos → contacto humano. RPC `search_patient`.
+- **Diseño**: tokens oficiales (azul `#1565C0`, Inter), shadcn-style, banner de emergencia sticky,
+  contacto real de la Cruz Roja.
+- **Portal `/admin`**: auth **magic-link** (Supabase) + roles (`uploader`/`moderator`) por allow-list
+  `team_members`; guard server-side; **audit log** (vista de moderador).
+- **Cola de revisión humana** (`/admin/review`, moderador): triage de los 7 casos dudosos +
+  **ejecución de la fusión** de pacientes (transaccional, hard delete del duplicado).
 
-**Por implementar:** UI (shadcn/ui) · auth magic-link + roles + audit en `/admin` · cola de
-revisión humana (7 casos dudosos) · Cloudflare Turnstile + rate-limit (al final).
+**Pendiente:**
+- **Operativo (para que el equipo pruebe):** alta de los emails del equipo en `team_members` ·
+  Redirect URLs del dominio de Vercel en Supabase · SMTP propio (el email por defecto tiene límite bajo).
+- **Producto:** apartado público con todos los **números de emergencia** (Caracas y La Guaira).
+- **Launch:** Cloudflare **Turnstile** + rate-limit del RPC · dominio `encuentramevzla.com` → Vercel.
+- **Opcional:** Service Worker PWA · variantes de logo/Open Graph · extraer `@evzla/infrastructure` ·
+  undo de fusión · CSV en ingesta · "Cargas recientes" persistida.
