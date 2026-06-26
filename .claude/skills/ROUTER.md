@@ -14,6 +14,7 @@ carga las skills implicadas (la de **privacidad manda siempre que se toquen dato
 | página, route, server action, app router, RSC, componente, react, layout, ingesta UI | `nextjs-frontend.md` |
 | tailwind, estilo, clase, shadcn, `cn()`, botón, color, theme, diseño visual | `ui-tailwind.md` |
 | test, vitest, TDD, rojo, verde, refactor, cobertura, fake, mock | `testing-vitest.md` |
+| commit, mensaje de commit, rama, branch, PR, pull request, historial, git, push, develop | `git-commits.md` |
 
 ## Reglas de enrutamiento
 
@@ -37,3 +38,4 @@ carga las skills implicadas (la de **privacidad manda siempre que se toquen dato
 | Nueva página / Server Action | nextjs-frontend · privacy-and-security · architecture |
 | Ajuste visual / componente UI | ui-tailwind · nextjs-frontend |
 | Pantalla `/admin` con auth | nextjs-frontend · privacy-and-security · supabase |
+| Commit / rama / PR / historial git | git-commits |
