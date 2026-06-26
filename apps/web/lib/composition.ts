@@ -4,6 +4,7 @@ import {
   IngestPatientList,
   ListAuditLog,
   ListReviewQueue,
+  MergePatients,
   ResolveReviewCase,
   ResolveTeamMember,
   SearchPatients,
@@ -22,6 +23,7 @@ import {
 import { DrizzleTeamMemberRepository } from "@/lib/infrastructure/patient-registry/drizzle-team-member-repository";
 import { DrizzleAuditLogReader } from "@/lib/infrastructure/patient-registry/drizzle-audit-log-reader";
 import { DrizzleReviewQueueReader } from "@/lib/infrastructure/patient-registry/drizzle-review-queue-reader";
+import { DrizzlePatientMerger } from "@/lib/infrastructure/patient-registry/drizzle-patient-merger";
 import { SupabasePatientSearchGateway } from "@/lib/infrastructure/patient-registry/supabase-patient-search-gateway";
 
 // Composition root: inyecta los adapters en los casos de uso (solo servidor).
@@ -58,4 +60,8 @@ export function listReviewQueueUseCase(): ListReviewQueue {
 
 export function resolveReviewCaseUseCase(): ResolveReviewCase {
   return new ResolveReviewCase(new DrizzleAuditLog(getDb()));
+}
+
+export function mergePatientsUseCase(): MergePatients {
+  return new MergePatients(new DrizzlePatientMerger(getDb()));
 }
