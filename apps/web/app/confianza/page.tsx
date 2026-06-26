@@ -8,7 +8,7 @@ const SECTIONS = [
   },
   {
     title: "Cómo funciona la búsqueda",
-    body: "Cuando buscas un nombre o una cédula, no consultas una base de datos abierta. Una función controlada decide qué se puede revelar. Para personas adultas te muestra el nombre coincidente y en qué hospital preguntar, agrupado por hospital. En casos sensibles —menores o personas fallecidas— no se muestra el nombre y se deriva a atención humana, para acompañar a la familia con cuidado.",
+    body: "Cuando buscas un nombre o una cédula, no consultas una base de datos abierta: una función controlada decide qué se puede revelar. Te muestra el nombre coincidente y en qué hospital preguntar, agrupado por hospital. Nunca se revelan diagnósticos, edad, teléfonos ni direcciones: solo dónde acudir para que sigas el contacto con el hospital.",
   },
   {
     title: "Anti-abuso",
