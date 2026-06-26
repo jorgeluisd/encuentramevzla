@@ -9,7 +9,7 @@
 //   1. Disparado por webhook / cron de Supabase tras una ingesta.
 //   2. Lee lotes de `public.staging_filas` con el service role.
 //   3. (OCR) Si la fila provino de imagen/PDF, extrae texto.
-//   4. Normaliza nombres/documentos (lógica equivalente a @registro/ingesta).
+//   4. Normaliza nombres/documentos (lógica equivalente a @evzla/core).
 //   5. Dedup (pg_trgm + fuzzystrmatch/levenshtein) contra `public.personas`.
 //   6. Upsert de `personas` e `ingresos` (resolviendo traslados) + audit_log.
 //

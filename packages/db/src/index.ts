@@ -1,5 +1,5 @@
 /**
- * @registro/db — esquema Drizzle del Registro Hospitalario.
+ * @evzla/db — esquema Drizzle del Registro Hospitalario.
  *
  * Recordatorio de diseño (innegociable):
  *  - Dos schemas Postgres: `public` (no sensible) y `sensible` (PII / clínico, aislado).

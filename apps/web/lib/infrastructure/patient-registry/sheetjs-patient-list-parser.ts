@@ -1,25 +1,16 @@
 import type { ParsedPatientList, ParsedPatientRow, PatientListParser } from "@evzla/core";
-import { contentHash, mapearColumnas, mapearFila, parsearPacientes } from "@registro/ingesta";
+import { mapColumns, mapRow, parsePatientSheet, rowFingerprint } from "./excel-parsing";
 
-// Adapter SheetJS: envuelve el parser existente y produce ParsedPatientRow[].
+// Adapter SheetJS: produce ParsedPatientRow[] preservando la fila cruda.
 export class SheetjsPatientListParser implements PatientListParser {
   parse(bytes: Uint8Array): ParsedPatientList {
-    const { hoja, headers, filas } = parsearPacientes(bytes);
-    const columns = mapearColumnas(headers);
-    const rows: ParsedPatientRow[] = filas.map((fila) => {
-      const mapped = mapearFila(fila, columns);
-      return {
-        fingerprint: contentHash(fila),
-        raw: fila,
-        hospitalName: mapped.hospitalNombre,
-        fullName: mapped.nombre,
-        age: mapped.edad,
-        documentNumber: mapped.docNumero,
-        phone: mapped.telefono,
-        address: mapped.direccion,
-        clinicalNotes: mapped.observaciones,
-      };
-    });
-    return { sheet: hoja, rows };
+    const { sheet, headers, rows } = parsePatientSheet(bytes);
+    const columns = mapColumns(headers);
+    const parsed: ParsedPatientRow[] = rows.map((raw) => ({
+      fingerprint: rowFingerprint(raw),
+      raw,
+      ...mapRow(raw, columns),
+    }));
+    return { sheet, rows: parsed };
   }
 }

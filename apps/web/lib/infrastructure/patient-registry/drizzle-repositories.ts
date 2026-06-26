@@ -7,8 +7,8 @@ import {
   observacionesClinicas,
   personas,
   stagingFilas,
-} from "@registro/db";
-import type { getDb } from "@registro/db/client";
+} from "@evzla/db";
+import type { getDb } from "@evzla/db/client";
 import {
   DocumentId,
   PersonName,

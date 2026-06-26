@@ -4,8 +4,8 @@
 
 > Proyecto humanitario, **sin fines de lucro**. Buscador con **privacidad mediada** que ayuda
 > a cerrar el círculo de personas desaparecidas tras un terremoto en Venezuela: una familia
-> busca por nombre y solo recibe *"hay una coincidencia en el Hospital X — mesa de información: [tel]"*,
-> nunca datos personales del paciente.
+> busca por **nombre o cédula** y solo recibe *"hay una coincidencia en el Hospital X — mesa de
+> información: [tel]"*, nunca datos personales del paciente.
 
 > [!WARNING]
 > **No es un servicio oficial de rescate.** Ante una emergencia llama a **171 / \*1 / 112 / 911**.
@@ -22,16 +22,25 @@ pnpm dev            # arranca apps en modo desarrollo (turbo)
 
 Scripts raíz (turbo): `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 
-## Estructura del monorepo
+## Arquitectura y estructura
+
+**Onion + Screaming Architecture.** Código en **inglés**, comentarios cortos en **español**,
+**SDD + TDD** (specs primero en `specs/`, test primero). Las dependencias apuntan hacia adentro:
+`apps/web → @evzla/db → @evzla/core`; el dominio no depende de nadie.
 
 ```
 .
 ├── apps/
-│   └── web/        Next.js (App Router, React 19, Tailwind 4) — buscador público + admin
+│   └── web/        @evzla/web — Next.js (App Router, React 19, Tailwind 4):
+│                   presentación + composition root + infraestructura
+│                   (adapters Drizzle/SheetJS/Supabase en lib/infrastructure)
 ├── packages/
-│   ├── config/     tsconfig base + preset ESLint compartido
-│   ├── db/         Drizzle ORM + tipos del esquema (schemas public / sensible)
-│   └── ingesta/    librería TS pura: parseo Excel (SheetJS), normalización y dedup
+│   ├── core/       @evzla/core — dominio + aplicación, PURO (sin I/O):
+│   │               value objects, matching/dedup, ports y casos de uso
+│   │               (IngestPatientList, SearchPatients)
+│   ├── db/         @evzla/db — esquema Drizzle (schemas public / sensible) + cliente Postgres
+│   └── config/     @evzla/config — tsconfig base + preset ESLint
+├── specs/          SDD — arquitectura, convenciones y features
 └── supabase/
     ├── migrations/ SQL de Postgres 16 (extensiones, tablas, RLS, RPC buscar_paciente)
     └── functions/  Edge Functions (Deno) — `dedup` (worker fase 2, stub)
@@ -52,7 +61,8 @@ La privacidad de los pacientes es un **requisito innegociable** del diseño:
   jamás es accesible desde el cliente.
 - **Búsqueda mediada.** El público nunca consulta tablas directamente. Solo existe la
   función `public.buscar_paciente(termino)` (`SECURITY DEFINER`), que valida el término,
-  hace el *matching* y devuelve únicamente `{ hospital_nombre, hospital_telefono_mesa, confianza }`.
+  hace el *matching* **por nombre o cédula** y devuelve únicamente
+  `{ hospital_nombre, hospital_telefono_mesa, confianza }`.
   Si el match es un **menor de edad** o una persona **fallecida**, no se devuelve nada por el
   buscador: se entrega un marcador `{ requiere_contacto_humano: true }` para derivar a atención humana.
 - **Anti-enumeración.** Se registra solo el **hash** del término buscado (`busqueda_log`),
