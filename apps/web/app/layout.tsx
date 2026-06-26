@@ -65,6 +65,12 @@ export default function RootLayout({
               rescate.
             </p>
             <p className="mt-1">
+              La información proviene de listas aportadas por hospitales y terceros, y
+              puede contener errores u omisiones. EncuéntrameVzla no se responsabiliza
+              por la exactitud de los datos cargados; confirma siempre con la institución
+              hospitalaria antes de tomar decisiones.
+            </p>
+            <p className="mt-1">
               ¿Cómo protegemos los datos?{" "}
               <Link href="/confianza" className="text-primary hover:underline">
                 Lee nuestra política de privacidad

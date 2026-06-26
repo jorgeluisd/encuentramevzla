@@ -66,12 +66,15 @@ export default async function BuscarPage({
       {result.kind === "no-results" && (
         <Card>
           <CardBody className="space-y-3">
-            <p className="font-semibold text-text">No pierdas la esperanza.</p>
+            <h2 className="text-xl font-semibold text-text sm:text-2xl">
+              Todavía no encontramos esa información
+            </h2>
             <p className="text-text-2">
-              Aún no tenemos información con ese dato en el sistema. Que no aparezca no
+              Aún no tenemos coincidencias con ese dato en el sistema. Que no aparezca no
               significa una mala noticia; puede que su nombre todavía no haya sido
               ingresado. Vuelve a consultar más tarde.
             </p>
+            <p className="font-semibold text-text">No pierdas la esperanza.</p>
             <div className="rounded-[var(--radius-control)] bg-surface p-4 text-sm">
               <p className="font-medium text-text">
                 ¿No encuentras a tu familiar? La Cruz Roja también te ayuda a buscar.
