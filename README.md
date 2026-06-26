@@ -71,3 +71,17 @@ La privacidad de los pacientes es un **requisito innegociable** del diseño:
   modelo permite la baja/anonimización de una persona y sus contactos sensibles.
 
 > PWA preparado pero **sin Service Worker activo** todavía.
+
+## Estado y pendientes
+
+Migración a Onion + Screaming **completa** (`@evzla/core` puro · `@evzla/db` · infra + composition
+en `@evzla/web`; scope `@registro/*` eliminado). 337 pacientes en producción. Búsqueda por
+nombre y cédula. typecheck 4/4 · 36 tests · build OK.
+
+**Decisión pendiente (a resolver con la residente):** ¿mostrar **nombres de pacientes** en el
+buscador, agrupados por hospital? Revertiría la *búsqueda mediada* (ADR-001/004). Opción recomendada:
+"con cuidado" (nombres solo en coincidencia específica; menores/fallecidos nunca). Implica una
+migración 0007 + actualizar la página de confianza y los ADRs.
+
+**Por implementar:** UI (shadcn/ui) · auth magic-link + roles + audit en `/admin` · cola de
+revisión humana (7 casos dudosos) · Cloudflare Turnstile + rate-limit (al final).
