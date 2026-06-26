@@ -53,21 +53,21 @@ export default function AdminIngestaPage(): React.ReactElement {
       {estado.ok && estado.resumen && (
         <div className="space-y-3 rounded-md border border-gray-200 p-4">
           <h2 className="font-semibold">
-            Resumen — hoja <span className="font-mono">{estado.resumen.hoja}</span>
+            Resumen — hoja <span className="font-mono">{estado.resumen.sheet}</span>
           </h2>
           <ul className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-            <Dato k="Filas leídas" v={estado.resumen.filasLeidas} />
-            <Dato k="Filas únicas" v={estado.resumen.filasUnicas} />
-            <Dato k="Staging nuevas" v={estado.resumen.stagingNuevas} />
-            <Dato k="Ya existían (idempotencia)" v={estado.resumen.stagingYaExistian} />
-            <Dato k="Hospitales" v={estado.resumen.hospitales} />
-            <Dato k="Personas nuevas" v={estado.resumen.personasNuevas} />
-            <Dato k="Personas fusionadas" v={estado.resumen.personasFusionadas} />
-            <Dato k="Conflictos de cédula" v={estado.resumen.conflictosCedula} />
-            <Dato k="Zona gris (a revisión)" v={estado.resumen.zonaGris} />
-            <Dato k="Ingresos nuevos" v={estado.resumen.ingresosNuevos} />
-            <Dato k="Menores (a contacto humano)" v={estado.resumen.menores} />
-            <Dato k="Fallecidos detectados" v={estado.resumen.fallecidos} />
+            <Dato k="Filas leídas" v={estado.resumen.rowsRead} />
+            <Dato k="Filas únicas" v={estado.resumen.uniqueRows} />
+            <Dato k="Staging nuevas" v={estado.resumen.newRows} />
+            <Dato k="Ya existían (idempotencia)" v={estado.resumen.alreadyPresent} />
+            <Dato k="Hospitales" v={estado.resumen.hospitals} />
+            <Dato k="Personas nuevas" v={estado.resumen.newPatients} />
+            <Dato k="Personas fusionadas" v={estado.resumen.mergedPatients} />
+            <Dato k="Conflictos de cédula" v={estado.resumen.documentConflicts} />
+            <Dato k="Zona gris (a revisión)" v={estado.resumen.pendingReview} />
+            <Dato k="Ingresos nuevos" v={estado.resumen.newAdmissions} />
+            <Dato k="Menores (a contacto humano)" v={estado.resumen.minors} />
+            <Dato k="Fallecidos detectados" v={estado.resumen.deceased} />
           </ul>
           <p className="text-xs text-gray-500">
             Los conflictos de cédula y la zona gris quedan en el audit log para revisión

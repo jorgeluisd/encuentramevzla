@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@evzla/core": "workspace:*",
     "@registro/db": "workspace:*",
     "@registro/ingesta": "workspace:*",
     "@supabase/supabase-js": "^2.108.2",

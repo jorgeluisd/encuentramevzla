@@ -14,6 +14,7 @@ import { IngestPatientList } from "./ingest-patient-list";
 
 const row = (over: Partial<ParsedPatientRow>): ParsedPatientRow => ({
   fingerprint: "x",
+  raw: {},
   hospitalName: "Hospital X",
   fullName: null,
   age: null,

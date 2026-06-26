@@ -1,5 +1,6 @@
 export interface ParsedPatientRow {
   fingerprint: string; // hash del crudo (idempotencia)
+  raw: Record<string, unknown>; // fila cruda preservada para staging/trazabilidad
   hospitalName: string | null;
   fullName: string | null;
   age: number | null;

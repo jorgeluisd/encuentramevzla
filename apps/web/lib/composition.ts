@@ -1,0 +1,35 @@
+import "server-only";
+
+import { IngestPatientList, SearchPatients } from "@evzla/core";
+import { getDb } from "@registro/db/client";
+import { createAnonClient } from "@/lib/supabase/anon";
+import { SheetjsPatientListParser } from "@/lib/infrastructure/patient-registry/sheetjs-patient-list-parser";
+import {
+  DrizzleAdmissionRepository,
+  DrizzleAuditLog,
+  DrizzleHospitalRepository,
+  DrizzlePatientRepository,
+  DrizzleRawRowStore,
+  DrizzleSensitiveDataStore,
+} from "@/lib/infrastructure/patient-registry/drizzle-repositories";
+import { SupabasePatientSearchGateway } from "@/lib/infrastructure/patient-registry/supabase-patient-search-gateway";
+
+// Composition root: inyecta los adapters en los casos de uso (solo servidor).
+
+export function ingestPatientListUseCase(): IngestPatientList {
+  const db = getDb();
+  return new IngestPatientList({
+    parser: new SheetjsPatientListParser(),
+    rawRows: new DrizzleRawRowStore(db),
+    patients: new DrizzlePatientRepository(db),
+    hospitals: new DrizzleHospitalRepository(db),
+    admissions: new DrizzleAdmissionRepository(db),
+    sensitive: new DrizzleSensitiveDataStore(db),
+    audit: new DrizzleAuditLog(db),
+    newId: () => crypto.randomUUID(),
+  });
+}
+
+export function searchPatientsUseCase(): SearchPatients {
+  return new SearchPatients(new SupabasePatientSearchGateway(createAnonClient()));
+}
