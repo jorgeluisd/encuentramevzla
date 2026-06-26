@@ -33,9 +33,29 @@ describe("SupabasePatientSearchGateway", () => {
     });
   });
 
-  it("routes minors/deceased to human-contact (no name leaked)", async () => {
-    const client = fakeClient([{ result: { requires_human_contact: true } }]);
-    const result = await new SupabasePatientSearchGateway(client).search("ana");
-    expect(result).toEqual({ kind: "human-contact" });
+  // ADR-0003: el gate humano fue retirado; el RPC devuelve la ubicación en todos los casos.
+  it("maps any match (including minors/deceased) to matches with hospital", async () => {
+    const client = fakeClient([
+      {
+        result: {
+          hospital_name: "Hospital Y",
+          info_desk_phone: null,
+          patient_name: "ana gomez",
+          confidence: 0.8,
+        },
+      },
+    ]);
+    const result = await new SupabasePatientSearchGateway(client).search("ana gomez");
+    expect(result).toEqual({
+      kind: "matches",
+      matches: [
+        {
+          hospitalName: "Hospital Y",
+          infoDeskPhone: null,
+          patientName: "ana gomez",
+          confidence: 0.8,
+        },
+      ],
+    });
   });
 });
