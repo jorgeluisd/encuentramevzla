@@ -24,8 +24,8 @@ interface UploadRow {
 /**
  * `/admin/ingesta` — Portal de carga de listas.
  *
- * STUB de protección: en producción exige sesión + rol uploader/moderador
- * (tarea de auth pendiente). Por ahora la ruta es abierta y "Subido por" va vacío.
+ * Protegido por el guard del grupo (protected): exige sesión + membresía activa.
+ * La action re-verifica server-side y registra el `uploadedBy` real.
  */
 export default function AdminIngestaPage(): React.ReactElement {
   const [pending, setPending] = useState(false);
@@ -51,7 +51,7 @@ export default function AdminIngestaPage(): React.ReactElement {
       setRows((prev) => [
         {
           fileName,
-          uploadedBy: "—",
+          uploadedBy: result.uploadedByEmail ?? "—",
           records: summary.rowsRead,
           at: new Date(),
           status: ingestionDisplayStatus(summary),
@@ -78,13 +78,6 @@ export default function AdminIngestaPage(): React.ReactElement {
 
   return (
     <div className="space-y-6">
-      <Card className="border-warning/30 bg-warning/5">
-        <CardBody className="text-sm text-warning">
-          Área restringida (placeholder). En producción requiere autenticación de
-          uploader/moderador.
-        </CardBody>
-      </Card>
-
       <header className="space-y-2">
         <h1 className="text-xl font-semibold sm:text-2xl">
           Portal de carga de listas
