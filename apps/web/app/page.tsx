@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { SearchForm } from "@/components/search-form";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardTitle } from "@/components/ui/card";
 
 // 3 tarjetas "cómo funciona" (specs/0004 A1). Datos estáticos de presentación.
@@ -76,9 +77,15 @@ export default function HomePage(): React.ReactElement {
             <p className="text-sm text-text-2">
               La Cruz Roja también te ayuda a buscar.
             </p>
+            <p className="mt-1 text-xs text-text-3">
+              Av. Andrés Bello, Edificio Cruz Roja Venezolana, Caracas.
+            </p>
           </div>
-          {/* TODO: teléfono real de la Cruz Roja por confirmar con Jorge (no inventar). */}
-          <span className="text-sm text-text-3">Teléfono por confirmar</span>
+          <a href="tel:+582125714380" className="shrink-0">
+            <Button variant="danger" className="w-full sm:w-auto">
+              Llamar a la Cruz Roja
+            </Button>
+          </a>
         </CardBody>
       </Card>
     </div>
