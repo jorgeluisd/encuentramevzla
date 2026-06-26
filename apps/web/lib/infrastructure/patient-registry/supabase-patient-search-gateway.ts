@@ -4,7 +4,6 @@ import type { MediatedMatch, MediatedSearchResult, PatientSearchGateway } from "
 interface RpcRow {
   result: {
     invalid_term?: boolean;
-    requires_human_contact?: boolean;
     hospital_name?: string;
     info_desk_phone?: string | null;
     patient_name?: string;
@@ -24,7 +23,6 @@ export class SupabasePatientSearchGateway implements PatientSearchGateway {
     }
     const results = ((data as RpcRow[] | null) ?? []).map((r) => r.result);
     if (results.some((r) => r?.invalid_term)) return { kind: "invalid-term" };
-    if (results.some((r) => r?.requires_human_contact)) return { kind: "human-contact" };
 
     const matches: MediatedMatch[] = results
       .filter((r) => r && r.hospital_name)
