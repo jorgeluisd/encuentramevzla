@@ -25,7 +25,7 @@ export function SearchForm(): React.ReactElement {
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-4 md:items-end">
         <div className="space-y-1.5">
           <label htmlFor="name" className="text-sm font-medium text-text-2">
             Nombre
@@ -66,11 +66,10 @@ export function SearchForm(): React.ReactElement {
             autoComplete="off"
           />
         </div>
+        <Button type="submit" size="lg" className="w-full">
+          Buscar
+        </Button>
       </div>
-
-      <Button type="submit" size="lg" className="w-full md:w-auto">
-        Buscar
-      </Button>
 
       <p className="text-sm text-text-2">
         Solo verás el hospital y un teléfono de ayuda. Nada de datos médicos.
