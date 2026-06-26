@@ -11,10 +11,65 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+const SITE_URL = "https://encuentramevzla.com";
+const SITE_NAME = "EncuéntrameVzla";
+const DESCRIPTION =
+  "Busca por nombre o cédula a una persona ingresada en un hospital de Venezuela tras el sismo. Con privacidad mediada: solo te indicamos el hospital donde hay una coincidencia.";
+
+// metadataBase resuelve a absolutas las URLs de icon/opengraph que Next genera
+// desde app/icon.png, app/apple-icon.png y app/opengraph-image.png.
 export const metadata: Metadata = {
-  title: "EncuéntrameVzla — Encuentra a tu familiar",
-  description:
-    "Buscador con privacidad mediada para ayudar a localizar personas ingresadas en hospitales tras el sismo.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "EncuéntrameVzla — Encuentra a tu familiar tras el sismo",
+    template: "%s · EncuéntrameVzla",
+  },
+  description: DESCRIPTION,
+  applicationName: SITE_NAME,
+  keywords: [
+    "personas desaparecidas Venezuela",
+    "buscar familiar hospital",
+    "terremoto Venezuela",
+    "sismo Venezuela desaparecidos",
+    "búsqueda por nombre o cédula",
+    "EncuéntrameVzla",
+  ],
+  authors: [{ name: SITE_NAME }],
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    locale: "es_VE",
+    url: SITE_URL,
+    siteName: SITE_NAME,
+    title: "EncuéntrameVzla — Encuentra a tu familiar tras el sismo",
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "EncuéntrameVzla — Encuentra a tu familiar tras el sismo",
+    description: DESCRIPTION,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large" },
+  },
+  category: "humanitarian",
+};
+
+// JSON-LD (SEO): identifica el sitio y la organización sin fines de lucro.
+const JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: SITE_NAME,
+  url: SITE_URL,
+  description: DESCRIPTION,
+  inLanguage: "es-VE",
+  publisher: {
+    "@type": "NGO",
+    name: SITE_NAME,
+    url: SITE_URL,
+  },
 };
 
 export default function RootLayout({
@@ -25,6 +80,10 @@ export default function RootLayout({
   return (
     <html lang="es" className={inter.variable}>
       <body className="min-h-screen bg-bg text-text">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+        />
         <EmergencyBanner />
 
         <header className="border-b border-border bg-bg">
