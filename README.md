@@ -2,6 +2,10 @@
 
 **Proyecto:** EncuéntrameVzla · **Dominio:** `encuentramevzla.com`
 
+**Redes:** Instagram [@encuentramevzla_](https://instagram.com/encuentramevzla_) ·
+X [@encuentramevzl](https://x.com/encuentramevzl) ·
+TikTok [@encuentrame.vzla](https://www.tiktok.com/@encuentrame.vzla)
+
 > Proyecto humanitario, **sin fines de lucro**. Buscador con **privacidad mediada** que ayuda
 > a cerrar el círculo de personas desaparecidas tras un terremoto en Venezuela: una familia
 > busca por **nombre o cédula** y solo recibe *"hay una coincidencia en el Hospital X — mesa de
