@@ -1,7 +1,7 @@
 import "server-only";
 
 import { IngestPatientList, SearchPatients } from "@evzla/core";
-import { getDb } from "@registro/db/client";
+import { getDb } from "@evzla/db/client";
 import { createAnonClient } from "@/lib/supabase/anon";
 import { SheetjsPatientListParser } from "@/lib/infrastructure/patient-registry/sheetjs-patient-list-parser";
 import {

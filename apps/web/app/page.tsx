@@ -10,8 +10,9 @@ export default function HomePage(): React.ReactElement {
       <div className="space-y-2">
         <h1 className="text-2xl font-bold">¿Buscas a un familiar ingresado?</h1>
         <p className="text-gray-600">
-          Escribe el nombre completo. Por privacidad, solo te diremos si hay una
-          coincidencia y en qué hospital preguntar; nunca mostramos datos de la persona.
+          Escribe el nombre y apellido, o la cédula. Por privacidad, solo te diremos si
+          hay una coincidencia y en qué hospital preguntar; nunca mostramos datos de la
+          persona.
         </p>
       </div>
 
@@ -21,7 +22,7 @@ export default function HomePage(): React.ReactElement {
           name="termino"
           required
           minLength={4}
-          placeholder="Nombre y apellido (mín. 4 caracteres)"
+          placeholder="Nombre y apellido o cédula (mín. 4 caracteres)"
           className="flex-1 rounded-md border border-gray-300 px-3 py-2"
         />
         <button

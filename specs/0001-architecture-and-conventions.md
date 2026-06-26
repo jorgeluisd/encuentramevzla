@@ -53,8 +53,12 @@ apps/web/                      <- presentation + composition root
 
 1. ✅ **domain** de `patient-registry` (value objects + matching) con TDD.
 2. ✅ **application**: ports + casos de uso (`IngestPatientList`, `SearchPatients`) con TDD y fakes.
-3. **infrastructure**: adapters Drizzle/Supabase/SheetJS implementando los ports. ← siguiente.
-4. Recablear `apps/web` al composition root; eliminar `@registro/ingesta` y mover el esquema.
-5. Renombrar el scope `@registro/*` → `@evzla/*`.
+3. ✅ **infrastructure**: adapters Drizzle/Supabase/SheetJS + composition root en `apps/web`.
+4. ✅ Recableado `apps/web` a los casos de uso; eliminado `@registro/ingesta`.
+5. ✅ Renombrado el scope `@registro/*` → `@evzla/*` (core, db, config, web).
+
+> Pendiente menor: renombrar a inglés los identificadores Drizzle del esquema en `@evzla/db`
+> (consts y propiedades aún en español; las columnas SQL no cambian). Y extraer la
+> infraestructura de `apps/web` a un paquete `@evzla/infrastructure` (opcional).
 
 Mientras tanto conviven el código viejo (que sigue alimentando la app) y el nuevo `@evzla/core`.
