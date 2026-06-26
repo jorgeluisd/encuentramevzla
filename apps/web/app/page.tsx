@@ -31,10 +31,10 @@ export default function HomePage(): React.ReactElement {
         <Image
           src="/brand/logo-encuentramevzla.svg"
           alt="EncuéntrameVzla"
-          width={200}
-          height={113}
+          width={280}
+          height={158}
           priority
-          className="mx-auto h-auto w-40 sm:w-48"
+          className="mx-auto h-auto w-56 sm:w-72"
         />
         <div className="flex justify-center">
           <Badge variant="success">Listas verificadas · actualizado hoy</Badge>
