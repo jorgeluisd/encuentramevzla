@@ -45,7 +45,8 @@ WHAT/WHY/WHERE/LEARNED. Sirven de base; el `archiver` sigue guardando con `mem_s
 - **WHY:** La privacidad de los pacientes es un requisito de diseño no negociable.
 - **WHERE:** `supabase/migrations/0002_rls.sql`, `0003_rpc_search_patient.sql`; `README.md`.
 - **LEARNED:** El rol anónimo no tiene grants sobre tablas; `sensitive` jamás llega al cliente. Mostrar
-  nombres en el buscador es una decisión ABIERTA que requiere a la residente + migración 0007.
+  nombres en el buscador fue una decisión RESUELTA (opción abierta, con consentimiento de la residente);
+  los nombres de adultos vivos se exponen vía `search_patient`, implementado en `0003`.
 
 ## Semilla 4 — Dedup: no confiar en la cédula
 
@@ -62,7 +63,7 @@ WHAT/WHY/WHERE/LEARNED. Sirven de base; el `archiver` sigue guardando con `mem_s
 - **WHAT:** En `search_patient`, una variable boolean (`v_hay_coincid`) recibía un `ROW_COUNT` entero,
   fallando con 2+ coincidencias.
 - **WHY:** Confundir el conteo de filas con un flag booleano en plpgsql.
-- **WHERE:** `supabase/migrations/0005_search_patient_rowcount_fix.sql`.
+- **WHERE:** fix histórico (migración `0005`), hoy **consolidado** en `0003_rpc_search_patient.sql`.
 - **LEARNED:** En plpgsql, separa el conteo (`GET DIAGNOSTICS ... ROW_COUNT`) del flag booleano; probar
   el RPC con 0, 1 y ≥2 coincidencias. Patrón a vigilar en futuros cambios al RPC.
 

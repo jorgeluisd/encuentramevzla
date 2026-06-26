@@ -1,8 +1,9 @@
 # 0005 — Nombres en el buscador + dedupe por hospital
 
-Estado: en diseño (GATE 1) · Capas: `application` (port) · `domain` (presentación de nombre) ·
-infraestructura (RPC `0007` + gateway) · presentación (`/buscar`, `/confianza`).
-Dirige el TDD de este incremento.
+Estado: **Implementado y desplegado** · Capas: `application` (port) · `domain` (presentación de
+nombre) · infraestructura (RPC `0003_rpc_search_patient` + gateway) · presentación (`/buscar`,
+`/confianza`). El RPC se entregó primero como `0007` y luego se **consolidó en `0003`** al pasar el
+esquema a inglés.
 
 ## Contexto y decisión
 
@@ -55,14 +56,14 @@ presentación** (title-case, sin tildes). Función **pura en `@evzla/core`**:
   ```
 
 ### Infraestructura
-- **Migración `0007_search_patient_nombres.sql`**: `CREATE OR REPLACE` del RPC para que el
-  bloque publicable **incluya el nombre** en el jsonb y **dedupe por hospital+persona**:
-  - Añadir `'patient_name', p.normalized_name` al `jsonb_build_object`.
-  - Mantener el `GROUP BY h.nombre, h.info_desk_phone, p.normalized_name,
-    p.normalized_doc_number` (un resultado por persona-hospital → no repite la misma persona en
-    el mismo hospital; traslados quedan como ingresos distintos).
+- **RPC `public.search_patient`** (en `0003_rpc_search_patient.sql`): el bloque publicable
+  **incluye el nombre** en el jsonb y **dedupe por hospital+persona**:
+  - `'patient_name', p.normalized_name` en el `jsonb_build_object`.
+  - `GROUP BY h.name, h.info_desk_phone, p.normalized_name, p.normalized_doc_number`
+    (un resultado por persona-hospital → no repite la misma persona en el mismo hospital;
+    traslados quedan como ingresos distintos).
   - **Sin tocar** la rama sensible (menores/fallecidos → `requires_human_contact`), el umbral
-    `v_best_sensible >= v_best_public`, ni el logging por hash.
+    `v_best_sensitive >= v_best_public`, ni el logging por hash.
   - El `LIMIT 10` se mantiene.
 - **Gateway** `SupabasePatientSearchGateway`: mapear `patient_name → patientName`.
 
@@ -79,15 +80,15 @@ presentación** (title-case, sin tildes). Función **pura en `@evzla/core`**:
 - [ ] `search_log` solo guarda el hash; no se loggea el término ni el nombre devuelto.
 - [ ] El schema `sensitive` (teléfonos/direcciones/clínico) **no** se toca ni se expone.
 
-## Plan de tareas (post-GATE 1, Strict TDD ON)
-1. **(core)** RED→GREEN `displayName` + test colocado.
-2. **(core)** Extender `MediatedMatch` con `patientName` (ajustar tipos/fakes; tests verdes).
-3. **(infra)** Migración `0007` + aplicarla; ajustar `SupabasePatientSearchGateway` (mapear nombre).
-4. **(infra)** Test del adapter (parseo del nuevo campo).
-5. **(web)** `/buscar`: agrupar por hospital + nombres con `displayName`.
-6. **(web)** `/confianza`: copy nueva.
-7. **(docs)** `[[ADR-0001]]` (status: parcialmente revertida) + `[[ADR-0002]]`; README al día.
-8. Verificación: `pnpm typecheck && pnpm test && pnpm build` verdes + prueba manual del RPC.
+## Plan de tareas (COMPLETADO, Strict TDD)
+1. ✅ **(core)** RED→GREEN `displayName` + test colocado.
+2. ✅ **(core)** Extender `MediatedMatch` con `patientName` (tipos/fakes; tests verdes).
+3. ✅ **(infra)** RPC con el nombre (hoy en `0003`) + aplicado; `SupabasePatientSearchGateway` mapea el campo.
+4. ✅ **(infra)** Test del adapter (parseo del nuevo campo).
+5. ✅ **(web)** `/buscar`: agrupar por hospital + nombres con `displayName`.
+6. ✅ **(web)** `/confianza`: copy nueva.
+7. ✅ **(docs)** `[[ADR-0001]]` (status: parcialmente revertida) + `[[ADR-0002]]`; README al día.
+8. ✅ Verificación: `pnpm typecheck && pnpm test && pnpm build` verdes + RPC probado en prod.
 
 ## GATE 2 (al cerrar)
 Evidencia "TDD Cycle Evidence" (RED FAIL → GREEN PASS con comandos Vitest reales) + checklist de
