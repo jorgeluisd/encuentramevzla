@@ -51,9 +51,9 @@ apps/web/                      <- presentation + composition root
 
 ## Plan de migración (estrangulamiento, sin romper lo verde)
 
-1. **domain** de `patient-registry` (matching + value objects) con TDD. ← este incremento.
-2. **application**: ports + casos de uso (`IngestPatientList`, `SearchPatients`).
-3. **infrastructure**: adapters Drizzle/Supabase/SheetJS implementando los ports.
+1. ✅ **domain** de `patient-registry` (value objects + matching) con TDD.
+2. ✅ **application**: ports + casos de uso (`IngestPatientList`, `SearchPatients`) con TDD y fakes.
+3. **infrastructure**: adapters Drizzle/Supabase/SheetJS implementando los ports. ← siguiente.
 4. Recablear `apps/web` al composition root; eliminar `@registro/ingesta` y mover el esquema.
 5. Renombrar el scope `@registro/*` → `@evzla/*`.
 
