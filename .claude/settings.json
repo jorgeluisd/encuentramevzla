@@ -1,0 +1,5 @@
+{
+  "$comment": "Config compartida del proyecto EncuentrameVzla. La memoria persistente se provee via el plugin Engram (tools mcp__plugin_engram_engram__*); su protocolo de guardado vive en engram/seeds.md. Los permisos personales/locales permanecen en settings.local.json (no se duplican aqui). Para anadir nuevos MCP servers de proyecto, declararlos en mcpServers y habilitarlos.",
+  "enableAllProjectMcpServers": false,
+  "mcpServers": {}
+}

@@ -40,11 +40,27 @@ Scripts raíz (turbo): `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 │   │               (IngestPatientList, SearchPatients)
 │   ├── db/         @evzla/db — esquema Drizzle (schemas public / sensible) + cliente Postgres
 │   └── config/     @evzla/config — tsconfig base + preset ESLint
-├── specs/          SDD — arquitectura, convenciones y features
+├── assets/
+│   └── brand/      Logos definitivos (SVG master + PNG) — ver assets/brand/README.md
+├── specs/          SDD — arquitectura, convenciones, dedup, design-system (0003), UI concept (0004)
 └── supabase/
     ├── migrations/ SQL de Postgres 16 (extensiones, tablas, RLS, RPC buscar_paciente)
     └── functions/  Edge Functions (Deno) — `dedup` (worker fase 2, stub)
 ```
+
+> **Nota:** `docs/` está gitignored (contiene el Excel real de pacientes y el prototipo de UI/UX
+> `docs/design/concept-mvp1.html`). Por eso los logos viven en `assets/brand/` y el diseño se documenta
+> en `specs/` (ambos versionados).
+
+## Diseño (mobile-first)
+
+La UI se diseña **primero para celular** (la familia busca en una emergencia desde el teléfono) y luego
+se amplía a desktop. Identidad y guía de UX:
+
+- **Tokens** (paleta + tipografía Inter + principios mobile-first): `specs/0003-design-system.md`.
+- **Concepto de pantallas y flujos** (público: buscador / coincidencia / sin resultados — privado:
+  login magic-link / ingesta): `specs/0004-ui-concept.md`, destilado del prototipo de UI/UX.
+- **Marca**: `assets/brand/` (logo SVG master + PNG).
 
 > **Arquitectura: todo Supabase.** No hay backend propio. El frontend (Next.js) habla
 > directo con Supabase: el público solo invoca el RPC mediado `buscar_paciente`, y la

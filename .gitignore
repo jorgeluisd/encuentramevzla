@@ -28,3 +28,6 @@ coverage/
 
 # datos sensibles: docs/ contiene el Excel real de pacientes — NUNCA versionar
 docs/
+
+# permisos locales de Claude Code (personal)
+.claude/settings.local.json
