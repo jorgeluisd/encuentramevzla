@@ -1,21 +1,18 @@
 # Skill — Supabase (Postgres 16, RLS, RPC, Edge Functions)
 
 **No hay backend propio: todo es Supabase.** El frontend habla directo con Supabase: el público solo
-invoca el RPC mediado `buscar_paciente`; la ingesta usa Server Actions con la service role.
+invoca el RPC mediado `search_patient`; la ingesta usa Server Actions con la service role.
 
 ## Migraciones SQL (`supabase/migrations/`)
 
-- Nombre: `NNNN_descripcion.sql` con `NNNN` incremental de 4 dígitos. Estado actual: `0001`..`0006`.
-  - `0001_init` — extensiones (`pg_trgm`, `fuzzystrmatch`, `unaccent`), schemas, tablas, enum `estado_persona`.
+- Nombre: `NNNN_descripcion.sql` con `NNNN` incremental de 4 dígitos. Estado actual: `0001`..`0003`.
+  - `0001_init` — extensiones (`pg_trgm`, `fuzzystrmatch`, `unaccent`), schemas, tablas, enum `person_status`.
   - `0002_rls` — RLS y grants (rol anónimo SIN acceso directo a tablas).
-  - `0003_rpc_buscar_paciente` — RPC público mediado.
-  - `0004_buscar_paciente_umbral` — ajuste de umbral de matching.
-  - `0005_buscar_paciente_rowcount_fix` — fix bug `ROW_COUNT` vs boolean (ver `engram/seeds.md`).
-  - `0006_buscar_paciente_por_cedula` — búsqueda por cédula.
+  - `0003_rpc_search_patient` — RPC público mediado (matching por nombre o cédula; nombres de adultos).
 - Cada migración es **idempotente** donde se pueda (`IF NOT EXISTS`, `CREATE OR REPLACE`).
 - Toda migración que toque datos/búsqueda pasa por `privacy-and-security.md` y el Gate 1.
 
-## RPC mediado `public.buscar_paciente(termino)`
+## RPC mediado `public.search_patient(term)`
 
 Es el **único** punto de entrada del público a los datos. Reglas obligatorias al editarlo:
 
@@ -23,15 +20,16 @@ Es el **único** punto de entrada del público a los datos. Reglas obligatorias 
   (fijar `search_path` es **obligatorio** en `SECURITY DEFINER`).
 - Valida el término (mínimo 4 caracteres normalizados).
 - Normaliza con `lower(unaccent(...))` + colapso de espacios; matching con `pg_trgm`/`fuzzystrmatch`.
-- Devuelve SOLO `{ hospital_nombre, hospital_telefono_mesa, confianza }` (modelado como `jsonb`).
-- Menor/fallecido → `{ requiere_contacto_humano: true }`, nunca datos.
-- Registra **hash** del término en `busqueda_log` (`encode(digest(..., 'sha256'), 'hex')`), nunca el texto.
+- Para adultos vivos devuelve `{ hospital_name, info_desk_phone, patient_name, confidence }` (jsonb),
+  agrupado por hospital.
+- Menor/fallecido → `{ requires_human_contact: true }`, nunca datos.
+- Registra **hash** del término en `search_log` (`encode(digest(..., 'sha256'), 'hex')`), nunca el texto.
 - Mantén el `TODO(rate-limit)` hasta implementarlo (chequeo por IP/ventana antes de seguir).
 
 ## RLS y grants (`0002_rls`)
 
-- El rol anónimo (`anon`) **no tiene grants** sobre tablas de datos ni sobre el schema `sensible`.
-- El acceso público se concede **solo a la función** `buscar_paciente` (EXECUTE), no a tablas.
+- El rol anónimo (`anon`) **no tiene grants** sobre tablas de datos ni sobre el schema `sensitive`.
+- El acceso público se concede **solo a la función** `search_patient` (EXECUTE), no a tablas.
 - Antes de añadir un `GRANT`, pregúntate: ¿esto abre datos al público? Si sí, reconsidéralo.
 
 ## Edge Functions (`supabase/functions/`) — Deno
@@ -50,5 +48,5 @@ Es el **único** punto de entrada del público a los datos. Reglas obligatorias 
 - [ ] ¿Nueva migración `NNNN_*.sql` incremental e idempotente?
 - [ ] ¿El RPC sigue `SECURITY DEFINER` con `search_path` fijo?
 - [ ] ¿Devuelve solo el contrato mediado? ¿Menores/fallecidos excluidos?
-- [ ] ¿`busqueda_log` solo con hash?
-- [ ] ¿Ningún grant nuevo al rol anónimo sobre datos/sensible?
+- [ ] ¿`search_log` solo con hash?
+- [ ] ¿Ningún grant nuevo al rol anónimo sobre datos/sensitive?

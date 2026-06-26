@@ -6,7 +6,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * Cliente Supabase para el BROWSER (rol anónimo).
  *
  * Usa la ANON KEY: por RLS no tiene acceso a las tablas de datos ni al schema
- * `sensible`. Lo único que el público puede invocar es el RPC `buscar_paciente`.
+ * `sensitive`. Lo único que el público puede invocar es el RPC `search_patient`.
  * NUNCA poner aquí la service role key.
  */
 export function createBrowserClient(): SupabaseClient {

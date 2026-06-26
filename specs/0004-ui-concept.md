@@ -36,7 +36,7 @@ Elementos comunes de marca: logo + wordmark `encuentrameVZLA`, franja tricolor d
 - **3 tarjetas de "cómo funciona"**: *Listas unidas · Datos cuidados · Teléfono de ayuda* (1 col móvil → 3 col `md`).
 - **CTA Cruz Roja**: *"¿No encuentras a tu familiar? La Cruz Roja también te ayuda a buscar."* + teléfono.
 
-> Mapea a: caso de uso `SearchPatients` → RPC `public.buscar_paciente(termino)`. La búsqueda es por
+> Mapea a: caso de uso `SearchPatients` → RPC `public.search_patient(term)`. La búsqueda es por
 > **nombre o cédula**; el término se valida (mín. 4 chars) y se registra solo su **hash**.
 
 ### A2. Coincidencia (hay match)
@@ -49,7 +49,7 @@ Elementos comunes de marca: logo + wordmark `encuentrameVZLA`, franja tricolor d
 - **Teléfono de mesa de información** + botón **Llamar** (rojo, `tel:`).
 - Pie: *"Las noticias delicadas siempre las da una persona, nunca la app."*
 
-> Mapea al contrato del RPC: devuelve **solo** `{ hospital_nombre, hospital_telefono_mesa, confianza }`.
+> Mapea al contrato del RPC: devuelve **solo** `{ hospital_name, info_desk_phone, confidence }`.
 > ⚠️ **NO mostrar nombres/datos del paciente.** Mostrar nombres de pacientes es una **decisión abierta**
 > (requiere a la residente + migración) — ver `README` y `privacy-and-security.md`. El concepto NO los muestra.
 > Menores/fallecidos → no devuelven datos: derivan a **contacto humano** (estado a contemplar en la UI).
@@ -59,7 +59,7 @@ Elementos comunes de marca: logo + wordmark `encuentrameVZLA`, franja tricolor d
   mala noticia; solo que su nombre aún no ha sido ingresado. No pierda la esperanza y vuelva a consultar."*
 - **CTA Cruz Roja** + teléfono.
 
-> Este estado cubre tanto "sin coincidencia" como el marcador `{ requiere_contacto_humano: true }`
+> Este estado cubre tanto "sin coincidencia" como el marcador `{ requires_human_contact: true }`
 > (menores/fallecidos), siempre derivando a una persona, nunca dando la noticia la app.
 
 ---

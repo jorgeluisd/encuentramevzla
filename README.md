@@ -38,13 +38,13 @@ Scripts raíz (turbo): `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 │   ├── core/       @evzla/core — dominio + aplicación, PURO (sin I/O):
 │   │               value objects, matching/dedup, ports y casos de uso
 │   │               (IngestPatientList, SearchPatients)
-│   ├── db/         @evzla/db — esquema Drizzle (schemas public / sensible) + cliente Postgres
+│   ├── db/         @evzla/db — esquema Drizzle (schemas public / sensitive) + cliente Postgres
 │   └── config/     @evzla/config — tsconfig base + preset ESLint
 ├── assets/
 │   └── brand/      Logos definitivos (SVG master + PNG) — ver assets/brand/README.md
 ├── specs/          SDD — arquitectura, convenciones, dedup, design-system (0003), UI concept (0004)
 └── supabase/
-    ├── migrations/ SQL de Postgres 16 (extensiones, tablas, RLS, RPC buscar_paciente)
+    ├── migrations/ SQL de Postgres 16 (extensiones, tablas, RLS, RPC search_patient)
     └── functions/  Edge Functions (Deno) — `dedup` (worker fase 2, stub)
 ```
 
@@ -63,7 +63,7 @@ se amplía a desktop. Identidad y guía de UX:
 - **Marca**: `assets/brand/` (logo SVG master + PNG).
 
 > **Arquitectura: todo Supabase.** No hay backend propio. El frontend (Next.js) habla
-> directo con Supabase: el público solo invoca el RPC mediado `buscar_paciente`, y la
+> directo con Supabase: el público solo invoca el RPC mediado `search_patient`, y la
 > ingesta usa Server Actions con la service role. El worker pesado de dedup/OCR de la
 > fase 2 será una **Supabase Edge Function (Deno)** — ver `supabase/functions/dedup`.
 
@@ -72,18 +72,19 @@ se amplía a desktop. Identidad y guía de UX:
 La privacidad de los pacientes es un **requisito innegociable** del diseño:
 
 - **Separación física público / sensible.** Hay dos *schemas* de Postgres:
-  `public` (no sensible) y `sensible` (teléfonos, direcciones, observaciones clínicas).
-  El rol anónimo **no tiene grants** sobre las tablas de datos; el schema `sensible`
+  `public` (no sensible) y `sensitive` (teléfonos, direcciones, observaciones clínicas).
+  El rol anónimo **no tiene grants** sobre las tablas de datos; el schema `sensitive`
   jamás es accesible desde el cliente.
-- **Búsqueda mediada.** El público nunca consulta tablas directamente. Solo existe la
-  función `public.buscar_paciente(termino)` (`SECURITY DEFINER`), que valida el término,
-  hace el *matching* **por nombre o cédula** y devuelve únicamente
-  `{ hospital_nombre, hospital_telefono_mesa, confianza }`.
-  Si el match es un **menor de edad** o una persona **fallecida**, no se devuelve nada por el
-  buscador: se entrega un marcador `{ requiere_contacto_humano: true }` para derivar a atención humana.
-- **Anti-enumeración.** Se registra solo el **hash** del término buscado (`busqueda_log`),
+- **Búsqueda controlada.** El público nunca consulta tablas directamente. Solo existe la
+  función `public.search_patient(term)` (`SECURITY DEFINER`), que valida el término,
+  hace el *matching* **por nombre o cédula** y, para **adultos vivos**, devuelve
+  `{ hospital_name, info_desk_phone, patient_name, confidence }` (nombres agrupados
+  por hospital — ver `[ADR-0002]`).
+  Si el match es un **menor de edad** o una persona **fallecida**, **nunca** se devuelve el
+  nombre: se entrega un marcador `{ requires_human_contact: true }` para derivar a atención humana.
+- **Anti-enumeración.** Se registra solo el **hash** del término buscado (`search_log`),
   nunca el texto en claro. (Rate-limit previsto, ver TODO en el RPC.)
-- **Derecho al olvido.** El dato crudo se preserva en `staging_filas` para trazabilidad, y el
+- **Derecho al olvido.** El dato crudo se preserva en `raw_rows` para trazabilidad, y el
   modelo permite la baja/anonimización de una persona y sus contactos sensibles.
 
 > PWA preparado pero **sin Service Worker activo** todavía.
@@ -91,13 +92,15 @@ La privacidad de los pacientes es un **requisito innegociable** del diseño:
 ## Estado y pendientes
 
 Migración a Onion + Screaming **completa** (`@evzla/core` puro · `@evzla/db` · infra + composition
-en `@evzla/web`; scope `@registro/*` eliminado). 337 pacientes en producción. Búsqueda por
-nombre y cédula. typecheck 4/4 · 36 tests · build OK.
+en `@evzla/web`; scope `@registro/*` eliminado). 319 pacientes en producción (337 filas del Excel,
+deduplicadas). Nombres de tablas/columnas en **inglés**; migraciones consolidadas en `0001`-`0003`.
+Búsqueda por nombre y cédula. typecheck 4/4 · 41 tests · build OK.
 
-**Decisión pendiente (a resolver con la residente):** ¿mostrar **nombres de pacientes** en el
-buscador, agrupados por hospital? Revertiría la *búsqueda mediada* (ADR-001/004). Opción recomendada:
-"con cuidado" (nombres solo en coincidencia específica; menores/fallecidos nunca). Implica una
-migración 0007 + actualizar la página de confianza y los ADRs.
+**Decisión resuelta (con consentimiento de la residente):** el buscador **muestra nombres de
+adultos vivos** agrupados por hospital (opción "abierta"); **menores y fallecidos nunca** muestran
+nombre. Ver `specs/0005-buscador-nombres-y-dedupe.md` y `adr/0002-apertura-de-nombres-adultos.md`.
+Implementado en el RPC `search_patient` (migración `0003`) + `/buscar` + `/confianza`, **aplicado en
+producción**.
 
 **Por implementar:** UI (shadcn/ui) · auth magic-link + roles + audit en `/admin` · cola de
 revisión humana (7 casos dudosos) · Cloudflare Turnstile + rate-limit (al final).
