@@ -95,23 +95,6 @@ export default async function BuscarPage({
         </Card>
       )}
 
-      {result.kind === "human-contact" && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardBody className="space-y-2">
-            <p className="font-semibold text-primary">
-              Necesitamos hablar contigo en persona.
-            </p>
-            <p className="text-text-2">
-              Para este caso no podemos dar información automatizada. Comunícate con la
-              mesa de atención humanitaria para recibir acompañamiento.
-            </p>
-            <p className="text-sm text-text-3">
-              Las noticias delicadas siempre las da una persona, nunca la app.
-            </p>
-          </CardBody>
-        </Card>
-      )}
-
       {result.kind === "matches" && (
         <div className="space-y-4">
           <Badge variant="success">

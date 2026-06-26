@@ -6,7 +6,7 @@ import { pgEnum } from "drizzle-orm/pg-core";
  * - transferred: movido a otro hospital (genera un nuevo `admission`).
  * - discharged:  dado de alta.
  * - located:     la familia ya lo localizó (cierra el círculo).
- * - deceased:    NO se devuelve por el buscador público -> requires_human_contact.
+ * - deceased:    fallecido. Desde ADR-0003 también se muestra su ubicación en el buscador.
  */
 export const statusEnum = pgEnum("person_status", [
   "admitted",

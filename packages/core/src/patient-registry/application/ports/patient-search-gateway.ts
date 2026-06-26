@@ -8,7 +8,6 @@ export interface MediatedMatch {
 
 export type MediatedSearchResult =
   | { kind: "invalid-term" }
-  | { kind: "human-contact" }
   | { kind: "no-results" }
   | { kind: "matches"; matches: MediatedMatch[] };
 
