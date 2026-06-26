@@ -2,13 +2,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MediatedMatch, MediatedSearchResult, PatientSearchGateway } from "@evzla/core";
 
 interface RpcRow {
-  resultado: {
-    termino_invalido?: boolean;
-    requiere_contacto_humano?: boolean;
-    hospital_nombre?: string;
-    hospital_telefono_mesa?: string | null;
-    paciente_nombre?: string;
-    confianza?: number;
+  result: {
+    invalid_term?: boolean;
+    requires_human_contact?: boolean;
+    hospital_name?: string;
+    info_desk_phone?: string | null;
+    patient_name?: string;
+    confidence?: number;
   };
 }
 
@@ -17,22 +17,22 @@ export class SupabasePatientSearchGateway implements PatientSearchGateway {
   constructor(private readonly client: SupabaseClient) {}
 
   async search(term: string): Promise<MediatedSearchResult> {
-    const { data, error } = await this.client.rpc("buscar_paciente", { termino: term });
+    const { data, error } = await this.client.rpc("search_patient", { term });
     if (error) {
-      console.error("[buscar] error RPC:", error.message);
+      console.error("[search] RPC error:", error.message);
       return { kind: "no-results" };
     }
-    const results = ((data as RpcRow[] | null) ?? []).map((r) => r.resultado);
-    if (results.some((r) => r?.termino_invalido)) return { kind: "invalid-term" };
-    if (results.some((r) => r?.requiere_contacto_humano)) return { kind: "human-contact" };
+    const results = ((data as RpcRow[] | null) ?? []).map((r) => r.result);
+    if (results.some((r) => r?.invalid_term)) return { kind: "invalid-term" };
+    if (results.some((r) => r?.requires_human_contact)) return { kind: "human-contact" };
 
     const matches: MediatedMatch[] = results
-      .filter((r) => r && r.hospital_nombre)
+      .filter((r) => r && r.hospital_name)
       .map((r) => ({
-        hospitalName: r.hospital_nombre as string,
-        infoDeskPhone: r.hospital_telefono_mesa ?? null,
-        patientName: r.paciente_nombre ?? "",
-        confidence: Number(r.confianza) || 0,
+        hospitalName: r.hospital_name as string,
+        infoDeskPhone: r.info_desk_phone ?? null,
+        patientName: r.patient_name ?? "",
+        confidence: Number(r.confidence) || 0,
       }));
     return matches.length > 0 ? { kind: "matches", matches } : { kind: "no-results" };
   }

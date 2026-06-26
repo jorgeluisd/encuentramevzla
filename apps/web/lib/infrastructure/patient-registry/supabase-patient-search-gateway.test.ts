@@ -8,14 +8,14 @@ function fakeClient(data: unknown): SupabaseClient {
 }
 
 describe("SupabasePatientSearchGateway", () => {
-  it("maps paciente_nombre to patientName for adult matches", async () => {
+  it("maps patient_name to patientName for adult matches", async () => {
     const client = fakeClient([
       {
-        resultado: {
-          hospital_nombre: "Hospital X",
-          hospital_telefono_mesa: "0412-1112233",
-          paciente_nombre: "perez juan",
-          confianza: 0.9,
+        result: {
+          hospital_name: "Hospital X",
+          info_desk_phone: "0412-1112233",
+          patient_name: "perez juan",
+          confidence: 0.9,
         },
       },
     ]);
@@ -34,7 +34,7 @@ describe("SupabasePatientSearchGateway", () => {
   });
 
   it("routes minors/deceased to human-contact (no name leaked)", async () => {
-    const client = fakeClient([{ resultado: { requiere_contacto_humano: true } }]);
+    const client = fakeClient([{ result: { requires_human_contact: true } }]);
     const result = await new SupabasePatientSearchGateway(client).search("ana");
     expect(result).toEqual({ kind: "human-contact" });
   });
