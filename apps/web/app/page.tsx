@@ -34,7 +34,7 @@ export default function HomePage(): React.ReactElement {
           width={280}
           height={158}
           priority
-          className="mx-auto h-auto w-56 sm:w-72"
+          className="mx-auto h-auto w-48 sm:w-60"
         />
         <div className="flex justify-center">
           <Badge variant="success">Listas verificadas · actualizado hoy</Badge>
