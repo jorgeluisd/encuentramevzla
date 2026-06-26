@@ -1,56 +1,86 @@
-import Link from "next/link";
+import Image from "next/image";
+import { SearchForm } from "@/components/search-form";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardBody, CardTitle } from "@/components/ui/card";
+
+// 3 tarjetas "cómo funciona" (specs/0004 A1). Datos estáticos de presentación.
+const HOW_IT_WORKS = [
+  {
+    title: "Listas unidas",
+    body: "Reunimos las listas de varios hospitales en un solo lugar para que no tengas que llamar a cada uno.",
+  },
+  {
+    title: "Datos cuidados",
+    body: "No mostramos diagnóstico, edad ni dirección. Solo el hospital donde preguntar.",
+  },
+  {
+    title: "Teléfono de ayuda",
+    body: "Te damos el teléfono de la mesa de información del hospital para que sigas el contacto.",
+  },
+] as const;
 
 /**
- * `/` — Buscador público.
- * STUB: el formulario hace GET a /buscar?termino=...; la lógica del RPC vive allí.
+ * `/` — Buscador público (concepto A1). Tres campos que se combinan en el RPC
+ * `public.search_patient` vía el caso de uso SearchPatients. Privacidad mediada.
  */
 export default function HomePage(): React.ReactElement {
   return (
-    <section className="space-y-6 py-6">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-bold">¿Buscas a un familiar ingresado?</h1>
-        <p className="text-gray-600">
-          Escribe el nombre y apellido, o la cédula. Por privacidad, solo te diremos si
-          hay una coincidencia y en qué hospital preguntar; nunca mostramos datos de la
-          persona.
-        </p>
-      </div>
-
-      <form action="/buscar" method="get" className="flex gap-2">
-        <input
-          type="text"
-          name="termino"
-          required
-          minLength={4}
-          placeholder="Nombre y apellido o cédula (mín. 4 caracteres)"
-          className="flex-1 rounded-md border border-gray-300 px-3 py-2"
+    <div className="space-y-10">
+      <section className="space-y-5 text-center">
+        <Image
+          src="/brand/logo-encuentramevzla.svg"
+          alt="EncuéntrameVzla"
+          width={200}
+          height={113}
+          priority
+          className="mx-auto h-auto w-40 sm:w-48"
         />
-        <button
-          type="submit"
-          className="rounded-md bg-teal-700 px-4 py-2 font-medium text-white hover:bg-teal-800"
-        >
-          Buscar
-        </button>
-      </form>
+        <div className="flex justify-center">
+          <Badge variant="success">Listas verificadas · actualizado hoy</Badge>
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold sm:text-3xl">
+            Encuentra a tu familiar
+          </h1>
+          <p className="mx-auto max-w-xl text-text-2">
+            Busca a una persona ingresada en un hospital tras el sismo. Es privado y
+            seguro.
+          </p>
+        </div>
+      </section>
 
-      <aside className="rounded-md border border-red-200 bg-red-50 p-4 text-sm">
-        <p className="font-semibold text-red-800">
-          Esto NO es un servicio oficial de rescate.
-        </p>
-        <p className="text-red-700">
-          Ante una emergencia, llama a las líneas oficiales:{" "}
-          <strong>171</strong> · <strong>*1</strong> · <strong>112</strong> ·{" "}
-          <strong>911</strong>.
-        </p>
-      </aside>
+      <Card>
+        <CardBody className="space-y-5">
+          <SearchForm />
+        </CardBody>
+      </Card>
 
-      <p className="text-sm text-gray-500">
-        ¿Cómo protegemos los datos?{" "}
-        <Link href="/confianza" className="text-teal-700 underline">
-          Lee nuestra política de privacidad
-        </Link>
-        .
-      </p>
-    </section>
+      <section className="space-y-4">
+        <h2 className="text-center text-lg font-semibold">¿Cómo funciona?</h2>
+        <div className="grid gap-4 md:grid-cols-3">
+          {HOW_IT_WORKS.map((item) => (
+            <Card key={item.title}>
+              <CardBody className="space-y-2">
+                <CardTitle>{item.title}</CardTitle>
+                <p className="text-sm text-text-2">{item.body}</p>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <Card className="border-danger/20 bg-danger/5">
+        <CardBody className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-semibold text-text">¿No encuentras a tu familiar?</p>
+            <p className="text-sm text-text-2">
+              La Cruz Roja también te ayuda a buscar.
+            </p>
+          </div>
+          {/* TODO: teléfono real de la Cruz Roja por confirmar con Jorge (no inventar). */}
+          <span className="text-sm text-text-3">Teléfono por confirmar</span>
+        </CardBody>
+      </Card>
+    </div>
   );
 }
