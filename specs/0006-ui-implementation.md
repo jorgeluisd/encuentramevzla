@@ -121,8 +121,18 @@ sistema de diseño: tipografía, `Card` por sección, colores de token.
 restiliza la página existente: aviso de área restringida (`warning`), `input` de archivo, botón,
 mensaje de error (`danger`) y el **resumen de procesamiento** en `Card` con grilla legible en móvil.
 
-> La **tabla "Cargas recientes"** del concepto (B2) requiere una fuente de datos (audit log de
-> cargas) que **no existe todavía** → se documenta como futuro, no se implementa aquí.
+**Tabla "Cargas recientes" (concepto B2) — por sesión.** Columnas `Archivo · Subido por ·
+Registros · Fecha · Estado` con **scroll horizontal** en móvil (`overflow-x-auto`, `min-w`). La
+tabla arranca **vacía** y se actualiza con cada carga de la sesión actual (estado de cliente, sin
+persistir). El estado se decide con el helper puro `ingestionDisplayStatus(summary)`:
+- `published` → **Publicada** (`success`).
+- `review` → **En revisión (N)** (`warning`) si hay conflictos de cédula o zona gris.
+- el error de procesamiento → **Formato inválido** (`danger`).
+
+`Subido por` va vacío (`—`) hasta que exista auth (sabremos `uploadedBy`).
+
+> La tabla **histórica/persistida del equipo** (entre sesiones, con `Subido por` real) requiere
+> auth + una tabla de cargas en DB → queda para cuando llegue el pendiente #2.
 
 ## 5. Mobile-first (innegociable, 0003 §6)
 
@@ -139,4 +149,5 @@ asociados.
 ## 7. Fuera de alcance
 
 Auth/roles (#2), cola de revisión humana (#3), Turnstile/rate-limit (#4), variantes de logo,
-Service Worker PWA, tabla "Cargas recientes", soporte `.csv` en ingesta.
+Service Worker PWA, **tabla de cargas persistida entre sesiones** (la de esta entrega es por
+sesión), soporte `.csv` en ingesta.
