@@ -21,7 +21,7 @@ Traduce el spec a un diseño técnico que respeta Onion + Screaming + privacidad
 
 1. Dependencias hacia adentro (regla onion). El dominio queda puro.
 2. Reutiliza ports/adapters existentes antes de crear nuevos.
-3. Cualquier cambio al buscador o a `sensible` se marca para el Gate 1 (decisión humana).
+3. Cualquier cambio al buscador o a `sensitive` se marca para el Gate 1 (decisión humana).
 4. No introduce tecnologías fuera del stack.
 
 ## Qué NO hace

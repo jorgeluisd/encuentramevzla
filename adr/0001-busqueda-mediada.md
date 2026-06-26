@@ -11,14 +11,14 @@ nombres + hospital permitiría enumeración, perfilado y exposición de personas
 
 ## Decisión
 
-La búsqueda pública es **mediada**: el único acceso es el RPC `public.buscar_paciente`
+La búsqueda pública es **mediada**: el único acceso es el RPC `public.search_patient`
 (`SECURITY DEFINER`), que devuelve solo si **hay coincidencia** y **en qué hospital preguntar**
-(`hospital_nombre`, `telefono_mesa_info`, `confianza`). **Nunca** datos personales. Casos
-sensibles (menores, fallecidos) → `{ requiere_contacto_humano: true }`. `busqueda_log` guarda
+(`hospital_name`, `info_desk_phone`, `confidence`). **Nunca** datos personales. Casos
+sensibles (menores, fallecidos) → `{ requires_human_contact: true }`. `search_log` guarda
 **solo el hash** del término (anti-enumeración).
 
 ## Consecuencias
 
-- El público no consulta tablas directamente; el schema `sensible` queda aislado.
+- El público no consulta tablas directamente; el schema `sensitive` queda aislado.
 - Las familias no confirman identidad por el buscador (deben llamar a la mesa).
 - Esta fricción motivó la revisión posterior → ver [ADR-0002](./0002-apertura-de-nombres-adultos.md).

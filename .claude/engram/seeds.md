@@ -39,12 +39,12 @@ WHAT/WHY/WHERE/LEARNED. Sirven de base; el `archiver` sigue guardando con `mem_s
 
 ## Semilla 3 — Privacidad mediada (innegociable)
 
-- **WHAT:** Separación física `public`/`sensible`. El público solo usa `public.buscar_paciente(termino)`
-  (`SECURITY DEFINER`), que devuelve solo `{ hospital_nombre, hospital_telefono_mesa, confianza }`.
-  Menores/fallecidos → `{ requiere_contacto_humano: true }`. `busqueda_log` guarda solo el hash.
+- **WHAT:** Separación física `public`/`sensitive`. El público solo usa `public.search_patient(term)`
+  (`SECURITY DEFINER`), que devuelve solo `{ hospital_name, info_desk_phone, confidence }`.
+  Menores/fallecidos → `{ requires_human_contact: true }`. `search_log` guarda solo el hash.
 - **WHY:** La privacidad de los pacientes es un requisito de diseño no negociable.
-- **WHERE:** `supabase/migrations/0002_rls.sql`, `0003_rpc_buscar_paciente.sql`; `README.md`.
-- **LEARNED:** El rol anónimo no tiene grants sobre tablas; `sensible` jamás llega al cliente. Mostrar
+- **WHERE:** `supabase/migrations/0002_rls.sql`, `0003_rpc_search_patient.sql`; `README.md`.
+- **LEARNED:** El rol anónimo no tiene grants sobre tablas; `sensitive` jamás llega al cliente. Mostrar
   nombres en el buscador es una decisión ABIERTA que requiere a la residente + migración 0007.
 
 ## Semilla 4 — Dedup: no confiar en la cédula
@@ -59,10 +59,10 @@ WHAT/WHY/WHERE/LEARNED. Sirven de base; el `archiver` sigue guardando con `mem_s
 
 ## Semilla 5 — Bug RPC 0005 (ROW_COUNT vs boolean)
 
-- **WHAT:** En `buscar_paciente`, una variable boolean (`v_hay_coincid`) recibía un `ROW_COUNT` entero,
+- **WHAT:** En `search_patient`, una variable boolean (`v_hay_coincid`) recibía un `ROW_COUNT` entero,
   fallando con 2+ coincidencias.
 - **WHY:** Confundir el conteo de filas con un flag booleano en plpgsql.
-- **WHERE:** `supabase/migrations/0005_buscar_paciente_rowcount_fix.sql`.
+- **WHERE:** `supabase/migrations/0005_search_patient_rowcount_fix.sql`.
 - **LEARNED:** En plpgsql, separa el conteo (`GET DIAGNOSTICS ... ROW_COUNT`) del flag booleano; probar
   el RPC con 0, 1 y ≥2 coincidencias. Patrón a vigilar en futuros cambios al RPC.
 

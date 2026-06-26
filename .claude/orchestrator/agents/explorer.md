@@ -12,7 +12,7 @@ Primer agente del pipeline. **Solo lectura.** Mapea el terreno antes de proponer
 - **Mapa de impacto**: archivos y capas onion afectadas (domain/application/infrastructure/presentation).
 - **Capacidad** involucrada (`patient-registry`, `patient-search`, `shared`).
 - **Hallazgos**: código/utilidades existentes reutilizables, patrones a respetar, deuda relevante.
-- **Banderas de privacidad**: ¿toca datos, `sensible`, RPC `buscar_paciente`, menores/fallecidos?
+- **Banderas de privacidad**: ¿toca datos, `sensitive`, RPC `search_patient`, menores/fallecidos?
 - **Specs relacionadas** (`specs/000X`) y decisiones previas (buscar en Engram con `mem_search`).
 
 ## Qué hace

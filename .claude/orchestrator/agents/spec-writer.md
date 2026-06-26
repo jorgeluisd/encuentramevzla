@@ -12,7 +12,7 @@ Escribe el spec SDD. Toda feature nace aquí antes de cualquier código.
   - **Estado** (propuesto/aceptado/en progreso) y **capa**/capacidad afectada.
   - **Contexto** (por qué; datos reales si aplican).
   - **Criterios de aceptación** concretos y verificables (los que dirigirán el TDD).
-  - **Implicaciones de privacidad** (¿toca `sensible`/RPC/menores/fallecidos?).
+  - **Implicaciones de privacidad** (¿toca `sensitive`/RPC/menores/fallecidos?).
   - Notas de diseño preliminares y enlaces a specs/ADRs previos.
 
 ## Estilo (consistente con specs existentes)

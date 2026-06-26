@@ -17,12 +17,12 @@ coincidencia** (incluso parcial) — opción "abierta".
 
 ### Límite innegociable (no se cruza)
 - **Menores de edad y fallecidos NUNCA** devuelven nombre → siguen como
-  `{ requiere_contacto_humano: true }`. La apertura aplica **solo a adultos vivos**.
-- Único acceso público = RPC `buscar_paciente` (`SECURITY DEFINER`); sin grants al rol anónimo.
-- `busqueda_log` sigue guardando **solo el hash**; el schema `sensible` no se expone.
+  `{ requires_human_contact: true }`. La apertura aplica **solo a adultos vivos**.
+- Único acceso público = RPC `search_patient` (`SECURITY DEFINER`); sin grants al rol anónimo.
+- `search_log` sigue guardando **solo el hash**; el schema `sensitive` no se expone.
 
 ### Nombre visible
-Se capitaliza el `nombre_normalizado` en presentación (title-case, sin tildes). No se añade
+Se capitaliza el `normalized_name` en presentación (title-case, sin tildes). No se añade
 columna ni se hace backfill (trade-off de simplicidad sobre fidelidad tipográfica).
 
 ## Consecuencias

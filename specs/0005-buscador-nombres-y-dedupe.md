@@ -13,15 +13,15 @@ nombre del paciente (ADR-0001). El 2026-06-25, **con consentimiento explícito d
 - Se muestran **NOMBRES de pacientes en toda coincidencia** (incluso parcial), **agrupados por
   hospital**.
 - **Salvedad innegociable (CLAUDE.md §7, no se cruza):** **menores de edad y fallecidos NUNCA
-  devuelven nombre** → siguen devolviendo `{ requiere_contacto_humano: true }`. La apertura
+  devuelven nombre** → siguen devolviendo `{ requires_human_contact: true }`. La apertura
   aplica **solo a adultos vivos**.
-- `busqueda_log` sigue guardando **solo el hash** del término (anti-enumeración intacta).
-- El acceso público sigue siendo **únicamente** vía el RPC `public.buscar_paciente`
+- `search_log` sigue guardando **solo el hash** del término (anti-enumeración intacta).
+- El acceso público sigue siendo **únicamente** vía el RPC `public.search_patient`
   (`SECURITY DEFINER`); el rol anónimo no gana grants sobre tablas.
 
 ## Nombre visible (decisión de presentación)
 
-Hoy `public.personas` solo guarda `nombre_normalizado` (minúsculas, sin tildes). **No** se añade
+Hoy `public.patients` solo guarda `normalized_name` (minúsculas, sin tildes). **No** se añade
 columna ni se hace backfill. El nombre visible se obtiene **capitalizando el normalizado en
 presentación** (title-case, sin tildes). Función **pura en `@evzla/core`**:
 
@@ -55,16 +55,16 @@ presentación** (title-case, sin tildes). Función **pura en `@evzla/core`**:
   ```
 
 ### Infraestructura
-- **Migración `0007_buscar_paciente_nombres.sql`**: `CREATE OR REPLACE` del RPC para que el
+- **Migración `0007_search_patient_nombres.sql`**: `CREATE OR REPLACE` del RPC para que el
   bloque publicable **incluya el nombre** en el jsonb y **dedupe por hospital+persona**:
-  - Añadir `'paciente_nombre', p.nombre_normalizado` al `jsonb_build_object`.
-  - Mantener el `GROUP BY h.nombre, h.telefono_mesa_info, p.nombre_normalizado,
-    p.doc_numero_normalizado` (un resultado por persona-hospital → no repite la misma persona en
+  - Añadir `'patient_name', p.normalized_name` al `jsonb_build_object`.
+  - Mantener el `GROUP BY h.nombre, h.info_desk_phone, p.normalized_name,
+    p.normalized_doc_number` (un resultado por persona-hospital → no repite la misma persona en
     el mismo hospital; traslados quedan como ingresos distintos).
-  - **Sin tocar** la rama sensible (menores/fallecidos → `requiere_contacto_humano`), el umbral
+  - **Sin tocar** la rama sensible (menores/fallecidos → `requires_human_contact`), el umbral
     `v_best_sensible >= v_best_public`, ni el logging por hash.
   - El `LIMIT 10` se mantiene.
-- **Gateway** `SupabasePatientSearchGateway`: mapear `paciente_nombre → patientName`.
+- **Gateway** `SupabasePatientSearchGateway`: mapear `patient_name → patientName`.
 
 ### Presentación
 - `/buscar`: renderizar resultados **agrupados por hospital**; bajo cada hospital, la lista de
@@ -74,10 +74,10 @@ presentación** (title-case, sin tildes). Función **pura en `@evzla/core`**:
   nombres de **adultos** y que **menores/fallecidos** siguen derivando a atención humana.
 
 ## Privacidad (checklist innegociable)
-- [ ] Menores (`es_menor`) y fallecidos (`estado='fallecido'`) **nunca** aparecen con nombre.
-- [ ] Único acceso público = RPC `buscar_paciente` (`SECURITY DEFINER`); sin grants al anónimo.
-- [ ] `busqueda_log` solo guarda el hash; no se loggea el término ni el nombre devuelto.
-- [ ] El schema `sensible` (teléfonos/direcciones/clínico) **no** se toca ni se expone.
+- [ ] Menores (`is_minor`) y fallecidos (`status='deceased'`) **nunca** aparecen con nombre.
+- [ ] Único acceso público = RPC `search_patient` (`SECURITY DEFINER`); sin grants al anónimo.
+- [ ] `search_log` solo guarda el hash; no se loggea el término ni el nombre devuelto.
+- [ ] El schema `sensitive` (teléfonos/direcciones/clínico) **no** se toca ni se expone.
 
 ## Plan de tareas (post-GATE 1, Strict TDD ON)
 1. **(core)** RED→GREEN `displayName` + test colocado.
