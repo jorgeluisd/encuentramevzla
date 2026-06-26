@@ -1,17 +1,24 @@
 import { pgEnum } from "drizzle-orm/pg-core";
 
 /**
- * Estado de una persona / ingreso dentro del sistema hospitalario.
- * - ingresado:  está en el hospital.
- * - trasladado: movido a otro hospital (genera un nuevo `ingreso`).
- * - alta:       dado de alta.
- * - localizado: la familia ya lo localizó (cierra el círculo).
- * - fallecido:  NO se devuelve por el buscador público -> requiere_contacto_humano.
+ * Estado de un paciente / ingreso dentro del sistema hospitalario.
+ * - admitted:    está en el hospital.
+ * - transferred: movido a otro hospital (genera un nuevo `admission`).
+ * - discharged:  dado de alta.
+ * - located:     la familia ya lo localizó (cierra el círculo).
+ * - deceased:    NO se devuelve por el buscador público -> requires_human_contact.
  */
-export const estadoEnum = pgEnum("estado_persona", [
-  "ingresado",
-  "trasladado",
-  "alta",
-  "localizado",
-  "fallecido",
+export const statusEnum = pgEnum("person_status", [
+  "admitted",
+  "transferred",
+  "discharged",
+  "located",
+  "deceased",
 ]);
+
+/**
+ * Rol del personal verificado en el portal /admin.
+ * - uploader:  puede subir listas de pacientes.
+ * - moderator: uploader + revisión humana / audit log (decide fusiones).
+ */
+export const teamRoleEnum = pgEnum("team_role", ["uploader", "moderator"]);

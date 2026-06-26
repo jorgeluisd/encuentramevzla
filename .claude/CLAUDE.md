@@ -37,7 +37,7 @@ funciona ("no romper lo verde") y explícito con las decisiones de privacidad.
 
 **Paquetes del workspace:**
 - `@evzla/core` — dominio + aplicación, **PURO** (sin I/O): value objects, matching/dedup, ports, casos de uso.
-- `@evzla/db` — esquema Drizzle (schemas `public` / `sensible`) + cliente Postgres.
+- `@evzla/db` — esquema Drizzle (schemas `public` / `sensitive`) + cliente Postgres.
 - `@evzla/config` — tsconfig base + preset ESLint.
 - `@evzla/web` (`apps/web`) — presentación (Next.js) + composition root + infraestructura (adapters).
 
@@ -90,10 +90,10 @@ Detalle completo en `skills/architecture.md`.
 
 ## 7. Prohibiciones (antipatrones de este proyecto)
 
-- ❌ Exponer el schema **`sensible`** al cliente (teléfonos, direcciones, observaciones clínicas).
-- ❌ Que el público consulte tablas directamente: **todo va por el RPC `public.buscar_paciente`** (`SECURITY DEFINER`).
-- ❌ Devolver datos de **menores de edad** o **fallecidos** por el buscador → marcador `{ requiere_contacto_humano: true }`.
-- ❌ Loggear el término de búsqueda en claro: en `busqueda_log` solo va el **hash**.
+- ❌ Exponer el schema **`sensitive`** al cliente (teléfonos, direcciones, observaciones clínicas).
+- ❌ Que el público consulte tablas directamente: **todo va por el RPC `public.search_patient`** (`SECURITY DEFINER`).
+- ❌ Devolver datos de **menores de edad** o **fallecidos** por el buscador → marcador `{ requires_human_contact: true }`.
+- ❌ Loggear el término de búsqueda en claro: en `search_log` solo va el **hash**.
 - ❌ Usar **`npm`**: siempre `pnpm`.
 - ❌ Violar la **regla de dependencia onion**: `domain` jamás importa hacia `application`/`infrastructure`/`presentation`.
 - ❌ Meter **I/O o libs externas en `@evzla/core`** (debe quedar puro).
