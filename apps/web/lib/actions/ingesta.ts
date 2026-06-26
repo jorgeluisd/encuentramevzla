@@ -1,39 +1,40 @@
 "use server";
 
-import { contentHash, parsearExcel, type FilaCruda } from "@registro/ingesta";
-// import { createServiceClient } from "@/lib/supabase/server";
+import { procesarExcel, type ResumenIngesta } from "@/lib/ingesta/procesar";
 
 /**
- * Server Action STUB para la ingesta de un Excel de pacientes.
+ * Server Action de ingesta de un Excel de pacientes.
  *
- * Flujo previsto (NO implementado todavía):
- *  1. Validar sesión/rol admin (esta ruta es protegida).
- *  2. Parsear el .xlsx con SheetJS y conservar las filas CRUDAS.
- *  3. Calcular content_hash por fila para idempotencia.
- *  4. Insertar en `public.staging_filas` con el cliente service-role.
- *  5. Disparar la dedup en la Supabase Edge Function `dedup` (fase 2, Deno).
+ * Corre en el servidor (Node): parsea, preserva el crudo en staging (idempotente),
+ * deduplica y escribe persona/ingreso + datos sensibles vía conexión directa Drizzle.
+ * Devuelve un resumen para mostrarlo en la UI (patrón useActionState).
  *
- * Aquí solo se demuestra el parseo; NO se escribe en base de datos.
- * Firma `(FormData) => Promise<void>` para poder enlazarla directo a `<form action>`.
+ * TODO(auth): exigir sesión + rol uploader/moderador y registrar `subidoPor` real.
  */
-export async function subirExcelAction(formData: FormData): Promise<void> {
+export interface EstadoIngesta {
+  ok: boolean;
+  mensaje?: string;
+  resumen?: ResumenIngesta;
+}
+
+export async function subirExcelAction(
+  _prev: EstadoIngesta,
+  formData: FormData,
+): Promise<EstadoIngesta> {
   const archivo = formData.get("archivo");
-  if (!(archivo instanceof File)) {
-    // TODO: devolver estado al cliente vía useActionState.
-    return;
+  if (!(archivo instanceof File) || archivo.size === 0) {
+    return { ok: false, mensaje: "Selecciona un archivo .xlsx válido." };
   }
 
-  const buffer = new Uint8Array(await archivo.arrayBuffer());
-  const { filas } = parsearExcel(buffer);
-
-  // STUB: en producción aquí iría el upsert idempotente a staging_filas.
-  const staging: { contentHash: string; filaCruda: FilaCruda }[] = filas.map(
-    (filaCruda) => ({ contentHash: contentHash(filaCruda), filaCruda }),
-  );
-  // const supabase = createServiceClient();
-  // await supabase.schema("public").from("staging_filas").upsert(staging, { onConflict: "content_hash" });
-  // await supabase.functions.invoke("dedup", { body: { archivoId } });
-
-  // eslint-disable-next-line no-console
-  console.log(`[ingesta] parseadas ${staging.length} filas (stub: no se guardó nada).`);
+  try {
+    const buffer = new Uint8Array(await archivo.arrayBuffer());
+    const resumen = await procesarExcel(buffer);
+    return { ok: true, resumen };
+  } catch (error) {
+    return {
+      ok: false,
+      mensaje:
+        error instanceof Error ? error.message : "Error procesando el archivo.",
+    };
+  }
 }
