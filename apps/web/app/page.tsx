@@ -42,7 +42,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
           width={280}
           height={158}
           priority
-          className="mx-auto h-auto w-48 sm:w-60"
+          className="mx-auto h-auto w-44 sm:w-56"
         />
         <div className="flex justify-center">
           <Badge variant="success">{formatLastUpdate(lastUpdate)}</Badge>
