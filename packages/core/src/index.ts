@@ -13,6 +13,9 @@ export * from "./patient-registry/domain/services/string-similarity";
 export * from "./patient-registry/domain/services/patient-matching";
 export * from "./patient-registry/domain/services/patient-merge";
 
+// emergency-contacts (capacidad de presentación pública)
+export * from "./emergency-contacts/domain/phone";
+
 // application
 export * from "./patient-registry/application/ports/patient-list-parser";
 export * from "./patient-registry/application/ports/patient-search-gateway";
