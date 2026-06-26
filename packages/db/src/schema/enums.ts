@@ -15,3 +15,10 @@ export const statusEnum = pgEnum("person_status", [
   "located",
   "deceased",
 ]);
+
+/**
+ * Rol del personal verificado en el portal /admin.
+ * - uploader:  puede subir listas de pacientes.
+ * - moderator: uploader + revisión humana / audit log (decide fusiones).
+ */
+export const teamRoleEnum = pgEnum("team_role", ["uploader", "moderator"]);
