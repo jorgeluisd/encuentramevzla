@@ -23,6 +23,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@evzla/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@registro/db':
         specifier: workspace:*
         version: link:../../packages/db

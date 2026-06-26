@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   // El esquema y la lib de ingesta son TS sin transpilar dentro del workspace.
-  transpilePackages: ["@registro/db", "@registro/ingesta"],
+  transpilePackages: ["@evzla/core", "@registro/db", "@registro/ingesta"],
   // `postgres` (postgres.js) es nativo de Node: no debe empaquetarse para el cliente.
   serverExternalPackages: ["postgres"],
 

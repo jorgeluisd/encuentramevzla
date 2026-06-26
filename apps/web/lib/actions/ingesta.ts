@@ -1,20 +1,17 @@
 "use server";
 
-import { procesarExcel, type ResumenIngesta } from "@/lib/ingesta/procesar";
+import type { IngestionSummary } from "@evzla/core";
+import { ingestPatientListUseCase } from "@/lib/composition";
 
 /**
- * Server Action de ingesta de un Excel de pacientes.
- *
- * Corre en el servidor (Node): parsea, preserva el crudo en staging (idempotente),
- * deduplica y escribe persona/ingreso + datos sensibles vía conexión directa Drizzle.
- * Devuelve un resumen para mostrarlo en la UI (patrón useActionState).
- *
- * TODO(auth): exigir sesión + rol uploader/moderador y registrar `subidoPor` real.
+ * Server Action de ingesta. Delega en el caso de uso IngestPatientList
+ * (composition root inyecta los adapters Drizzle/SheetJS).
+ * TODO(auth): exigir sesión + rol uploader/moderador y registrar `uploadedBy`.
  */
 export interface EstadoIngesta {
   ok: boolean;
   mensaje?: string;
-  resumen?: ResumenIngesta;
+  resumen?: IngestionSummary;
 }
 
 export async function subirExcelAction(
@@ -27,14 +24,13 @@ export async function subirExcelAction(
   }
 
   try {
-    const buffer = new Uint8Array(await archivo.arrayBuffer());
-    const resumen = await procesarExcel(buffer);
+    const fileBytes = new Uint8Array(await archivo.arrayBuffer());
+    const resumen = await ingestPatientListUseCase().execute({ fileBytes, uploadedBy: null });
     return { ok: true, resumen };
   } catch (error) {
     return {
       ok: false,
-      mensaje:
-        error instanceof Error ? error.message : "Error procesando el archivo.",
+      mensaje: error instanceof Error ? error.message : "Error procesando el archivo.",
     };
   }
 }
