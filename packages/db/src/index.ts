@@ -2,8 +2,8 @@
  * @evzla/db — esquema Drizzle del Registro Hospitalario.
  *
  * Recordatorio de diseño (innegociable):
- *  - Dos schemas Postgres: `public` (no sensible) y `sensible` (PII / clínico, aislado).
- *  - El rol anónimo NO accede a `sensible` ni a las tablas de datos de `public`.
+ *  - Dos schemas Postgres: `public` (no sensible) y `sensitive` (PII / clínico, aislado).
+ *  - El rol anónimo NO accede a `sensitive` ni a las tablas de datos de `public`.
  *  - El acceso público sucede SOLO vía el RPC `public.search_patient` (SECURITY DEFINER).
  *
  * Las migraciones canónicas (extensiones, RLS, grants y RPC) viven en `supabase/migrations/`.
