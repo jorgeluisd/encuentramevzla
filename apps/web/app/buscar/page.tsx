@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { displayName, type MediatedMatch } from "@evzla/core";
 import { searchPatientsUseCase } from "@/lib/composition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
+
+// Resultados de búsqueda: no se indexan (contenido por consulta, evita thin/duplicate).
+export const metadata: Metadata = {
+  title: "Resultados de búsqueda",
+  robots: { index: false, follow: true },
+};
 
 // Agrupa las coincidencias por hospital (dedupe de nombres dentro del mismo hospital).
 interface HospitalGroup {
@@ -91,23 +98,6 @@ export default async function BuscarPage({
                 Av. Andrés Bello, Edificio Cruz Roja Venezolana, Caracas.
               </p>
             </div>
-          </CardBody>
-        </Card>
-      )}
-
-      {result.kind === "human-contact" && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardBody className="space-y-2">
-            <p className="font-semibold text-primary">
-              Necesitamos hablar contigo en persona.
-            </p>
-            <p className="text-text-2">
-              Para este caso no podemos dar información automatizada. Comunícate con la
-              mesa de atención humanitaria para recibir acompañamiento.
-            </p>
-            <p className="text-sm text-text-3">
-              Las noticias delicadas siempre las da una persona, nunca la app.
-            </p>
           </CardBody>
         </Card>
       )}

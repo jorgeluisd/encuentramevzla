@@ -1,8 +1,14 @@
 import Image from "next/image";
+import { formatLastUpdate } from "@evzla/core";
+import { getLastUpdateUseCase } from "@/lib/composition";
 import { SearchForm } from "@/components/search-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardTitle } from "@/components/ui/card";
+
+// Render por request: el sello de "última actualización" se lee en vivo de la BD
+// (siempre disponible en runtime) y no ata el build a la base de datos.
+export const dynamic = "force-dynamic";
 
 // 3 tarjetas "cómo funciona" (specs/0004 A1). Datos estáticos de presentación.
 const HOW_IT_WORKS = [
@@ -15,8 +21,8 @@ const HOW_IT_WORKS = [
     body: "No mostramos diagnóstico, edad ni dirección. Solo el hospital donde preguntar.",
   },
   {
-    title: "Teléfono de ayuda",
-    body: "Te damos el teléfono de la mesa de información del hospital para que sigas el contacto.",
+    title: "Dónde acudir",
+    body: "Te indicamos en qué hospital hay una coincidencia para que vayas directamente. Para emergencias, marca las líneas oficiales del aviso de arriba.",
   },
 ] as const;
 
@@ -24,7 +30,9 @@ const HOW_IT_WORKS = [
  * `/` — Buscador público (concepto A1). Tres campos que se combinan en el RPC
  * `public.search_patient` vía el caso de uso SearchPatients. Privacidad mediada.
  */
-export default function HomePage(): React.ReactElement {
+export default async function HomePage(): Promise<React.ReactElement> {
+  const lastUpdate = await getLastUpdateUseCase().execute();
+
   return (
     <div className="space-y-10">
       <section className="space-y-5 text-center">
@@ -34,10 +42,10 @@ export default function HomePage(): React.ReactElement {
           width={280}
           height={158}
           priority
-          className="mx-auto h-auto w-56 sm:w-72"
+          className="mx-auto h-auto w-44 sm:w-56"
         />
         <div className="flex justify-center">
-          <Badge variant="success">Listas verificadas · actualizado hoy</Badge>
+          <Badge variant="success">{formatLastUpdate(lastUpdate)}</Badge>
         </div>
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold sm:text-3xl">
