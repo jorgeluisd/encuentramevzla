@@ -71,6 +71,11 @@ export default function RootLayout({
               </Link>
               .
             </p>
+            <p className="mt-1">
+              <Link href="/emergencias" className="text-primary hover:underline">
+                Números de emergencia
+              </Link>
+            </p>
           </div>
         </footer>
       </body>

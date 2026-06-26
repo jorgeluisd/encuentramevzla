@@ -1,3 +1,6 @@
+import { telHref } from "@evzla/core";
+import Link from "next/link";
+
 /**
  * Aviso de emergencia sticky (specs/0004 A · 0003 §6.7). Siempre visible.
  * Portal informativo: ante emergencia, líneas oficiales 171 · *1 · 112 · 911.
@@ -13,11 +16,15 @@ export function EmergencyBanner(): React.ReactElement {
         {LINES.map((line, i) => (
           <span key={line}>
             {i > 0 && <span className="text-danger/40"> · </span>}
-            <a href={`tel:${line.replace("*", "")}`} className="font-semibold underline">
+            <a href={telHref(line)} className="font-semibold underline">
               {line}
             </a>
           </span>
         ))}
+        <span className="text-danger/40"> · </span>
+        <Link href="/emergencias" className="font-semibold underline">
+          ver todos
+        </Link>
       </p>
     </div>
   );
