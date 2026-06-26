@@ -7,6 +7,7 @@ interface RpcRow {
     requiere_contacto_humano?: boolean;
     hospital_nombre?: string;
     hospital_telefono_mesa?: string | null;
+    paciente_nombre?: string;
     confianza?: number;
   };
 }
@@ -30,6 +31,7 @@ export class SupabasePatientSearchGateway implements PatientSearchGateway {
       .map((r) => ({
         hospitalName: r.hospital_nombre as string,
         infoDeskPhone: r.hospital_telefono_mesa ?? null,
+        patientName: r.paciente_nombre ?? "",
         confidence: Number(r.confianza) || 0,
       }));
     return matches.length > 0 ? { kind: "matches", matches } : { kind: "no-results" };

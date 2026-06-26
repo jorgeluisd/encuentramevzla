@@ -1,6 +1,8 @@
 export interface MediatedMatch {
   hospitalName: string;
   infoDeskPhone: string | null;
+  // Nombre normalizado del adulto coincidente; la presentación lo pasa por displayName().
+  patientName: string;
   confidence: number;
 }
 

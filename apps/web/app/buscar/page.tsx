@@ -1,12 +1,36 @@
 import Link from "next/link";
+import { displayName, type MediatedMatch } from "@evzla/core";
 import { searchPatientsUseCase } from "@/lib/composition";
 
+// Agrupa las coincidencias por hospital (dedupe de nombres dentro del mismo hospital).
+interface HospitalGroup {
+  hospitalName: string;
+  infoDeskPhone: string | null;
+  names: string[];
+}
+
+function groupByHospital(matches: readonly MediatedMatch[]): HospitalGroup[] {
+  const groups = new Map<string, HospitalGroup>();
+  for (const match of matches) {
+    const group = groups.get(match.hospitalName) ?? {
+      hospitalName: match.hospitalName,
+      infoDeskPhone: match.infoDeskPhone,
+      names: [],
+    };
+    const name = displayName(match.patientName);
+    if (name && !group.names.includes(name)) group.names.push(name);
+    groups.set(match.hospitalName, group);
+  }
+  return [...groups.values()];
+}
+
 /**
- * `/buscar` — Resultados de la búsqueda mediada.
+ * `/buscar` — Resultados de la búsqueda.
  *
  * Delega en el caso de uso SearchPatients (composition root), que invoca el RPC
- * SECURITY DEFINER. Devuelve solo hospital + mesa de información, o el marcador de
- * contacto humano para menores/fallecidos. El cliente anónimo no toca ninguna tabla.
+ * SECURITY DEFINER. Para adultos vivos devuelve nombre(s) + hospital + mesa de
+ * información, agrupados por hospital. Menores/fallecidos -> contacto humano. El
+ * cliente anónimo no toca ninguna tabla.
  */
 export default async function BuscarPage({
   searchParams,
@@ -48,15 +72,17 @@ export default async function BuscarPage({
 
       {result.kind === "matches" && (
         <ul className="space-y-3">
-          {result.matches.map((match, i) => (
+          {groupByHospital(result.matches).map((group, i) => (
             <li key={i} className="rounded-md border border-gray-200 p-4">
-              <p>
-                Hay una coincidencia en el{" "}
-                <strong>Hospital {match.hospitalName}</strong>.
-              </p>
-              <p className="text-sm text-gray-700">
+              <p className="font-semibold">{group.hospitalName}</p>
+              <ul className="mt-1 list-disc pl-5 text-gray-800">
+                {group.names.map((name, j) => (
+                  <li key={j}>{name}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-sm text-gray-700">
                 Mesa de información:{" "}
-                <strong>{match.infoDeskPhone ?? "(consulta en el hospital)"}</strong>
+                <strong>{group.infoDeskPhone ?? "(consulta en el hospital)"}</strong>
               </p>
             </li>
           ))}

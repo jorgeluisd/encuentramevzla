@@ -75,12 +75,13 @@ La privacidad de los pacientes es un **requisito innegociable** del diseño:
   `public` (no sensible) y `sensible` (teléfonos, direcciones, observaciones clínicas).
   El rol anónimo **no tiene grants** sobre las tablas de datos; el schema `sensible`
   jamás es accesible desde el cliente.
-- **Búsqueda mediada.** El público nunca consulta tablas directamente. Solo existe la
+- **Búsqueda controlada.** El público nunca consulta tablas directamente. Solo existe la
   función `public.buscar_paciente(termino)` (`SECURITY DEFINER`), que valida el término,
-  hace el *matching* **por nombre o cédula** y devuelve únicamente
-  `{ hospital_nombre, hospital_telefono_mesa, confianza }`.
-  Si el match es un **menor de edad** o una persona **fallecida**, no se devuelve nada por el
-  buscador: se entrega un marcador `{ requiere_contacto_humano: true }` para derivar a atención humana.
+  hace el *matching* **por nombre o cédula** y, para **adultos vivos**, devuelve
+  `{ hospital_nombre, hospital_telefono_mesa, paciente_nombre, confianza }` (nombres agrupados
+  por hospital — ver `[ADR-0002]`).
+  Si el match es un **menor de edad** o una persona **fallecida**, **nunca** se devuelve el
+  nombre: se entrega un marcador `{ requiere_contacto_humano: true }` para derivar a atención humana.
 - **Anti-enumeración.** Se registra solo el **hash** del término buscado (`busqueda_log`),
   nunca el texto en claro. (Rate-limit previsto, ver TODO en el RPC.)
 - **Derecho al olvido.** El dato crudo se preserva en `staging_filas` para trazabilidad, y el
@@ -92,12 +93,13 @@ La privacidad de los pacientes es un **requisito innegociable** del diseño:
 
 Migración a Onion + Screaming **completa** (`@evzla/core` puro · `@evzla/db` · infra + composition
 en `@evzla/web`; scope `@registro/*` eliminado). 337 pacientes en producción. Búsqueda por
-nombre y cédula. typecheck 4/4 · 36 tests · build OK.
+nombre y cédula. typecheck 4/4 · 41 tests · build OK.
 
-**Decisión pendiente (a resolver con la residente):** ¿mostrar **nombres de pacientes** en el
-buscador, agrupados por hospital? Revertiría la *búsqueda mediada* (ADR-001/004). Opción recomendada:
-"con cuidado" (nombres solo en coincidencia específica; menores/fallecidos nunca). Implica una
-migración 0007 + actualizar la página de confianza y los ADRs.
+**Decisión resuelta (con consentimiento de la residente):** el buscador **muestra nombres de
+adultos vivos** agrupados por hospital (opción "abierta"); **menores y fallecidos nunca** muestran
+nombre. Ver `specs/0005-buscador-nombres-y-dedupe.md` y `adr/0002-apertura-de-nombres-adultos.md`.
+Implementado en la migración `0007` + `/buscar` + `/confianza`. **Pendiente de aplicar el RPC 0007
+en producción** (despliegue).
 
 **Por implementar:** UI (shadcn/ui) · auth magic-link + roles + audit en `/admin` · cola de
 revisión humana (7 casos dudosos) · Cloudflare Turnstile + rate-limit (al final).

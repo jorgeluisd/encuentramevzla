@@ -24,7 +24,14 @@ describe("SearchPatients", () => {
   it("trims and delegates valid terms to the gateway", async () => {
     const gateway = new FakeGateway({
       kind: "matches",
-      matches: [{ hospitalName: "Hospital X", infoDeskPhone: null, confidence: 1 }],
+      matches: [
+        {
+          hospitalName: "Hospital X",
+          infoDeskPhone: null,
+          patientName: "carlos ruiz",
+          confidence: 1,
+        },
+      ],
     });
     const result = await new SearchPatients(gateway).execute("  carlos  ");
     expect(gateway.calls).toEqual(["carlos"]);
