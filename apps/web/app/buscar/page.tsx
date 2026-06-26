@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { displayName, type MediatedMatch } from "@evzla/core";
 import { searchPatientsUseCase } from "@/lib/composition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
+
+// Resultados de búsqueda: no se indexan (contenido por consulta, evita thin/duplicate).
+export const metadata: Metadata = {
+  title: "Resultados de búsqueda",
+  robots: { index: false, follow: true },
+};
 
 // Agrupa las coincidencias por hospital (dedupe de nombres dentro del mismo hospital).
 interface HospitalGroup {
