@@ -141,6 +141,33 @@ export default function RootLayout({
                 Números de emergencia
               </Link>
             </p>
+            <div className="mt-3 flex items-center gap-4">
+              <span>Síguenos:</span>
+              <a
+                href="https://instagram.com/encuentramevzla_"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Instagram
+              </a>
+              <a
+                href="https://x.com/encuentramevzl"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                X
+              </a>
+              <a
+                href="https://tiktok.com/@encuentrame.vzla"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                TikTok
+              </a>
+            </div>
           </div>
         </footer>
       </body>
