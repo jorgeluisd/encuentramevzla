@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
 import { Card, CardBody, CardTitle } from "@/components/ui/card";
+
+export const metadata: Metadata = {
+  title: "Privacidad y cómo cuidamos los datos",
+  description:
+    "Cómo EncuéntrameVzla protege la información: búsqueda mediada, sin exponer diagnósticos, edad, teléfonos ni direcciones; solo el hospital donde preguntar.",
+};
 
 // Secciones de la política de privacidad (texto humanitario, privacidad mediada).
 const SECTIONS = [
