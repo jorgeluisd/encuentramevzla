@@ -7,7 +7,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { statusEnum } from "./enums";
+import { statusEnum, teamRoleEnum } from "./enums";
 
 /**
  * Schema `public` — datos NO sensibles.
@@ -82,6 +82,21 @@ export const auditLog = pgTable("audit_log", {
   entity: text("entity").notNull(),
   entityId: uuid("entity_id"),
   payload: jsonb("payload"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * team_members — allow-list del portal /admin. Solo emails con membresía ACTIVA
+ * acceden. Se lee SIEMPRE server-side (Drizzle); anon/authenticated sin grants.
+ */
+export const teamMembers = pgTable("team_members", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  // Email en minúsculas: clave de unión con la sesión de Supabase Auth.
+  email: text("email").notNull().unique(),
+  role: teamRoleEnum("role").notNull(),
+  // nullable: un moderador puede ser global (sin hospital fijo).
+  hospitalId: uuid("hospital_id").references(() => hospitals.id),
+  active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

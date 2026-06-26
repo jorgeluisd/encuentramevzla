@@ -1,6 +1,10 @@
 import "server-only";
 
-import { IngestPatientList, SearchPatients } from "@evzla/core";
+import {
+  IngestPatientList,
+  ResolveTeamMember,
+  SearchPatients,
+} from "@evzla/core";
 import { getDb } from "@evzla/db/client";
 import { createAnonClient } from "@/lib/supabase/anon";
 import { SheetjsPatientListParser } from "@/lib/infrastructure/patient-registry/sheetjs-patient-list-parser";
@@ -12,6 +16,7 @@ import {
   DrizzleRawRowStore,
   DrizzleSensitiveDataStore,
 } from "@/lib/infrastructure/patient-registry/drizzle-repositories";
+import { DrizzleTeamMemberRepository } from "@/lib/infrastructure/patient-registry/drizzle-team-member-repository";
 import { SupabasePatientSearchGateway } from "@/lib/infrastructure/patient-registry/supabase-patient-search-gateway";
 
 // Composition root: inyecta los adapters en los casos de uso (solo servidor).
@@ -32,4 +37,8 @@ export function ingestPatientListUseCase(): IngestPatientList {
 
 export function searchPatientsUseCase(): SearchPatients {
   return new SearchPatients(new SupabasePatientSearchGateway(createAnonClient()));
+}
+
+export function resolveTeamMemberUseCase(): ResolveTeamMember {
+  return new ResolveTeamMember(new DrizzleTeamMemberRepository(getDb()));
 }
