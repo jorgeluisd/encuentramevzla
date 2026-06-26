@@ -76,8 +76,17 @@ export default async function BuscarPage({
               <p className="font-medium text-text">
                 ¿No encuentras a tu familiar? La Cruz Roja también te ayuda a buscar.
               </p>
-              {/* TODO: teléfono real de la Cruz Roja por confirmar (no inventar). */}
-              <p className="text-text-3">Teléfono por confirmar</p>
+              <p className="mt-1">
+                <a
+                  href="tel:+582125714380"
+                  className="font-semibold text-danger underline"
+                >
+                  +58 212-571-4380
+                </a>
+              </p>
+              <p className="text-text-3">
+                Av. Andrés Bello, Edificio Cruz Roja Venezolana, Caracas.
+              </p>
             </div>
           </CardBody>
         </Card>
