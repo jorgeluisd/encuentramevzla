@@ -19,6 +19,7 @@ import type {
   admissions,
   auditLog,
   searchLog,
+  teamMembers,
 } from "./schema/public";
 import type { contacts, clinicalNotes } from "./schema/sensitive";
 
@@ -30,5 +31,7 @@ export type NewPatientRow = typeof patients.$inferInsert;
 export type Admission = typeof admissions.$inferSelect;
 export type AuditLogRow = typeof auditLog.$inferSelect;
 export type SearchLogRow = typeof searchLog.$inferSelect;
+export type TeamMemberRow = typeof teamMembers.$inferSelect;
+export type NewTeamMember = typeof teamMembers.$inferInsert;
 export type Contact = typeof contacts.$inferSelect;
 export type ClinicalNote = typeof clinicalNotes.$inferSelect;
