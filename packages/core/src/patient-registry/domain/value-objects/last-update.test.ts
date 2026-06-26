@@ -6,6 +6,10 @@ describe("formatLastUpdate", () => {
     expect(formatLastUpdate(null)).toBe("Listas verificadas");
   });
 
+  it("ante una fecha inválida no revienta: cae al texto base", () => {
+    expect(formatLastUpdate(new Date("no-es-fecha"))).toBe("Listas verificadas");
+  });
+
   it("antepone 'Actualizado:' cuando hay fecha", () => {
     const d = new Date("2026-06-26T18:30:00Z");
     expect(formatLastUpdate(d)).toMatch(/^Actualizado:/);

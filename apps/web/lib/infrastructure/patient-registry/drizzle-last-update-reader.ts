@@ -13,9 +13,11 @@ export class DrizzleLastUpdateReader implements LastUpdateReader {
   constructor(private readonly db: Db) {}
 
   async lastUpdatedAt(): Promise<Date | null> {
+    // El agregado puede volver como string desde el driver; normaliza a Date real.
     const [row] = await this.db
-      .select({ last: sql<Date | null>`max(${patients.createdAt})` })
+      .select({ last: sql<string | Date | null>`max(${patients.createdAt})` })
       .from(patients);
-    return row?.last ?? null;
+    if (row?.last == null) return null;
+    return row.last instanceof Date ? row.last : new Date(row.last);
   }
 }

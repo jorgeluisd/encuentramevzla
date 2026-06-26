@@ -10,6 +10,6 @@ const CARACAS = new Intl.DateTimeFormat("es-VE", {
 });
 
 export function formatLastUpdate(date: Date | null): string {
-  if (!date) return "Listas verificadas";
+  if (!date || Number.isNaN(date.getTime())) return "Listas verificadas";
   return `Actualizado: ${CARACAS.format(date)}`;
 }
