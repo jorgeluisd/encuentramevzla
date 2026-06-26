@@ -7,70 +7,68 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { estadoEnum } from "./enums";
+import { statusEnum, teamRoleEnum } from "./enums";
 
 /**
  * Schema `public` — datos NO sensibles.
  * El rol anónimo NO recibe grants directos (ver supabase/migrations/0002_rls.sql).
- * El acceso público pasa SOLO por el RPC `public.buscar_paciente`.
+ * El acceso público pasa SOLO por el RPC `public.search_patient`.
  */
 
-export const hospitales = pgTable("hospitales", {
+export const hospitals = pgTable("hospitals", {
   id: uuid("id").defaultRandom().primaryKey(),
-  nombre: text("nombre").notNull(),
+  name: text("name").notNull(),
   // Mesa de información: único teléfono que el buscador puede revelar.
-  telefonoMesaInfo: text("telefono_mesa_info"),
-  ciudad: text("ciudad"),
-  activo: boolean("activo").notNull().default(true),
+  infoDeskPhone: text("info_desk_phone"),
+  city: text("city"),
+  active: boolean("active").notNull().default(true),
 });
 
 /**
- * staging_filas — preserva el dato CRUDO de cada fila de Excel tal cual se subió.
+ * raw_rows — preserva el dato CRUDO de cada fila de Excel tal cual se subió.
  * `content_hash` da idempotencia (no reprocesar la misma fila dos veces).
  */
-export const stagingFilas = pgTable("staging_filas", {
+export const rawRows = pgTable("raw_rows", {
   id: uuid("id").defaultRandom().primaryKey(),
-  archivoId: uuid("archivo_id").notNull(),
+  fileId: uuid("file_id").notNull(),
   contentHash: text("content_hash").notNull().unique(),
-  filaCruda: jsonb("fila_cruda").notNull(),
-  hospitalId: uuid("hospital_id").references(() => hospitales.id),
-  subidoPor: uuid("subido_por"),
+  rawRow: jsonb("raw_row").notNull(),
+  hospitalId: uuid("hospital_id").references(() => hospitals.id),
+  uploadedBy: uuid("uploaded_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 /**
- * personas — entidad persona (NO se colapsa el hospital aquí; eso va en `ingresos`).
+ * patients — entidad paciente (NO se colapsa el hospital aquí; eso va en `admissions`).
  */
-export const personas = pgTable("personas", {
+export const patients = pgTable("patients", {
   id: uuid("id").defaultRandom().primaryKey(),
-  nombreNormalizado: text("nombre_normalizado").notNull(),
+  normalizedName: text("normalized_name").notNull(),
   // tokens del nombre para matching token-set (text[]).
-  tokensNombre: text("tokens_nombre").array(),
-  edad: integer("edad"),
-  docTipo: text("doc_tipo"),
-  docNumeroNormalizado: text("doc_numero_normalizado"),
-  estado: estadoEnum("estado").notNull().default("ingresado"),
-  esMenor: boolean("es_menor").notNull().default(false),
+  nameTokens: text("name_tokens").array(),
+  age: integer("age"),
+  docType: text("doc_type"),
+  normalizedDocNumber: text("normalized_doc_number"),
+  status: statusEnum("status").notNull().default("admitted"),
+  isMinor: boolean("is_minor").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 /**
- * ingresos — relación persona ↔ hospital en el tiempo. Varios ingresos por persona
+ * admissions — relación paciente ↔ hospital en el tiempo. Varios ingresos por paciente
  * permiten modelar TRASLADOS sin perder el histórico.
  */
-export const ingresos = pgTable("ingresos", {
+export const admissions = pgTable("admissions", {
   id: uuid("id").defaultRandom().primaryKey(),
-  personaId: uuid("persona_id")
+  patientId: uuid("patient_id")
     .notNull()
-    .references(() => personas.id),
+    .references(() => patients.id),
   hospitalId: uuid("hospital_id")
     .notNull()
-    .references(() => hospitales.id),
-  fechaIngreso: timestamp("fecha_ingreso", { withTimezone: true }),
-  estado: estadoEnum("estado").notNull().default("ingresado"),
-  observacionesPublicasFlag: boolean("observaciones_publicas_flag")
-    .notNull()
-    .default(false),
+    .references(() => hospitals.id),
+  admittedAt: timestamp("admitted_at", { withTimezone: true }),
+  status: statusEnum("status").notNull().default("admitted"),
+  hasPublicNotes: boolean("has_public_notes").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -80,19 +78,34 @@ export const ingresos = pgTable("ingresos", {
 export const auditLog = pgTable("audit_log", {
   id: uuid("id").defaultRandom().primaryKey(),
   actorId: uuid("actor_id"),
-  accion: text("accion").notNull(),
-  entidad: text("entidad").notNull(),
-  entidadId: uuid("entidad_id"),
+  action: text("action").notNull(),
+  entity: text("entity").notNull(),
+  entityId: uuid("entity_id"),
   payload: jsonb("payload"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 /**
- * busqueda_log — anti-enumeración. Guardamos SOLO el HASH del término, nunca el texto.
+ * team_members — allow-list del portal /admin. Solo emails con membresía ACTIVA
+ * acceden. Se lee SIEMPRE server-side (Drizzle); anon/authenticated sin grants.
  */
-export const busquedaLog = pgTable("busqueda_log", {
+export const teamMembers = pgTable("team_members", {
   id: uuid("id").defaultRandom().primaryKey(),
-  terminoHash: text("termino_hash").notNull(),
-  resultadoTipo: text("resultado_tipo").notNull(),
+  // Email en minúsculas: clave de unión con la sesión de Supabase Auth.
+  email: text("email").notNull().unique(),
+  role: teamRoleEnum("role").notNull(),
+  // nullable: un moderador puede ser global (sin hospital fijo).
+  hospitalId: uuid("hospital_id").references(() => hospitals.id),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * search_log — anti-enumeración. Guardamos SOLO el HASH del término, nunca el texto.
+ */
+export const searchLog = pgTable("search_log", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  termHash: text("term_hash").notNull(),
+  resultType: text("result_type").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -4,8 +4,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * Cliente Supabase con la ANON KEY, usable tanto en servidor como en cliente
  * (sin la directiva "use client"). La anon key es pública por diseño.
  *
- * Por RLS, este cliente NO puede leer ninguna tabla de datos ni el schema `sensible`:
- * lo único que puede hacer es ejecutar el RPC mediado `buscar_paciente`.
+ * Por RLS, este cliente NO puede leer ninguna tabla de datos ni el schema `sensitive`:
+ * lo único que puede hacer es ejecutar el RPC mediado `search_patient`.
  */
 export function createAnonClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

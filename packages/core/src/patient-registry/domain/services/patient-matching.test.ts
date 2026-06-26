@@ -1,6 +1,11 @@
 import { DocumentId } from "../value-objects/document-id";
 import { PersonName } from "../value-objects/person-name";
-import { decideMatch, nameSimilarity, type MatchCandidate } from "./patient-matching";
+import {
+  decideMatch,
+  mostSimilarByName,
+  nameSimilarity,
+  type MatchCandidate,
+} from "./patient-matching";
 
 const candidate = (id: string, name: string, doc: string | null): MatchCandidate => ({
   id,
@@ -58,5 +63,21 @@ describe("decideMatch", () => {
     expect(
       decideMatch(incoming("Carlos Mendoza", "22.89"), [candidate("p1", "Carlos Mendoza", "22.89")]),
     ).toEqual({ kind: "merge", targetId: "p1" });
+  });
+});
+
+describe("mostSimilarByName", () => {
+  it("returns null when there are no candidates", () => {
+    expect(mostSimilarByName(PersonName.fromRaw("Juan Perez"), [])).toBeNull();
+  });
+
+  it("picks the highest-similarity candidate", () => {
+    const result = mostSimilarByName(PersonName.fromRaw("Juan Perez"), [
+      candidate("a", "Carlos Gomez", null),
+      candidate("b", "Juan Peres", null),
+      candidate("c", "Ana Lopez", null),
+    ]);
+    expect(result?.candidate.id).toBe("b");
+    expect(result?.score).toBeGreaterThan(0.5);
   });
 });

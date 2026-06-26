@@ -2,7 +2,7 @@
  * Cliente Drizzle sobre conexión DIRECTA a Postgres (postgres.js + DATABASE_URL).
  *
  * ¿Por qué conexión directa y no supabase-js?
- *  - El schema `sensible` NO está expuesto a la API (PostgREST), por diseño. La única
+ *  - El schema `sensitive` NO está expuesto a la API (PostgREST), por diseño. La única
  *    forma de escribir ahí es por conexión directa de servidor.
  *  - La ingesta/admin/worker escriben por aquí; el PÚBLICO jamás usa este cliente
  *    (el público solo invoca el RPC mediado con la anon key).

@@ -42,7 +42,7 @@ Adapters que implementan los ports de `@evzla/core`:
 
 - ❌ No consultar la DB directamente desde un componente: pasa por un caso de uso (composition root).
 - ❌ No importar `@evzla/db/client` ni adapters de servidor desde un componente cliente.
-- ❌ El público nunca toca tablas: la búsqueda va por el gateway → RPC `buscar_paciente`.
+- ❌ El público nunca toca tablas: la búsqueda va por el gateway → RPC `search_patient`.
 - ✅ Lógica de negocio en `@evzla/core`; la web solo orquesta y presenta.
 - ✅ Estilo con Tailwind 4 + `cn()` (ver `ui-tailwind.md`).
 

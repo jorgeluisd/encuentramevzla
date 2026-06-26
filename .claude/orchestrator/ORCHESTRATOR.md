@@ -38,7 +38,7 @@ Cada agente documenta su contrato completo en `agents/<nombre>.md`.
 ## Reglas del pipeline
 
 1. **SDD primero.** Ninguna feature se implementa sin spec en `specs/`.
-2. **Privacidad transversal.** En cada fase se pregunta: ¿toca datos/`sensible`/RPC/menores? Si sí,
+2. **Privacidad transversal.** En cada fase se pregunta: ¿toca datos/`sensitive`/RPC/menores? Si sí,
    `skills/privacy-and-security.md` es de lectura obligatoria y entra en los criterios de los gates.
 3. **No romper lo verde.** El implementer corre el safety net antes de tocar archivos existentes.
 4. **TDD marcado por tarea.** El task-planner fija ON/OFF y el implementer lo registra en apply-progress.
