@@ -21,8 +21,8 @@ const HOW_IT_WORKS = [
     body: "No mostramos diagnóstico, edad ni dirección. Solo el hospital donde preguntar.",
   },
   {
-    title: "Teléfono de ayuda",
-    body: "Te damos el teléfono de la mesa de información del hospital para que sigas el contacto.",
+    title: "Dónde acudir",
+    body: "Te indicamos en qué hospital hay una coincidencia para que vayas directamente. Para emergencias, marca las líneas oficiales del aviso de arriba.",
   },
 ] as const;
 
