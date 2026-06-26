@@ -8,9 +8,9 @@ carga las skills implicadas (la de **privacidad manda siempre que se toquen dato
 | Palabras clave en la tarea | Skill |
 |---|---|
 | capa, onion, screaming, dominio, port, adapter, caso de uso, use case, naming, estructura, dependency rule, value object | `architecture.md` |
-| privacidad, mediada, sensible, dato personal, menor, fallecido, enumeración, hash, `busqueda_log`, `buscar_paciente`, RLS, derecho al olvido | `privacy-and-security.md` |
+| privacidad, mediada, sensible, dato personal, menor, fallecido, enumeración, hash, `search_log`, `search_patient`, RLS, derecho al olvido | `privacy-and-security.md` |
 | migración SQL, RPC, `SECURITY DEFINER`, edge function, deno, postgres, supabase, grant, schema público | `supabase.md` |
-| drizzle, schema TS, tabla, columna, cliente db, `drizzle-kit`, migración generada, esquema sensible/public | `database-drizzle.md` |
+| drizzle, schema TS, tabla, columna, cliente db, `drizzle-kit`, migración generada, esquema sensitive/public | `database-drizzle.md` |
 | página, route, server action, app router, RSC, componente, react, layout, ingesta UI | `nextjs-frontend.md` |
 | tailwind, estilo, clase, shadcn, `cn()`, botón, color, theme, diseño visual | `ui-tailwind.md` |
 | test, vitest, TDD, rojo, verde, refactor, cobertura, fake, mock | `testing-vitest.md` |
@@ -18,7 +18,7 @@ carga las skills implicadas (la de **privacidad manda siempre que se toquen dato
 
 ## Reglas de enrutamiento
 
-1. **Privacidad primero.** Si la tarea toca datos de pacientes, búsqueda, ingesta, `sensible` o el RPC,
+1. **Privacidad primero.** Si la tarea toca datos de pacientes, búsqueda, ingesta, `sensitive` o el RPC,
    carga `privacy-and-security.md` ANTES que cualquier otra.
 2. **Arquitectura siempre presente.** Cualquier código nuevo respeta `architecture.md` (capas + naming).
 3. **TDD por defecto en features.** Toda feature/componente/endpoint/pantalla/refactor activa el flujo de

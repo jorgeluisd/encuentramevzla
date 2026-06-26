@@ -13,11 +13,11 @@ Nada se implementa sin pasar este gate.
 
 1. **Spec claro.** Criterios de aceptación concretos y convertibles a tests de Vitest.
 2. **Arquitectura sana.** El diseño respeta Onion + Screaming; el dominio queda puro; reutiliza lo existente.
-3. **Privacidad revisada (innegociable).** Si el cambio toca datos/`sensible`/RPC/menores/fallecidos:
-   - ¿Se preserva la búsqueda mediada (`buscar_paciente`)?
-   - ¿Sigue aislado el schema `sensible`?
+3. **Privacidad revisada (innegociable).** Si el cambio toca datos/`sensitive`/RPC/menores/fallecidos:
+   - ¿Se preserva la búsqueda mediada (`search_patient`)?
+   - ¿Sigue aislado el schema `sensitive`?
    - ¿Menores/fallecidos quedan fuera del buscador?
-   - ¿`busqueda_log` solo hash? ¿Sin grants nuevos al anónimo?
+   - ¿`search_log` solo hash? ¿Sin grants nuevos al anónimo?
    - Cambios al contrato del buscador (p. ej. mostrar nombres) requieren **decisión humana explícita**
      (consultar a la residente) + plan de migración.
 4. **TDD marcado.** Cada tarea tiene ON/OFF justificado; no quedan tareas `TDD: ?` sin resolver.

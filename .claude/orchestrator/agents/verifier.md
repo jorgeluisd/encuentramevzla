@@ -25,11 +25,11 @@ Verifica el trabajo del implementer contra el stack real antes del Gate 2.
 - [ ] Código en la capacidad correcta; naming en inglés según convención.
 
 ### Privacidad (innegociable)
-- [ ] El schema **`sensible` nunca** se expone al cliente.
-- [ ] El público accede a datos **solo** vía RPC `public.buscar_paciente`.
-- [ ] **Menores/fallecidos** no devuelven datos (marcador `{ requiere_contacto_humano: true }`).
-- [ ] `busqueda_log` registra **solo hash** del término.
-- [ ] Ningún `GRANT` nuevo al rol anónimo sobre datos/`sensible`.
+- [ ] El schema **`sensitive` nunca** se expone al cliente.
+- [ ] El público accede a datos **solo** vía RPC `public.search_patient`.
+- [ ] **Menores/fallecidos** no devuelven datos (marcador `{ requires_human_contact: true }`).
+- [ ] `search_log` registra **solo hash** del término.
+- [ ] Ningún `GRANT` nuevo al rol anónimo sobre datos/`sensitive`.
 - [ ] El RPC mantiene `SECURITY DEFINER` + `search_path` fijo.
 
 ### Disciplina TDD

@@ -14,7 +14,7 @@ Parada humana **obligatoria** tras `implementer ⇄ strict-tdd → verifier` y *
 2. **Evidencia TDD válida.** Si la tarea era TDD ON, la tabla muestra **RED(FAIL) antes que GREEN(PASS)**
    de la misma tarea, con líneas de salida pegadas y commits. Si no, **no se aprueba**.
 3. **Privacidad intacta.** Re-verifica los checks de privacidad del verifier:
-   `sensible` no expuesto · público solo vía RPC · menores/fallecidos sin datos · `busqueda_log` solo
+   `sensitive` no expuesto · público solo vía RPC · menores/fallecidos sin datos · `search_log` solo
    hash · sin grants nuevos al anónimo · RPC con `SECURITY DEFINER` + `search_path` fijo.
 4. **Arquitectura.** Regla de dependencia respetada; `@evzla/core` puro; naming correcto.
 5. **No se rompió lo verde.** Tests previos siguen pasando.

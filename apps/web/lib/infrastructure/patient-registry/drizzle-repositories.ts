@@ -1,12 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import {
+  admissions,
   auditLog,
-  contacto,
-  hospitales,
-  ingresos,
-  observacionesClinicas,
-  personas,
-  stagingFilas,
+  clinicalNotes,
+  contacts,
+  hospitals,
+  patients,
+  rawRows,
 } from "@evzla/db";
 import type { getDb } from "@evzla/db/client";
 import {
@@ -24,7 +24,6 @@ import {
   type RawRowStore,
   type SensitiveDataStore,
 } from "@evzla/core";
-import { statusFromDb, statusToDb } from "./status-mapping";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -34,45 +33,45 @@ export class DrizzlePatientRepository implements PatientRepository {
   async loadAll(): Promise<ExistingPatient[]> {
     const rows = await this.db
       .select({
-        id: personas.id,
-        name: personas.nombreNormalizado,
-        document: personas.docNumeroNormalizado,
-        isMinor: personas.esMenor,
-        status: personas.estado,
+        id: patients.id,
+        name: patients.normalizedName,
+        document: patients.normalizedDocNumber,
+        isMinor: patients.isMinor,
+        status: patients.status,
       })
-      .from(personas);
+      .from(patients);
     return rows.map((r) => ({
       id: r.id,
       name: PersonName.fromRaw(r.name),
       document: r.document ? DocumentId.fromRaw(r.document) : null,
       isMinor: r.isMinor,
-      status: statusFromDb(String(r.status)),
+      status: r.status,
     }));
   }
 
   async create(patient: NewPatient): Promise<string> {
     const [row] = await this.db
-      .insert(personas)
+      .insert(patients)
       .values({
-        nombreNormalizado: patient.name.normalized,
-        tokensNombre: [...patient.name.tokens],
-        edad: patient.age,
-        docNumeroNormalizado:
+        normalizedName: patient.name.normalized,
+        nameTokens: [...patient.name.tokens],
+        age: patient.age,
+        normalizedDocNumber:
           patient.document && patient.document.isValid ? patient.document.normalized : null,
-        estado: statusToDb(patient.status),
-        esMenor: patient.isMinor,
+        status: patient.status,
+        isMinor: patient.isMinor,
       })
-      .returning({ id: personas.id });
+      .returning({ id: patients.id });
     return row!.id;
   }
 
   async update(id: string, changes: PatientUpdate): Promise<void> {
-    const values: Partial<typeof personas.$inferInsert> = {};
-    if (changes.document) values.docNumeroNormalizado = changes.document.normalized;
-    if (changes.isMinor !== undefined) values.esMenor = changes.isMinor;
-    if (changes.status) values.estado = statusToDb(changes.status);
+    const values: Partial<typeof patients.$inferInsert> = {};
+    if (changes.document) values.normalizedDocNumber = changes.document.normalized;
+    if (changes.isMinor !== undefined) values.isMinor = changes.isMinor;
+    if (changes.status) values.status = changes.status;
     if (Object.keys(values).length > 0) {
-      await this.db.update(personas).set(values).where(eq(personas.id, id));
+      await this.db.update(patients).set(values).where(eq(patients.id, id));
     }
   }
 }
@@ -82,15 +81,15 @@ export class DrizzleHospitalRepository implements HospitalRepository {
 
   async resolveByName(name: string): Promise<string> {
     const existing = await this.db
-      .select({ id: hospitales.id })
-      .from(hospitales)
-      .where(eq(hospitales.nombre, name))
+      .select({ id: hospitals.id })
+      .from(hospitals)
+      .where(eq(hospitals.name, name))
       .limit(1);
     if (existing[0]) return existing[0].id;
     const [row] = await this.db
-      .insert(hospitales)
-      .values({ nombre: name })
-      .returning({ id: hospitales.id });
+      .insert(hospitals)
+      .values({ name })
+      .returning({ id: hospitals.id });
     return row!.id;
   }
 }
@@ -100,9 +99,9 @@ export class DrizzleAdmissionRepository implements AdmissionRepository {
 
   async findId(patientId: string, hospitalId: string): Promise<string | null> {
     const rows = await this.db
-      .select({ id: ingresos.id })
-      .from(ingresos)
-      .where(and(eq(ingresos.personaId, patientId), eq(ingresos.hospitalId, hospitalId)))
+      .select({ id: admissions.id })
+      .from(admissions)
+      .where(and(eq(admissions.patientId, patientId), eq(admissions.hospitalId, hospitalId)))
       .limit(1);
     return rows[0]?.id ?? null;
   }
@@ -113,14 +112,14 @@ export class DrizzleAdmissionRepository implements AdmissionRepository {
     status: ExistingPatient["status"];
   }): Promise<string> {
     const [row] = await this.db
-      .insert(ingresos)
+      .insert(admissions)
       .values({
-        personaId: input.patientId,
+        patientId: input.patientId,
         hospitalId: input.hospitalId,
-        estado: statusToDb(input.status),
-        observacionesPublicasFlag: false,
+        status: input.status,
+        hasPublicNotes: false,
       })
-      .returning({ id: ingresos.id });
+      .returning({ id: admissions.id });
     return row!.id;
   }
 }
@@ -134,14 +133,14 @@ export class DrizzleSensitiveDataStore implements SensitiveDataStore {
     address: string | null;
   }): Promise<void> {
     await this.db
-      .insert(contacto)
-      .values({ personaId: input.patientId, telefono: input.phone, direccion: input.address });
+      .insert(contacts)
+      .values({ patientId: input.patientId, phone: input.phone, address: input.address });
   }
 
   async saveClinicalNote(input: { admissionId: string; text: string }): Promise<void> {
     await this.db
-      .insert(observacionesClinicas)
-      .values({ ingresoId: input.admissionId, texto: input.text, llegoCon: null });
+      .insert(clinicalNotes)
+      .values({ admissionId: input.admissionId, note: input.text, arrivedWith: null });
   }
 }
 
@@ -154,17 +153,17 @@ export class DrizzleRawRowStore implements RawRowStore {
   ): Promise<Set<string>> {
     if (rows.length === 0) return new Set();
     const inserted = await this.db
-      .insert(stagingFilas)
+      .insert(rawRows)
       .values(
         rows.map((r) => ({
-          archivoId: context.fileId,
+          fileId: context.fileId,
           contentHash: r.fingerprint,
-          filaCruda: r.raw,
-          subidoPor: context.uploadedBy,
+          rawRow: r.raw,
+          uploadedBy: context.uploadedBy,
         })),
       )
-      .onConflictDoNothing({ target: stagingFilas.contentHash })
-      .returning({ hash: stagingFilas.contentHash });
+      .onConflictDoNothing({ target: rawRows.contentHash })
+      .returning({ hash: rawRows.contentHash });
     return new Set(inserted.map((x) => x.hash));
   }
 }
@@ -175,9 +174,9 @@ export class DrizzleAuditLog implements AuditLog {
   async record(entry: AuditEntry): Promise<void> {
     await this.db.insert(auditLog).values({
       actorId: entry.actorId,
-      accion: entry.action,
-      entidad: entry.entity,
-      entidadId: entry.entityId,
+      action: entry.action,
+      entity: entry.entity,
+      entityId: entry.entityId,
       payload: entry.payload ?? null,
     });
   }

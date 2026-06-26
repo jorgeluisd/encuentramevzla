@@ -7,11 +7,11 @@
 //
 // Flujo previsto (fase 2, aún NO implementado):
 //   1. Disparado por webhook / cron de Supabase tras una ingesta.
-//   2. Lee lotes de `public.staging_filas` con el service role.
+//   2. Lee lotes de `public.raw_rows` con el service role.
 //   3. (OCR) Si la fila provino de imagen/PDF, extrae texto.
 //   4. Normaliza nombres/documentos (lógica equivalente a @evzla/core).
-//   5. Dedup (pg_trgm + fuzzystrmatch/levenshtein) contra `public.personas`.
-//   6. Upsert de `personas` e `ingresos` (resolviendo traslados) + audit_log.
+//   5. Dedup (pg_trgm + fuzzystrmatch/levenshtein) contra `public.patients`.
+//   6. Upsert de `patients` y `admissions` (resolviendo traslados) + audit_log.
 //
 // NOTA: este archivo es un placeholder Deno; el monorepo Node/TS no lo compila.
 // Se despliega con `supabase functions deploy dedup`.

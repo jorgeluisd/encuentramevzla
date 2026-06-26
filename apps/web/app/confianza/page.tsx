@@ -17,12 +17,16 @@ export default function ConfianzaPage(): React.ReactElement {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold">Búsqueda mediada</h2>
+        <h2 className="text-lg font-semibold">Cómo funciona la búsqueda</h2>
         <p className="text-gray-700">
-          Cuando buscas un nombre, no consultas una base de datos abierta. Una función
-          controlada decide qué se puede revelar y devuelve únicamente si hay coincidencia
-          y en qué hospital preguntar. Nunca se exponen los datos de la persona. En casos
-          sensibles (por ejemplo, menores de edad), se deriva a atención humana.
+          Cuando buscas un nombre o una cédula, no consultas una base de datos abierta. Una
+          función controlada decide qué se puede revelar. Para personas adultas te muestra el
+          nombre coincidente y en qué hospital preguntar, agrupado por hospital. Nunca se
+          exponen otros datos (teléfono, dirección u observaciones de la persona).
+        </p>
+        <p className="text-gray-700">
+          En casos sensibles —menores de edad o personas fallecidas— el buscador no muestra
+          el nombre y deriva a atención humana, para acompañar a la familia con cuidado.
         </p>
       </section>
 

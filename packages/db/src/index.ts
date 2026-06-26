@@ -2,9 +2,9 @@
  * @evzla/db — esquema Drizzle del Registro Hospitalario.
  *
  * Recordatorio de diseño (innegociable):
- *  - Dos schemas Postgres: `public` (no sensible) y `sensible` (PII / clínico, aislado).
- *  - El rol anónimo NO accede a `sensible` ni a las tablas de datos de `public`.
- *  - El acceso público sucede SOLO vía el RPC `public.buscar_paciente` (SECURITY DEFINER).
+ *  - Dos schemas Postgres: `public` (no sensible) y `sensitive` (PII / clínico, aislado).
+ *  - El rol anónimo NO accede a `sensitive` ni a las tablas de datos de `public`.
+ *  - El acceso público sucede SOLO vía el RPC `public.search_patient` (SECURITY DEFINER).
  *
  * Las migraciones canónicas (extensiones, RLS, grants y RPC) viven en `supabase/migrations/`.
  */
@@ -13,22 +13,22 @@ export * from "./schema/index";
 
 // Tipos de conveniencia para inferencia (select / insert) listos para usar en apps.
 import type {
-  hospitales,
-  stagingFilas,
-  personas,
-  ingresos,
+  hospitals,
+  rawRows,
+  patients,
+  admissions,
   auditLog,
-  busquedaLog,
+  searchLog,
 } from "./schema/public";
-import type { contacto, observacionesClinicas } from "./schema/sensible";
+import type { contacts, clinicalNotes } from "./schema/sensitive";
 
-export type Hospital = typeof hospitales.$inferSelect;
-export type NuevoHospital = typeof hospitales.$inferInsert;
-export type StagingFila = typeof stagingFilas.$inferSelect;
-export type Persona = typeof personas.$inferSelect;
-export type NuevaPersona = typeof personas.$inferInsert;
-export type Ingreso = typeof ingresos.$inferSelect;
-export type AuditLog = typeof auditLog.$inferSelect;
-export type BusquedaLog = typeof busquedaLog.$inferSelect;
-export type Contacto = typeof contacto.$inferSelect;
-export type ObservacionClinica = typeof observacionesClinicas.$inferSelect;
+export type Hospital = typeof hospitals.$inferSelect;
+export type NewHospital = typeof hospitals.$inferInsert;
+export type RawRow = typeof rawRows.$inferSelect;
+export type Patient = typeof patients.$inferSelect;
+export type NewPatientRow = typeof patients.$inferInsert;
+export type Admission = typeof admissions.$inferSelect;
+export type AuditLogRow = typeof auditLog.$inferSelect;
+export type SearchLogRow = typeof searchLog.$inferSelect;
+export type Contact = typeof contacts.$inferSelect;
+export type ClinicalNote = typeof clinicalNotes.$inferSelect;
