@@ -29,6 +29,23 @@ export function nameSimilarity(a: PersonName, b: PersonName): number {
   );
 }
 
+// Candidato más parecido por nombre (para reconstruir la "zona gris" en la cola de revisión).
+export function mostSimilarByName(
+  name: PersonName,
+  candidates: readonly MatchCandidate[],
+): { candidate: MatchCandidate; score: number } | null {
+  let best: MatchCandidate | null = null;
+  let bestScore = -1;
+  for (const candidate of candidates) {
+    const score = nameSimilarity(name, candidate.name);
+    if (score > bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+  return best ? { candidate: best, score: bestScore } : null;
+}
+
 export function decideMatch(
   incoming: PatientIdentity,
   candidates: readonly MatchCandidate[],
