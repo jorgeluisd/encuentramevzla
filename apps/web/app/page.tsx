@@ -6,9 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardTitle } from "@/components/ui/card";
 
-// ISR: el home se sirve desde el CDN y se regenera cada 5 min (menos invocations
-// de función, carga más rápida). El sello queda como mucho 5 min desfasado.
-export const revalidate = 300;
+// Home 100% estático (CDN): se regenera SOLO cuando se sube una lista
+// (revalidatePath("/") en la acción de ingesta). Cero invocations en uso normal;
+// el sello "última actualización" queda exacto justo cuando cambian los datos.
+export const dynamic = "force-static";
 
 // Lee la última actualización tolerando que la BD no esté disponible (p. ej. en build):
 // si falla, el badge cae a su texto base en vez de romper el render.
