@@ -3,6 +3,8 @@ import "server-only";
 import {
   IngestPatientList,
   ListAuditLog,
+  ListReviewQueue,
+  ResolveReviewCase,
   ResolveTeamMember,
   SearchPatients,
 } from "@evzla/core";
@@ -19,6 +21,7 @@ import {
 } from "@/lib/infrastructure/patient-registry/drizzle-repositories";
 import { DrizzleTeamMemberRepository } from "@/lib/infrastructure/patient-registry/drizzle-team-member-repository";
 import { DrizzleAuditLogReader } from "@/lib/infrastructure/patient-registry/drizzle-audit-log-reader";
+import { DrizzleReviewQueueReader } from "@/lib/infrastructure/patient-registry/drizzle-review-queue-reader";
 import { SupabasePatientSearchGateway } from "@/lib/infrastructure/patient-registry/supabase-patient-search-gateway";
 
 // Composition root: inyecta los adapters en los casos de uso (solo servidor).
@@ -47,4 +50,12 @@ export function resolveTeamMemberUseCase(): ResolveTeamMember {
 
 export function listAuditLogUseCase(): ListAuditLog {
   return new ListAuditLog(new DrizzleAuditLogReader(getDb()));
+}
+
+export function listReviewQueueUseCase(): ListReviewQueue {
+  return new ListReviewQueue(new DrizzleReviewQueueReader(getDb()));
+}
+
+export function resolveReviewCaseUseCase(): ResolveReviewCase {
+  return new ResolveReviewCase(new DrizzleAuditLog(getDb()));
 }

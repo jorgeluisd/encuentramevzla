@@ -55,9 +55,20 @@ export default async function ProtectedAdminLayout({
             Cargar listas
           </Link>
           {canModerate(member.role) && (
-            <Link href="/admin/audit" className="font-medium text-text hover:text-primary">
-              Audit log
-            </Link>
+            <>
+              <Link
+                href="/admin/review"
+                className="font-medium text-text hover:text-primary"
+              >
+                Revisión
+              </Link>
+              <Link
+                href="/admin/audit"
+                className="font-medium text-text hover:text-primary"
+              >
+                Audit log
+              </Link>
+            </>
           )}
         </nav>
         <div className="flex items-center gap-3">
