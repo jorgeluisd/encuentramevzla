@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { displayName, type MediatedMatch } from "@evzla/core";
 import { searchPatientsUseCase } from "@/lib/composition";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardBody } from "@/components/ui/card";
 
 // Agrupa las coincidencias por hospital (dedupe de nombres dentro del mismo hospital).
 interface HospitalGroup {
@@ -25,12 +28,10 @@ function groupByHospital(matches: readonly MediatedMatch[]): HospitalGroup[] {
 }
 
 /**
- * `/buscar` — Resultados de la búsqueda.
- *
- * Delega en el caso de uso SearchPatients (composition root), que invoca el RPC
- * SECURITY DEFINER. Para adultos vivos devuelve nombre(s) + hospital + mesa de
- * información, agrupados por hospital. Menores/fallecidos -> contacto humano. El
- * cliente anónimo no toca ninguna tabla.
+ * `/buscar` — Resultados (concepto A2/A3). Delega en SearchPatients (RPC
+ * SECURITY DEFINER). Adultos vivos -> nombre(s) + hospital + mesa de información,
+ * agrupados por hospital. Menores/fallecidos -> contacto humano. El cliente anónimo
+ * no toca ninguna tabla.
  */
 export default async function BuscarPage({
   searchParams,
@@ -41,57 +42,115 @@ export default async function BuscarPage({
   const result = await searchPatientsUseCase().execute(termino);
 
   return (
-    <section className="space-y-6 py-6">
-      <h1 className="text-xl font-bold">Resultados</h1>
-      <p className="text-sm text-gray-500">
-        Búsqueda: <span className="font-mono">{termino || "—"}</span>
-      </p>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-xl font-semibold sm:text-2xl">
+          Resultados {termino && <span className="text-text-2">para “{termino}”</span>}
+        </h1>
+        <Link
+          href="/"
+          className="shrink-0 text-sm font-medium text-primary hover:underline"
+        >
+          ← Nueva búsqueda
+        </Link>
+      </div>
 
       {result.kind === "invalid-term" && (
-        <p className="rounded-md border border-amber-200 bg-amber-50 p-4 text-amber-800">
-          Escribe al menos 4 caracteres para buscar.
-        </p>
+        <Card className="border-warning/30 bg-warning/5">
+          <CardBody className="text-warning">
+            Escribe al menos 4 caracteres (nombre, apellido o cédula) para buscar.
+          </CardBody>
+        </Card>
       )}
 
       {result.kind === "no-results" && (
-        <p className="rounded-md border border-gray-200 bg-gray-50 p-4 text-gray-700">
-          No encontramos coincidencias con ese nombre. Verifica la escritura o intenta
-          con el apellido.
-        </p>
+        <Card>
+          <CardBody className="space-y-3">
+            <p className="font-semibold text-text">No pierdas la esperanza.</p>
+            <p className="text-text-2">
+              Aún no tenemos información con ese dato en el sistema. Que no aparezca no
+              significa una mala noticia; puede que su nombre todavía no haya sido
+              ingresado. Vuelve a consultar más tarde.
+            </p>
+            <div className="rounded-[var(--radius-control)] bg-surface p-4 text-sm">
+              <p className="font-medium text-text">
+                ¿No encuentras a tu familiar? La Cruz Roja también te ayuda a buscar.
+              </p>
+              {/* TODO: teléfono real de la Cruz Roja por confirmar (no inventar). */}
+              <p className="text-text-3">Teléfono por confirmar</p>
+            </div>
+          </CardBody>
+        </Card>
       )}
 
       {result.kind === "human-contact" && (
-        <div className="rounded-md border border-teal-200 bg-teal-50 p-4 text-teal-900">
-          <p className="font-semibold">Necesitamos hablar contigo en persona.</p>
-          <p>
-            Para este caso no podemos dar información automatizada. Por favor, comunícate
-            con la mesa de atención humanitaria para recibir acompañamiento.
-          </p>
-        </div>
+        <Card className="border-primary/20 bg-primary/5">
+          <CardBody className="space-y-2">
+            <p className="font-semibold text-primary">
+              Necesitamos hablar contigo en persona.
+            </p>
+            <p className="text-text-2">
+              Para este caso no podemos dar información automatizada. Comunícate con la
+              mesa de atención humanitaria para recibir acompañamiento.
+            </p>
+            <p className="text-sm text-text-3">
+              Las noticias delicadas siempre las da una persona, nunca la app.
+            </p>
+          </CardBody>
+        </Card>
       )}
 
       {result.kind === "matches" && (
-        <ul className="space-y-3">
-          {groupByHospital(result.matches).map((group, i) => (
-            <li key={i} className="rounded-md border border-gray-200 p-4">
-              <p className="font-semibold">{group.hospitalName}</p>
-              <ul className="mt-1 list-disc pl-5 text-gray-800">
-                {group.names.map((name, j) => (
-                  <li key={j}>{name}</li>
-                ))}
-              </ul>
-              <p className="mt-2 text-sm text-gray-700">
-                Mesa de información:{" "}
-                <strong>{group.infoDeskPhone ?? "(consulta en el hospital)"}</strong>
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
+        <div className="space-y-4">
+          <Badge variant="success">
+            {result.matches.length === 1
+              ? "1 coincidencia"
+              : `${groupByHospital(result.matches).length} hospitales con coincidencias`}
+          </Badge>
 
-      <Link href="/" className="text-sm text-teal-700 underline">
-        ← Nueva búsqueda
-      </Link>
-    </section>
+          {groupByHospital(result.matches).map((group, i) => (
+            <Card key={i}>
+              <CardBody className="space-y-3">
+                <div>
+                  <p className="text-sm text-text-3">Institución hospitalaria</p>
+                  <p className="text-lg font-semibold text-text">
+                    {group.hospitalName}
+                  </p>
+                </div>
+
+                <ul className="space-y-1">
+                  {group.names.map((name, j) => (
+                    <li key={j} className="font-medium text-text">
+                      {name}
+                    </li>
+                  ))}
+                </ul>
+
+                <p className="text-sm text-text-2">
+                  No mostramos diagnóstico, edad ni dirección. La mesa de información
+                  del hospital te dirá qué hacer.
+                </p>
+
+                <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-text-2">
+                    Mesa de información:{" "}
+                    <strong className="text-text">
+                      {group.infoDeskPhone ?? "(consulta en el hospital)"}
+                    </strong>
+                  </p>
+                  {group.infoDeskPhone && (
+                    <a href={`tel:${group.infoDeskPhone}`}>
+                      <Button variant="danger" className="w-full sm:w-auto">
+                        Llamar
+                      </Button>
+                    </a>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
