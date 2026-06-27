@@ -8,14 +8,15 @@ import {
 } from "../../domain/value-objects/patient-status";
 import type { PatientListParser } from "../ports/patient-list-parser";
 import type {
-  AdmissionRepository,
-  AuditLog,
+  AuditEntry,
   ExistingPatient,
-  HospitalRepository,
-  PatientRepository,
+  IngestionUnitOfWork,
+  NewAdmissionRow,
+  NewClinicalNoteRow,
+  NewContactRow,
+  NewPatientRow,
   PatientUpdate,
-  RawRowStore,
-  SensitiveDataStore,
+  PatientUpdateRow,
 } from "../ports/repositories";
 
 export interface IngestionSummary {
@@ -36,16 +37,13 @@ export interface IngestionSummary {
 
 export interface IngestDependencies {
   parser: PatientListParser;
-  rawRows: RawRowStore;
-  patients: PatientRepository;
-  hospitals: HospitalRepository;
-  admissions: AdmissionRepository;
-  sensitive: SensitiveDataStore;
-  audit: AuditLog;
+  uow: IngestionUnitOfWork;
   newId: () => string;
 }
 
-// Caso de uso de ingesta: parsea, deduplica (ADR-003) y persiste vía ports.
+// Caso de uso de ingesta: parsea, deduplica (ADR-003) y persiste en lote.
+// Dos fases: (1) todo el dedup en memoria armando el grafo con IDs propios, y
+// (2) persistencia bulk en UNA transacción (atomicidad por archivo, anti-N+1).
 export class IngestPatientList {
   constructor(private readonly deps: IngestDependencies) {}
 
@@ -53,8 +51,7 @@ export class IngestPatientList {
     fileBytes: Uint8Array;
     uploadedBy: string | null;
   }): Promise<IngestionSummary> {
-    const { parser, rawRows, patients, hospitals, admissions, sensitive, audit, newId } =
-      this.deps;
+    const { parser, uow, newId } = this.deps;
     const { sheet, rows } = parser.parse(input.fileBytes);
 
     // Dedupe dentro del archivo por fingerprint.
@@ -65,122 +62,154 @@ export class IngestPatientList {
 
     const fileId = newId();
 
-    // Resolver cada hospital una sola vez.
-    const hospitalIds = new Map<string, string>();
-    for (const r of unique) {
-      if (r.hospitalName && !hospitalIds.has(r.hospitalName)) {
-        hospitalIds.set(r.hospitalName, await hospitals.resolveByName(r.hospitalName));
-      }
-    }
-
-    const newFingerprints = await rawRows.persistNew(unique, {
-      fileId,
-      uploadedBy: input.uploadedBy,
-    });
-    const toProcess = unique.filter((r) => newFingerprints.has(r.fingerprint));
-
-    const candidates: ExistingPatient[] = await patients.loadAll();
-    const admissionByKey = new Map<string, string>();
-
-    const summary: IngestionSummary = {
-      sheet,
-      rowsRead: rows.length,
-      uniqueRows: unique.length,
-      newRows: newFingerprints.size,
-      alreadyPresent: unique.length - newFingerprints.size,
-      hospitals: hospitalIds.size,
-      newPatients: 0,
-      mergedPatients: 0,
-      documentConflicts: 0,
-      pendingReview: 0,
-      newAdmissions: 0,
-      minors: 0,
-      deceased: 0,
-    };
-
-    for (const r of toProcess) {
-      if (!r.fullName) continue;
-      const name = PersonName.fromRaw(r.fullName);
-      if (name.isEmpty) continue;
-      const document = r.documentNumber ? DocumentId.fromRaw(r.documentNumber) : null;
-      const isMinor = isMinorAge(r.age);
-      const deceased = looksDeceased(r.clinicalNotes);
-      const status: PatientStatus = deceased ? "deceased" : "admitted";
-
-      const decision = decideMatch({ name, document }, candidates);
-
-      let patientId: string;
-      if (decision.kind === "merge") {
-        patientId = decision.targetId;
-        const target = candidates.find((c) => c.id === patientId)!;
-        const changes: PatientUpdate = {};
-        if (isMinor && !target.isMinor) changes.isMinor = true;
-        if (document?.isValid && !target.document?.isValid) changes.document = document;
-        if (deceased && target.status !== "deceased") changes.status = "deceased";
-        if (Object.keys(changes).length > 0) {
-          await patients.update(patientId, changes);
-          Object.assign(target, changes);
+    return uow.runAtomic(async (repos) => {
+      // Resolver cada hospital una sola vez (dentro de la tx: atómico).
+      const hospitalIds = new Map<string, string>();
+      for (const r of unique) {
+        if (r.hospitalName && !hospitalIds.has(r.hospitalName)) {
+          hospitalIds.set(r.hospitalName, await repos.hospitals.resolveByName(r.hospitalName));
         }
-        summary.mergedPatients++;
-      } else {
-        patientId = await patients.create({ name, document, age: r.age, isMinor, status });
-        candidates.push({ id: patientId, name, document, isMinor, status });
-        if (decision.kind === "conflict") {
-          summary.documentConflicts++;
-          await audit.record({
-            actorId: input.uploadedBy,
-            action: "dedup_document_conflict",
-            entity: "patient",
-            entityId: patientId,
-            payload: { document: document?.normalized },
-          });
-        } else if (decision.kind === "review") {
-          summary.pendingReview++;
-          await audit.record({
-            actorId: input.uploadedBy,
-            action: "dedup_pending_review",
-            entity: "patient",
-            entityId: patientId,
-          });
+      }
+
+      const newFingerprints = await repos.rawRows.persistNew(unique, {
+        fileId,
+        uploadedBy: input.uploadedBy,
+      });
+      const toProcess = unique.filter((r) => newFingerprints.has(r.fingerprint));
+
+      // Estado existente: pacientes y admisiones (una lectura cada uno).
+      const candidates: ExistingPatient[] = await repos.patients.loadAll();
+      const existingAdmissions = await repos.admissions.loadExistingIds();
+
+      // Acumuladores en memoria (se persisten en lote al final).
+      const patientsToInsert: NewPatientRow[] = [];
+      const patientUpdates = new Map<string, PatientUpdate>();
+      const admissionsToInsert: NewAdmissionRow[] = [];
+      const contactsToInsert: NewContactRow[] = [];
+      const notesToInsert: NewClinicalNoteRow[] = [];
+      const dedupEntries: AuditEntry[] = [];
+      const admissionByKey = new Map<string, string>();
+
+      const summary: IngestionSummary = {
+        sheet,
+        rowsRead: rows.length,
+        uniqueRows: unique.length,
+        newRows: newFingerprints.size,
+        alreadyPresent: unique.length - newFingerprints.size,
+        hospitals: hospitalIds.size,
+        newPatients: 0,
+        mergedPatients: 0,
+        documentConflicts: 0,
+        pendingReview: 0,
+        newAdmissions: 0,
+        minors: 0,
+        deceased: 0,
+      };
+
+      for (const r of toProcess) {
+        if (!r.fullName) continue;
+        const name = PersonName.fromRaw(r.fullName);
+        if (name.isEmpty) continue;
+        const document = r.documentNumber ? DocumentId.fromRaw(r.documentNumber) : null;
+        const isMinor = isMinorAge(r.age);
+        const deceased = looksDeceased(r.clinicalNotes);
+        const status: PatientStatus = deceased ? "deceased" : "admitted";
+
+        const decision = decideMatch({ name, document }, candidates);
+
+        let patientId: string;
+        if (decision.kind === "merge") {
+          patientId = decision.targetId;
+          const target = candidates.find((c) => c.id === patientId)!;
+          const changes: PatientUpdate = {};
+          if (isMinor && !target.isMinor) changes.isMinor = true;
+          if (document?.isValid && !target.document?.isValid) changes.document = document;
+          if (deceased && target.status !== "deceased") changes.status = "deceased";
+          if (Object.keys(changes).length > 0) {
+            patientUpdates.set(patientId, { ...patientUpdates.get(patientId), ...changes });
+            Object.assign(target, changes);
+          }
+          summary.mergedPatients++;
         } else {
-          summary.newPatients++;
+          patientId = newId();
+          patientsToInsert.push({ id: patientId, name, document, age: r.age, isMinor, status });
+          candidates.push({ id: patientId, name, document, isMinor, status });
+          if (decision.kind === "conflict") {
+            summary.documentConflicts++;
+            dedupEntries.push({
+              actorId: input.uploadedBy,
+              action: "dedup_document_conflict",
+              entity: "patient",
+              entityId: patientId,
+              payload: { document: document?.normalized },
+            });
+          } else if (decision.kind === "review") {
+            summary.pendingReview++;
+            dedupEntries.push({
+              actorId: input.uploadedBy,
+              action: "dedup_pending_review",
+              entity: "patient",
+              entityId: patientId,
+            });
+          } else {
+            summary.newPatients++;
+          }
+        }
+
+        if (isMinor) summary.minors++;
+        if (deceased) summary.deceased++;
+
+        // Ingreso (persona ↔ hospital); permite traslados. Reusa la admisión
+        // existente (mismo archivo o ya en DB) en lugar de duplicarla.
+        let admissionId: string | null = null;
+        if (r.hospitalName) {
+          const hospitalId = hospitalIds.get(r.hospitalName)!;
+          const key = `${patientId}|${hospitalId}`;
+          admissionId = admissionByKey.get(key) ?? existingAdmissions.get(key) ?? null;
+          if (!admissionId) {
+            admissionId = newId();
+            admissionsToInsert.push({ id: admissionId, patientId, hospitalId, status });
+            admissionByKey.set(key, admissionId);
+            summary.newAdmissions++;
+          } else {
+            admissionByKey.set(key, admissionId);
+          }
+        }
+
+        // Datos sensibles (esquema aislado).
+        if (r.phone || r.address) {
+          contactsToInsert.push({ patientId, phone: r.phone, address: r.address });
+        }
+        if (r.clinicalNotes && admissionId) {
+          notesToInsert.push({ admissionId, text: r.clinicalNotes });
         }
       }
 
-      if (isMinor) summary.minors++;
-      if (deceased) summary.deceased++;
-
-      // Ingreso (persona ↔ hospital); permite traslados.
-      let admissionId: string | null = null;
-      if (r.hospitalName) {
-        const hospitalId = hospitalIds.get(r.hospitalName)!;
-        const key = `${patientId}|${hospitalId}`;
-        admissionId =
-          admissionByKey.get(key) ?? (await admissions.findId(patientId, hospitalId));
-        if (!admissionId) {
-          admissionId = await admissions.create({ patientId, hospitalId, status });
-          admissionByKey.set(key, admissionId);
-          summary.newAdmissions++;
-        }
+      // Fase de persistencia: una llamada bulk por tabla (orden por FKs).
+      if (patientsToInsert.length > 0) await repos.patients.createMany(patientsToInsert);
+      if (patientUpdates.size > 0) {
+        const updates: PatientUpdateRow[] = [...patientUpdates].map(([id, changes]) => ({
+          id,
+          changes,
+        }));
+        await repos.patients.updateMany(updates);
       }
+      if (admissionsToInsert.length > 0) await repos.admissions.createMany(admissionsToInsert);
+      if (contactsToInsert.length > 0) await repos.sensitive.saveContacts(contactsToInsert);
+      if (notesToInsert.length > 0) await repos.sensitive.saveClinicalNotes(notesToInsert);
 
-      // Datos sensibles (esquema aislado).
-      if (r.phone || r.address) {
-        await sensitive.saveContact({ patientId, phone: r.phone, address: r.address });
-      }
-      if (r.clinicalNotes && admissionId) {
-        await sensitive.saveClinicalNote({ admissionId, text: r.clinicalNotes });
-      }
-    }
+      await repos.audit.recordMany([
+        ...dedupEntries,
+        {
+          actorId: input.uploadedBy,
+          action: "ingest_patient_list",
+          entity: "raw_rows",
+          entityId: null,
+          payload: { fileId, ...summary },
+        },
+      ]);
 
-    await audit.record({
-      actorId: input.uploadedBy,
-      action: "ingest_patient_list",
-      entity: "raw_rows",
-      entityId: null,
-      payload: { fileId, ...summary },
+      return summary;
     });
-
-    return summary;
   }
 }

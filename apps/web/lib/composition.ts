@@ -15,12 +15,8 @@ import { getDb } from "@evzla/db/client";
 import { createAnonClient } from "@/lib/supabase/anon";
 import { SheetjsPatientListParser } from "@/lib/infrastructure/patient-registry/sheetjs-patient-list-parser";
 import {
-  DrizzleAdmissionRepository,
   DrizzleAuditLog,
-  DrizzleHospitalRepository,
-  DrizzlePatientRepository,
-  DrizzleRawRowStore,
-  DrizzleSensitiveDataStore,
+  DrizzleIngestionUnitOfWork,
 } from "@/lib/infrastructure/patient-registry/drizzle-repositories";
 import { DrizzleTeamMemberRepository } from "@/lib/infrastructure/patient-registry/drizzle-team-member-repository";
 import { DrizzleAuditLogReader } from "@/lib/infrastructure/patient-registry/drizzle-audit-log-reader";
@@ -33,15 +29,9 @@ import { CloudflareTurnstileVerifier } from "@/lib/infrastructure/patient-regist
 // Composition root: inyecta los adapters en los casos de uso (solo servidor).
 
 export function ingestPatientListUseCase(): IngestPatientList {
-  const db = getDb();
   return new IngestPatientList({
     parser: new SheetjsPatientListParser(),
-    rawRows: new DrizzleRawRowStore(db),
-    patients: new DrizzlePatientRepository(db),
-    hospitals: new DrizzleHospitalRepository(db),
-    admissions: new DrizzleAdmissionRepository(db),
-    sensitive: new DrizzleSensitiveDataStore(db),
-    audit: new DrizzleAuditLog(db),
+    uow: new DrizzleIngestionUnitOfWork(getDb()),
     newId: () => crypto.randomUUID(),
   });
 }
