@@ -17,16 +17,44 @@ export interface NewPatient {
   status: PatientStatus;
 }
 
+// IDs generados en memoria (newId) para armar el grafo antes de tocar la DB.
+export interface NewPatientRow extends NewPatient {
+  id: string;
+}
+
 export interface PatientUpdate {
   document?: DocumentId;
   isMinor?: boolean;
   status?: PatientStatus;
 }
 
+export interface PatientUpdateRow {
+  id: string;
+  changes: PatientUpdate;
+}
+
+export interface NewAdmissionRow {
+  id: string;
+  patientId: string;
+  hospitalId: string;
+  status: PatientStatus;
+}
+
+export interface NewContactRow {
+  patientId: string;
+  phone: string | null;
+  address: string | null;
+}
+
+export interface NewClinicalNoteRow {
+  admissionId: string;
+  text: string;
+}
+
 export interface PatientRepository {
   loadAll(): Promise<ExistingPatient[]>;
-  create(patient: NewPatient): Promise<string>;
-  update(id: string, changes: PatientUpdate): Promise<void>;
+  createMany(rows: NewPatientRow[]): Promise<void>;
+  updateMany(updates: PatientUpdateRow[]): Promise<void>;
 }
 
 export interface HospitalRepository {
@@ -34,13 +62,14 @@ export interface HospitalRepository {
 }
 
 export interface AdmissionRepository {
-  findId(patientId: string, hospitalId: string): Promise<string | null>;
-  create(input: { patientId: string; hospitalId: string; status: PatientStatus }): Promise<string>;
+  // Mapa `patientId|hospitalId` → admissionId de TODAS las admisiones (una lectura, no N findId).
+  loadExistingIds(): Promise<Map<string, string>>;
+  createMany(rows: NewAdmissionRow[]): Promise<void>;
 }
 
 export interface SensitiveDataStore {
-  saveContact(input: { patientId: string; phone: string | null; address: string | null }): Promise<void>;
-  saveClinicalNote(input: { admissionId: string; text: string }): Promise<void>;
+  saveContacts(rows: NewContactRow[]): Promise<void>;
+  saveClinicalNotes(rows: NewClinicalNoteRow[]): Promise<void>;
 }
 
 export interface RawRowStore {
@@ -61,4 +90,21 @@ export interface AuditEntry {
 
 export interface AuditLog {
   record(entry: AuditEntry): Promise<void>;
+  recordMany(entries: AuditEntry[]): Promise<void>;
+}
+
+// Repos enlazados a una misma transacción (atomicidad por archivo).
+export interface IngestionRepositories {
+  rawRows: RawRowStore;
+  patients: PatientRepository;
+  hospitals: HospitalRepository;
+  admissions: AdmissionRepository;
+  sensitive: SensitiveDataStore;
+  audit: AuditLog;
+}
+
+// Unidad de trabajo: ejecuta `work` con repos atados a una transacción y commitea
+// (o hace rollback completo si lanza). Es el límite de atomicidad de la ingesta.
+export interface IngestionUnitOfWork {
+  runAtomic<T>(work: (repos: IngestionRepositories) => Promise<T>): Promise<T>;
 }
