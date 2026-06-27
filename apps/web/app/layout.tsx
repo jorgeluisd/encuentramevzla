@@ -83,7 +83,9 @@ const SOCIALS = [
   },
 ] as const;
 
-// JSON-LD (SEO): sitio + ONG + caja de búsqueda para sitelinks de Google.
+// JSON-LD (SEO): sitio + ONG. Sin SearchAction: la búsqueda dejó de ser un GET
+// público (anti-enumeración, spec 0016); una caja de búsqueda en Google invitaría
+// justo al abuso que queremos evitar.
 const JSON_LD = {
   "@context": "https://schema.org",
   "@type": "WebSite",
@@ -91,14 +93,6 @@ const JSON_LD = {
   url: SITE_URL,
   description: DESCRIPTION,
   inLanguage: "es-VE",
-  potentialAction: {
-    "@type": "SearchAction",
-    target: {
-      "@type": "EntryPoint",
-      urlTemplate: `${SITE_URL}/buscar?termino={search_term_string}`,
-    },
-    "query-input": "required name=search_term_string",
-  },
   publisher: {
     "@type": "NGO",
     name: SITE_NAME,
