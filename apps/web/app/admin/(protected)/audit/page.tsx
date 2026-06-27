@@ -59,6 +59,7 @@ export default async function AuditPage(): Promise<React.ReactElement> {
                       </td>
                       <td className="py-2 whitespace-nowrap text-text-2">
                         {r.createdAt.toLocaleString("es-VE", {
+                          timeZone: "America/Caracas",
                           day: "2-digit",
                           month: "2-digit",
                           year: "2-digit",
