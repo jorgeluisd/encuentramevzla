@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { formatLastUpdate } from "@evzla/core";
 import { getLastUpdateUseCase } from "@/lib/composition";
-import { SearchForm } from "@/components/search-form";
+import { SearchPanel } from "@/components/search-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardTitle } from "@/components/ui/card";
@@ -69,11 +69,7 @@ export default async function HomePage(): Promise<React.ReactElement> {
         </div>
       </section>
 
-      <Card>
-        <CardBody className="space-y-5">
-          <SearchForm />
-        </CardBody>
-      </Card>
+      <SearchPanel />
 
       <section className="space-y-4">
         <h2 className="text-center text-lg font-semibold">¿Cómo funciona?</h2>
