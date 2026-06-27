@@ -110,6 +110,13 @@ export default function RootLayout({
   return (
     <html lang="es" className={inter.variable}>
       <body className="min-h-screen bg-bg text-text">
+        {/* Skip link: primer foco con teclado; salta directo al contenido (a11y). */}
+        <a
+          href="#contenido"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-[var(--radius-control)] focus:bg-primary focus:px-4 focus:py-2 focus:text-white focus:shadow-[var(--shadow-card)]"
+        >
+          Saltar al contenido
+        </a>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
@@ -145,7 +152,13 @@ export default function RootLayout({
           </div>
         </header>
 
-        <main className="mx-auto max-w-[1120px] px-[22px] py-8">{children}</main>
+        <main
+          id="contenido"
+          tabIndex={-1}
+          className="mx-auto max-w-[1120px] px-[22px] py-8 outline-none"
+        >
+          {children}
+        </main>
 
         <footer className="mt-12 border-t border-border bg-surface">
           <div className="mx-auto max-w-[1120px] px-[22px] py-6 text-xs text-text-2">
