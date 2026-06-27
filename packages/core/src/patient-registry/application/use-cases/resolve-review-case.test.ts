@@ -6,6 +6,9 @@ class FakeAudit implements AuditLog {
   async record(entry: AuditEntry): Promise<void> {
     this.entries.push(entry);
   }
+  async recordMany(entries: AuditEntry[]): Promise<void> {
+    this.entries.push(...entries);
+  }
 }
 
 describe("ResolveReviewCase", () => {
