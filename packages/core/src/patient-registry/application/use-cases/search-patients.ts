@@ -9,9 +9,10 @@ const MIN_TERM_LENGTH = 4;
 export class SearchPatients {
   constructor(private readonly gateway: PatientSearchGateway) {}
 
-  async execute(rawTerm: string): Promise<MediatedSearchResult> {
+  // clientId: hash de la IP, se propaga al RPC para el rate-limit por fuente.
+  async execute(rawTerm: string, clientId?: string): Promise<MediatedSearchResult> {
     const term = rawTerm.trim();
     if (term.length < MIN_TERM_LENGTH) return { kind: "invalid-term" };
-    return this.gateway.search(term);
+    return this.gateway.search(term, clientId);
   }
 }
