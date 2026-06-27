@@ -36,6 +36,7 @@ export function SearchPanel(): React.ReactElement {
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   // Render EXPLÍCITO con limpieza al desmontar: al volver al home (navegación SPA)
   // se monta un widget nuevo y se elimina el anterior, sin quedar huérfano ni sin token.
@@ -74,6 +75,14 @@ export function SearchPanel(): React.ReactElement {
       window.turnstile?.reset(widgetIdRef.current);
     }
   }, [state]);
+
+  // En móvil los resultados quedan bajo el formulario: al iniciar/terminar la
+  // búsqueda, llevamos la vista a esa zona para que no haya que hacer scroll a mano.
+  useEffect(() => {
+    if (pending || state.status !== "idle") {
+      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [pending, state]);
 
   return (
     <div className="space-y-6">
@@ -125,6 +134,9 @@ export function SearchPanel(): React.ReactElement {
           </form>
         </CardBody>
       </Card>
+
+      {/* Ancla de scroll: la vista salta aquí al buscar (clave en móvil). */}
+      <div ref={resultsRef} className="scroll-mt-4" />
 
       {pending && <SearchResultsSkeleton />}
 
