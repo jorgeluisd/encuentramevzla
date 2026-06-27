@@ -7,6 +7,21 @@ function fakeClient(data: unknown): SupabaseClient {
   return { rpc: async () => ({ data, error: null }) } as unknown as SupabaseClient;
 }
 
+// Fake que captura los argumentos de rpc() para verificar el paso de client_hash.
+function recordingClient(data: unknown): {
+  client: SupabaseClient;
+  calls: { fn: string; params: unknown }[];
+} {
+  const calls: { fn: string; params: unknown }[] = [];
+  const client = {
+    rpc: async (fn: string, params: unknown) => {
+      calls.push({ fn, params });
+      return { data, error: null };
+    },
+  } as unknown as SupabaseClient;
+  return { client, calls };
+}
+
 describe("SupabasePatientSearchGateway", () => {
   it("maps patient_name to patientName for adult matches", async () => {
     const client = fakeClient([
@@ -57,5 +72,19 @@ describe("SupabasePatientSearchGateway", () => {
         },
       ],
     });
+  });
+
+  it("forwards term and client_hash to the RPC", async () => {
+    const { client, calls } = recordingClient([]);
+    await new SupabasePatientSearchGateway(client).search("juan perez", "ip-hash-abc");
+    expect(calls).toEqual([
+      { fn: "search_patient", params: { term: "juan perez", client_hash: "ip-hash-abc" } },
+    ]);
+  });
+
+  it("maps the rate_limited result to kind rate-limited", async () => {
+    const client = fakeClient([{ result: { rate_limited: true } }]);
+    const result = await new SupabasePatientSearchGateway(client).search("juan perez", "ip-hash-abc");
+    expect(result).toEqual({ kind: "rate-limited" });
   });
 });
