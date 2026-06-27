@@ -45,7 +45,7 @@ export default function LoginPage(): React.ReactElement {
       <Card>
         <CardBody>
           {status === "sent" ? (
-            <div className="space-y-3">
+            <div className="space-y-3" role="status" aria-live="polite">
               <p className="font-semibold text-text">Revisa tu correo</p>
               <p className="text-sm text-text-2">
                 Enviamos un enlace de acceso a{" "}
@@ -78,7 +78,11 @@ export default function LoginPage(): React.ReactElement {
                   autoComplete="email"
                 />
               </div>
-              {error && <p className="text-sm text-danger">{error}</p>}
+              {error && (
+                <p className="text-sm text-danger" role="alert">
+                  {error}
+                </p>
+              )}
               <Button type="submit" disabled={status === "sending"} className="w-full">
                 {status === "sending" ? "Enviando…" : "Enviar enlace de acceso"}
               </Button>
