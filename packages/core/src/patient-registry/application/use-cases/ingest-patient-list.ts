@@ -54,7 +54,6 @@ export class IngestPatientList {
     const { parser, uow, newId } = this.deps;
     const { sheet, rows } = parser.parse(input.fileBytes);
 
-    // Dedupe dentro del archivo por fingerprint.
     const seen = new Set<string>();
     const unique = rows.filter((r) =>
       seen.has(r.fingerprint) ? false : (seen.add(r.fingerprint), true),
