@@ -52,9 +52,10 @@ Scripts raíz (turbo): `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`.
     └── functions/  Edge Functions (Deno) — `dedup` (worker fase 2, stub)
 ```
 
-> **Nota:** `docs/` está gitignored (contiene el Excel real de pacientes y el prototipo de UI/UX
-> `docs/design/concept-mvp1.html`). Por eso los logos viven en `assets/brand/` y el diseño se documenta
-> en `specs/` (ambos versionados).
+> **Nota:** `draw/` está gitignored (contiene el Excel real de pacientes y el prototipo de UI/UX
+> `draw/design/concept-mvp1.html`). Por eso los logos viven en `assets/brand/` y el diseño se documenta
+> en `specs/` (ambos versionados). La documentación de arquitectura versionada vive en
+> `docs/ARCHITECTURE.md` (flujos, glosario y diagramas del sistema).
 
 ## Diseño (mobile-first)
 
