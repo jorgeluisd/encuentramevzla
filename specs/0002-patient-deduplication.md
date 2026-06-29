@@ -44,3 +44,7 @@ extranjeros. → El matching no puede confiar en la cédula como clave única.
 - Cédula válida + nombre concuerda (≥ 0.5) → **merge**.
 - Misma cédula + nombre distinto → **conflict** (no fusiona; revisión humana).
 - Sin cédula: nombre ≥ 0.92 → **merge**; 0.80–0.92 → **review**; resto → **new**.
+- **Cédulas válidas DISTINTAS** (aunque el nombre sea ≥ 0.92): **review**, no merge. Una cédula
+  que no coincide es señal de **persona distinta**: el nombre por sí solo no alcanza para fusionar
+  (evita colapsar homónimos con cédulas diferentes y descartar una de las cédulas). Si solo uno de
+  los dos tiene cédula, no bloquea: sigue mandando el nombre.

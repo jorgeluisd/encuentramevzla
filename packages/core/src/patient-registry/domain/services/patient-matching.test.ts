@@ -64,6 +64,26 @@ describe("decideMatch", () => {
       decideMatch(incoming("Carlos Mendoza", "22.89"), [candidate("p1", "Carlos Mendoza", "22.89")]),
     ).toEqual({ kind: "merge", targetId: "p1" });
   });
+
+  it("does NOT auto-merge by name when both sides have different valid documents", () => {
+    // Misma cédula distinta = persona distinta: no fusionar, mandar a revisión humana.
+    expect(
+      decideMatch(incoming("Carlos Mendoza", "11111111"), [
+        candidate("p1", "Carlos Mendoza", "22222222"),
+      ]),
+    ).toEqual({ kind: "review" });
+  });
+
+  it("still merges an identical name when only one side has a document", () => {
+    // incoming con cédula, candidato sin cédula → la cédula que falta no bloquea.
+    expect(
+      decideMatch(incoming("Carlos Mendoza", "11111111"), [candidate("p1", "Carlos Mendoza", null)]),
+    ).toEqual({ kind: "merge", targetId: "p1" });
+    // incoming sin cédula, candidato con cédula → idem.
+    expect(
+      decideMatch(incoming("Carlos Mendoza", null), [candidate("p1", "Carlos Mendoza", "11111111")]),
+    ).toEqual({ kind: "merge", targetId: "p1" });
+  });
 });
 
 describe("mostSimilarByName", () => {

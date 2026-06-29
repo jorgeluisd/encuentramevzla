@@ -71,7 +71,17 @@ export function decideMatch(
       best = candidate;
     }
   }
-  if (best && bestScore >= MERGE_BY_NAME) return { kind: "merge", targetId: best.id };
+  if (best && bestScore >= MERGE_BY_NAME) {
+    // Cédula válida distinta = persona distinta: el nombre no alcanza para fusionar solo.
+    if (
+      document?.isValid &&
+      best.document?.isValid &&
+      best.document.normalized !== document.normalized
+    ) {
+      return { kind: "review" };
+    }
+    return { kind: "merge", targetId: best.id };
+  }
   if (best && bestScore >= REVIEW_BY_NAME) return { kind: "review" };
   return { kind: "new" };
 }
