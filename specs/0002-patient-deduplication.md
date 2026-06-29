@@ -44,7 +44,11 @@ extranjeros. → El matching no puede confiar en la cédula como clave única.
 - Cédula válida + nombre concuerda (≥ 0.5) → **merge**.
 - Misma cédula + nombre distinto → **conflict** (no fusiona; revisión humana).
 - Sin cédula: nombre ≥ 0.92 → **merge**; 0.80–0.92 → **review**; resto → **new**.
-- **Cédulas válidas DISTINTAS** (aunque el nombre sea ≥ 0.92): **review**, no merge. Una cédula
-  que no coincide es señal de **persona distinta**: el nombre por sí solo no alcanza para fusionar
-  (evita colapsar homónimos con cédulas diferentes y descartar una de las cédulas). Si solo uno de
-  los dos tiene cédula, no bloquea: sigue mandando el nombre.
+- **Cédulas válidas DISTINTAS** (aunque el nombre sea ≥ 0.92): la cédula que no coincide es señal de
+  **persona distinta**, el nombre solo no alcanza. Según cuánto difieran (distancia de edición):
+  **≤ 2 dígitos** (posible typo) → **review**; **> 2** → **new** (separadas, sin revisión). Si solo uno
+  de los dos tiene cédula, no bloquea: sigue mandando el nombre.
+- **Mismo nombre SIN cédula (ninguno la tiene), por hospital:** **mismo hospital** → **merge**;
+  **hospital distinto** → **new** (no fusiona). Sin cédula, "mismo nombre en otro hospital" es ambiguo
+  (traslado real vs homónimo); separarlas no miente y la búsqueda por nombre igual muestra ambas. El
+  matching recibe el hospital del registro y los hospitales del candidato (derivados de `admissions`).

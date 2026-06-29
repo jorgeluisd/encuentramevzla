@@ -221,4 +221,37 @@ describe("IngestPatientList", () => {
     // La nota clínica se ancla a la admisión EXISTENTE.
     expect(sensitive.notes).toEqual([{ admissionId: "ad-existing", text: "nota nueva" }]);
   });
+
+  it("does NOT merge a same-name patient without document across a different hospital", async () => {
+    // Maria ya está en DB con ingreso en Hospital X (ho-1), sin cédula.
+    const existingPatient: ExistingPatient = {
+      id: "pt-maria",
+      name: (await import("../../domain/value-objects/person-name")).PersonName.fromRaw("Maria Lopez"),
+      document: null,
+      isMinor: false,
+      status: "admitted",
+    };
+    const patients = new FakePatients([existingPatient]);
+    const admissions = new FakeAdmissions(new Map([["pt-maria|ho-1", "ad-maria"]]));
+    const hospitals = new FakeHospitals();
+    hospitals.ids.set("Hospital X", "ho-1");
+    hospitals.ids.set("Hospital Y", "ho-2"); // distinto hospital
+    const repos = buildRepos({ patients, admissions, hospitals });
+    const patientsRepo = repos.patients as FakePatients;
+    let n = 0;
+
+    const summary = await new IngestPatientList({
+      parser: new FakeParser({
+        sheet: "S",
+        rows: [row({ fingerprint: "y1", fullName: "Maria Lopez", hospitalName: "Hospital Y" })],
+      }),
+      uow: new FakeUnitOfWork(repos),
+      newId: () => `id-${++n}`,
+    }).execute({ fileBytes: new Uint8Array(), uploadedBy: null });
+
+    // Mismo nombre, sin cédula, hospital distinto → NO fusiona (posibles homónimos).
+    expect(summary.mergedPatients).toBe(0);
+    expect(summary.newPatients).toBe(1);
+    expect(patientsRepo.inserted).toHaveLength(1);
+  });
 });
