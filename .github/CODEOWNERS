@@ -1,0 +1,6 @@
+# CODEOWNERS — EncuéntrameVzla
+# Cada PR pide automáticamente review del owner.
+# Sintaxis: <patrón> <@usuario|@org/equipo>
+
+# Dueño global por defecto
+*       @jorgeluisd
