@@ -3,6 +3,7 @@ import type {
   AdmissionRepository,
   AuditEntry,
   AuditLog,
+  CandidateKeys,
   ExistingPatient,
   HospitalRepository,
   IngestionRepositories,
@@ -48,10 +49,12 @@ class FakeRawRows implements RawRowStore {
 class FakePatients implements PatientRepository {
   createManyCalls = 0;
   updateManyCalls = 0;
+  loadCandidatesKeys: CandidateKeys | null = null;
   inserted: NewPatientRow[] = [];
   updated: PatientUpdateRow[] = [];
   constructor(private readonly existing: ExistingPatient[] = []) {}
-  async loadAll(): Promise<ExistingPatient[]> {
+  async loadCandidates(keys: CandidateKeys): Promise<ExistingPatient[]> {
+    this.loadCandidatesKeys = keys; // el fake devuelve todo (superconjunto trivial)
     return this.existing.map((r) => ({ ...r }));
   }
   async createMany(rows: NewPatientRow[]): Promise<void> {
@@ -220,5 +223,35 @@ describe("IngestPatientList", () => {
     expect(admissions.inserted).toHaveLength(0);
     // La nota clínica se ancla a la admisión EXISTENTE.
     expect(sensitive.notes).toEqual([{ admissionId: "ad-existing", text: "nota nueva" }]);
+  });
+
+  it("loadCandidates recibe las cédulas y tokens del lote (no carga toda la tabla)", async () => {
+    const { DocumentId } = await import("../../domain/value-objects/document-id");
+    const { PersonName } = await import("../../domain/value-objects/person-name");
+    const repos = buildRepos();
+    const patients = repos.patients as FakePatients;
+    const uow = new FakeUnitOfWork(repos);
+    let n = 0;
+
+    await new IngestPatientList({
+      parser: new FakeParser({
+        sheet: "S",
+        rows: [
+          row({ fingerprint: "a", fullName: "Carlos Mendoza", documentNumber: "24.140.952" }),
+          row({ fingerprint: "b", fullName: "Lucia Perez" }),
+        ],
+      }),
+      uow,
+      newId: () => `id-${++n}`,
+    }).execute({ fileBytes: new Uint8Array(), uploadedBy: null });
+
+    const keys = patients.loadCandidatesKeys!;
+    expect(keys.documents).toEqual([DocumentId.fromRaw("24.140.952").normalized]);
+    expect([...keys.tokens].sort()).toEqual(
+      [
+        ...PersonName.fromRaw("Carlos Mendoza").tokens,
+        ...PersonName.fromRaw("Lucia Perez").tokens,
+      ].sort(),
+    );
   });
 });
