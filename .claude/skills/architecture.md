@@ -19,7 +19,9 @@ Migrado de `specs/0001-architecture-and-conventions.md`. Aplica a todo el códig
 - **presentation** — `apps/web` (Next.js) + composition root que inyecta adapters en los casos de uso.
 
 **Regla de dependencia:** una capa solo importa hacia adentro. `domain` no importa `application`;
-`application` no importa `infrastructure`; etc. Verificable en code review y por el `verifier`.
+`application` no importa `infrastructure`; etc. **Vigilada por ESLint** (`pnpm lint`): `import/no-restricted-paths`
+en `packages/core` (dominio ≠> application + pureza) y `apps/web` (infraestructura ≠> presentación), vía la
+factory `onion()` en `@evzla/config/eslint`. Si se rompe, el lint chilla. También en code review y `verifier`.
 
 ## Estructura (feature-sliced + onion)
 
