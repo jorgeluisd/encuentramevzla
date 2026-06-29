@@ -11,6 +11,7 @@ carga las skills implicadas (la de **privacidad manda siempre que se toquen dato
 | privacidad, mediada, sensible, dato personal, menor, fallecido, enumeración, hash, `search_log`, `search_patient`, RLS, derecho al olvido | `privacy-and-security.md` |
 | migración SQL, RPC, `SECURITY DEFINER`, edge function, deno, postgres, supabase, grant, schema público | `supabase.md` |
 | drizzle, schema TS, tabla, columna, cliente db, `drizzle-kit`, migración generada, esquema sensitive/public | `database-drizzle.md` |
+| script contra prod, `packages/db/scripts`, conteo, harness, ROLLBACK, aplicar migración, `prepare:false`, pooler 6543, `.env` raíz, verificar RPC en prod | `db-prod-scripts.md` |
 | página, route, server action, app router, RSC, componente, react, layout, ingesta UI | `nextjs-frontend.md` |
 | tailwind, estilo, clase, shadcn, `cn()`, botón, color, theme, diseño visual | `ui-tailwind.md` |
 | test, vitest, TDD, rojo, verde, refactor, cobertura, fake, mock | `testing-vitest.md` |
@@ -34,6 +35,7 @@ carga las skills implicadas (la de **privacidad manda siempre que se toquen dato
 | Nuevo adapter (infraestructura) | architecture · database-drizzle / supabase · testing-vitest |
 | Cambio en el buscador público | privacy-and-security · supabase · architecture |
 | Nueva migración SQL / RPC | supabase · privacy-and-security · database-drizzle |
+| Script/SQL one-off o verificación contra prod | db-prod-scripts · privacy-and-security |
 | Cambio de schema Drizzle | database-drizzle · supabase · privacy-and-security |
 | Nueva página / Server Action | nextjs-frontend · privacy-and-security · architecture |
 | Ajuste visual / componente UI | ui-tailwind · nextjs-frontend |

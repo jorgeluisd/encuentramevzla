@@ -69,7 +69,11 @@ Detalle completo en `skills/architecture.md`.
 - Ports: sustantivo de rol (`PatientRepository`, `PatientSearchGateway`).
 - Casos de uso: verbo + objeto (`IngestPatientList`, `SearchPatients`).
 - Tests **colocados** junto al archivo: `person-name.ts` + `person-name.test.ts`.
-- Comentarios en español, breves, explican el "por qué", no el "qué".
+- **Idioma del código: TODO en inglés** — nombres de variables, funciones, clases, tipos, ports, archivos.
+  En **español** solo: los **comentarios** y el **texto visible** al usuario (UI, mensajes, copy).
+- **Comentarios: solo si son estrictamente necesarios.** Por defecto, **no** comentar. Un comentario se
+  justifica únicamente cuando explica un **"por qué"** no evidente (una decisión, un gotcha, una restricción
+  de privacidad). Nunca narrar el "qué" que el propio código ya dice. Si dudas, no lo pongas.
 
 ## 5. Testing
 
@@ -96,7 +100,10 @@ Detalle completo en `skills/architecture.md`.
 - ❌ Loggear el término de búsqueda en claro: en `search_log` solo va el **hash**.
 - ❌ Usar **`npm`**: siempre `pnpm`.
 - ❌ Violar la **regla de dependencia onion**: `domain` jamás importa hacia `application`/`infrastructure`/`presentation`.
-- ❌ Meter **I/O o libs externas en `@evzla/core`** (debe quedar puro).
+  **Vigilado por ESLint** (`pnpm lint`): regla `import/no-restricted-paths` en `packages/core` y `apps/web`
+  (factory `onion()` en `@evzla/config/eslint`). Si se rompe, el lint chilla.
+- ❌ Meter **I/O o libs externas en `@evzla/core`** (debe quedar puro). También vigilado por ESLint
+  (`no-restricted-imports` en el config de core).
 - ❌ Escribir producción **antes** del test cuando Strict TDD está ON.
 - ❌ Romper lo verde: si un cambio rompe tests existentes, detente y reporta.
 
@@ -108,3 +115,5 @@ Detalle completo en `skills/architecture.md`.
 - **Memoria Engram** → `engram/seeds.md` + protocolo de guardado proactivo (decisiones, bugs, hallazgos,
   convenciones). Guarda con tags como `encuentramevzla`, `privacidad`, `dedup`, `supabase`, `arquitectura`.
 - **Specs vigentes** → `specs/0001-architecture-and-conventions.md`, `specs/0002-patient-deduplication.md`.
+- **Arquitectura del sistema** → `docs/ARCHITECTURE.md` (versionado: flujos, glosario, diagramas).
+- **Assets locales (NO versionar)** → `draw/` (gitignored: Excel real de pacientes, PDF, diseño UI/UX).
