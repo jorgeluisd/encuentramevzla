@@ -26,8 +26,8 @@ coverage/
 .idea/
 .vscode/
 
-# datos sensibles: docs/ contiene el Excel real de pacientes — NUNCA versionar
-docs/
+# datos sensibles: draw/ contiene el Excel real de pacientes + diagramas — NUNCA versionar
+draw/
 
 # permisos locales de Claude Code (personal)
 .claude/settings.local.json
