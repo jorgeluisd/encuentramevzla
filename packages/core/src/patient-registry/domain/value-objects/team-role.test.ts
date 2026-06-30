@@ -1,4 +1,5 @@
 import {
+  canAccessReviewQueue,
   canManageHospitalTeam,
   canModerate,
   canResolveReview,
@@ -46,6 +47,14 @@ describe("team-role", () => {
 
     it("is denied for plain uploader", () => {
       expect(canManageHospitalTeam("uploader")).toBe(false);
+    });
+  });
+
+  describe("canAccessReviewQueue", () => {
+    it("permite a hospital_admin y moderador, no al uploader", () => {
+      expect(canAccessReviewQueue("hospital_admin")).toBe(true);
+      expect(canAccessReviewQueue("moderator")).toBe(true);
+      expect(canAccessReviewQueue("uploader")).toBe(false);
     });
   });
 

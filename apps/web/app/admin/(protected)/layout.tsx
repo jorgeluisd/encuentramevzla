@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { canManageHospitalTeam, canModerate } from "@evzla/core";
+import { canAccessReviewQueue, canManageHospitalTeam, canModerate } from "@evzla/core";
 import { getCurrentMember } from "@/lib/auth/current-member";
 import { signOutAction } from "@/lib/actions/auth";
 import { Badge } from "@/components/ui/badge";
@@ -59,21 +59,21 @@ export default async function ProtectedAdminLayout({
               Equipo
             </Link>
           )}
+          {canAccessReviewQueue(member.role) && (
+            <Link
+              href="/admin/review"
+              className="font-medium text-text hover:text-primary"
+            >
+              Revisión
+            </Link>
+          )}
           {canModerate(member.role) && (
-            <>
-              <Link
-                href="/admin/review"
-                className="font-medium text-text hover:text-primary"
-              >
-                Revisión
-              </Link>
-              <Link
-                href="/admin/audit"
-                className="font-medium text-text hover:text-primary"
-              >
-                Audit log
-              </Link>
-            </>
+            <Link
+              href="/admin/audit"
+              className="font-medium text-text hover:text-primary"
+            >
+              Audit log
+            </Link>
           )}
         </nav>
         <div className="flex items-center gap-3">

@@ -1,27 +1,35 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { canModerate } from "@evzla/core";
+import { canResolveReview } from "@evzla/core";
 import { getCurrentMember } from "@/lib/auth/current-member";
 import {
   mergePatientsUseCase,
   resolveReviewCaseUseCase,
+  reviewQueueReader,
 } from "@/lib/composition";
 
 /**
- * Registra la decisión del moderador sobre un caso dudoso (triage). Re-verifica el
- * rol server-side; no ejecuta la fusión (eso es una entrega aparte).
+ * Registra la decisión sobre un caso dudoso (triage). Re-verifica server-side: el moderador
+ * resuelve cualquier caso; el hospital_admin SOLO los de su hospital (P5). No es entrega aparte.
  */
 export async function resolveReviewAction(
   decision: string,
   formData: FormData,
 ): Promise<void> {
   const current = await getCurrentMember();
-  if (current.kind !== "authorized" || !canModerate(current.member.role)) {
-    throw new Error("No autorizado.");
-  }
+  if (current.kind !== "authorized") throw new Error("No autorizado.");
+  const member = current.member;
 
   const patientId = String(formData.get("patientId") ?? "");
+  if (!patientId) throw new Error("Falta el paciente.");
+
+  // Scope (P5): el caso debe estar en un hospital que el actor pueda resolver.
+  const caseHospitals = (await reviewQueueReader().hospitalIdsOf([patientId])).get(patientId) ?? [];
+  const allowed =
+    member.role === "moderator" || caseHospitals.some((h) => canResolveReview(member, h));
+  if (!allowed) throw new Error("No autorizado.");
+
   const candidate = formData.get("candidateId")
     ? String(formData.get("candidateId"))
     : null;

@@ -25,6 +25,12 @@ export function canManageHospitalTeam(role: Role): boolean {
   return role === "hospital_admin" || role === "moderator";
 }
 
+// ¿Puede ver/usar la cola de revisión? Moderador global o hospital_admin (acotado a su cola).
+// El permiso fino por caso lo da `canResolveReview`.
+export function canAccessReviewQueue(role: Role): boolean {
+  return role === "hospital_admin" || role === "moderator";
+}
+
 // Resolver la cola de revisión: el moderador global cualquier caso; el hospital_admin solo
 // los de su propio hospital (scoping server-side). El uploader nunca resuelve.
 export function canResolveReview(

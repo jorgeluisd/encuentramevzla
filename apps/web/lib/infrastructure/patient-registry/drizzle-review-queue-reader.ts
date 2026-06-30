@@ -91,4 +91,19 @@ export class DrizzleReviewQueueReader implements ReviewQueueReader {
     }
     return map;
   }
+
+  async hospitalIdsOf(patientIds: readonly string[]): Promise<Map<string, string[]>> {
+    const map = new Map<string, string[]>();
+    if (patientIds.length === 0) return map;
+    const rows = await this.db
+      .select({ patientId: admissions.patientId, hospitalId: admissions.hospitalId })
+      .from(admissions)
+      .where(inArray(admissions.patientId, [...patientIds]));
+    for (const r of rows) {
+      const list = map.get(r.patientId) ?? [];
+      if (!list.includes(r.hospitalId)) list.push(r.hospitalId);
+      map.set(r.patientId, list);
+    }
+    return map;
+  }
 }

@@ -73,8 +73,12 @@ export function getLastUpdateUseCase(): GetLastUpdate {
   return new GetLastUpdate(new DrizzleLastUpdateReader(getDb()));
 }
 
+export function reviewQueueReader(): DrizzleReviewQueueReader {
+  return new DrizzleReviewQueueReader(getDb());
+}
+
 export function listReviewQueueUseCase(): ListReviewQueue {
-  return new ListReviewQueue(new DrizzleReviewQueueReader(getDb()));
+  return new ListReviewQueue(reviewQueueReader());
 }
 
 export function resolveReviewCaseUseCase(): ResolveReviewCase {
