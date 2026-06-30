@@ -7,7 +7,12 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * Por RLS, este cliente NO puede leer ninguna tabla de datos ni el schema `sensitive`:
  * lo único que puede hacer es ejecutar el RPC mediado `search_patient`.
  */
+// Singleton por instancia: el cliente anon es stateless (sin sesión), así que
+// reutilizarlo evita reconstruirlo en cada búsqueda.
+let _client: SupabaseClient | null = null;
+
 export function createAnonClient(): SupabaseClient {
+  if (_client) return _client;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -17,7 +22,8 @@ export function createAnonClient(): SupabaseClient {
     );
   }
 
-  return createClient(url, anonKey, {
+  _client = createClient(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  return _client;
 }
