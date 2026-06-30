@@ -4,8 +4,6 @@ import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
 
-type Decision = "merge" | "keep";
-
 export interface PatientDetail {
   name: string;
   document?: string | null;
@@ -29,34 +27,28 @@ function Spinner(): React.ReactElement {
   );
 }
 
-// Botón de decisión (submit): muestra "Procesando…" mientras corre y deshabilita todo.
-function DecisionButton({
+// Submit con feedback "Procesando…" (useFormStatus es por <form>).
+function SubmitButton({
   decision,
   label,
   variant,
   action,
-  clicked,
-  onPick,
 }: {
-  decision: Decision;
+  decision: "merge" | "keep";
   label: string;
   variant?: "primary" | "outline";
   action: ReviewCaseActionsProps["action"];
-  clicked: Decision | null;
-  onPick: (d: Decision) => void;
 }): React.ReactElement {
   const { pending } = useFormStatus();
-  const busy = pending && clicked === decision;
   return (
     <Button
       type="submit"
       variant={variant}
       formAction={action.bind(null, decision)}
       disabled={pending}
-      onClick={() => onPick(decision)}
       className="w-full sm:w-auto"
     >
-      {busy ? (
+      {pending ? (
         <>
           <Spinner /> Procesando…
         </>
@@ -89,8 +81,41 @@ export function ReviewCaseActions({
   source,
   candidate,
 }: ReviewCaseActionsProps): React.ReactElement {
-  const [clicked, setClicked] = useState<Decision | null>(null);
   const [showDetail, setShowDetail] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  const hidden = (
+    <>
+      <input type="hidden" name="patientId" value={patientId} />
+      <input type="hidden" name="candidateId" value={candidateId} />
+    </>
+  );
+
+  // Confirmación inline de la fusión (irreversible): muestra quién sobrevive y quién se elimina.
+  if (confirming) {
+    return (
+      <div className="space-y-3 border-t border-border pt-3">
+        <div className="space-y-2 rounded-[var(--radius-control)] border border-warning/40 bg-warning/5 p-3 text-sm">
+          <p className="font-medium text-text">¿Confirmás la fusión?</p>
+          {candidate ? <DetailLine label="Sobrevive" d={candidate} /> : null}
+          <DetailLine label="Se elimina (sus ingresos pasan al que sobrevive)" d={source} />
+          <p className="font-medium text-danger">Esta acción no se puede deshacer.</p>
+        </div>
+        <form className="flex flex-col gap-2 sm:flex-row" aria-live="polite">
+          {hidden}
+          <SubmitButton decision="merge" label="Confirmar fusión" action={action} />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setConfirming(false)}
+            className="w-full sm:w-auto"
+          >
+            Cancelar
+          </Button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3 border-t border-border pt-3">
@@ -112,23 +137,16 @@ export function ReviewCaseActions({
       )}
 
       <form className="flex flex-col gap-2 sm:flex-row" aria-live="polite">
-        <input type="hidden" name="patientId" value={patientId} />
-        <input type="hidden" name="candidateId" value={candidateId} />
-        <DecisionButton
-          decision="merge"
-          label="Fusionar"
-          action={action}
-          clicked={clicked}
-          onPick={setClicked}
-        />
-        <DecisionButton
-          decision="keep"
-          label="Mantener separados"
-          variant="outline"
-          action={action}
-          clicked={clicked}
-          onPick={setClicked}
-        />
+        {hidden}
+        <Button
+          type="button"
+          onClick={() => setConfirming(true)}
+          disabled={!candidate}
+          className="w-full sm:w-auto"
+        >
+          Fusionar
+        </Button>
+        <SubmitButton decision="keep" label="Mantener separados" variant="outline" action={action} />
         <Button
           type="button"
           variant="outline"
