@@ -22,21 +22,25 @@ export default async function CargarPage({
   const member = current.member;
   const isScoped = member.hospitalId !== null;
 
-  const hospitales = await hospitalDirectory().listActive();
   const sp = await searchParams;
   // Acotado → su hospital, fijo (no manipulable). Global → el elegido por query (o ninguno aún).
   const activeHospitalId = isScoped ? member.hospitalId : (sp.hospitalId ?? null);
   const search = (sp.q ?? "").trim();
   const pageSize = 50;
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
-  const { items, total } = activeHospitalId
-    ? await hospitalPatientListReader().listForHospital({
-        hospitalId: activeHospitalId,
-        search,
-        limit: pageSize,
-        offset: (page - 1) * pageSize,
-      })
-    : { items: [], total: 0 };
+  // En paralelo: directorio de hospitales y la página de la lista (queries independientes).
+  const [hospitales, listResult] = await Promise.all([
+    hospitalDirectory().listActive(),
+    activeHospitalId
+      ? hospitalPatientListReader().listForHospital({
+          hospitalId: activeHospitalId,
+          search,
+          limit: pageSize,
+          offset: (page - 1) * pageSize,
+        })
+      : Promise.resolve({ items: [], total: 0 }),
+  ]);
+  const { items, total } = listResult;
   const activeHospitalName = hospitales.find((h) => h.id === activeHospitalId)?.name ?? null;
 
   return (
