@@ -25,5 +25,11 @@ describe("PersonName", () => {
 
   it("does NOT strip words that merely contain 'menor'", () => {
     expect(PersonName.fromRaw("Maria Menores").normalized).toBe("maria menores");
+    expect(PersonName.fromRaw("Maria Menores").flaggedMinor).toBe(false);
+  });
+
+  it("exposes flaggedMinor when the name contained 'menor' (to preserve the signal)", () => {
+    expect(PersonName.fromRaw("Adrian Diaz Menor").flaggedMinor).toBe(true);
+    expect(PersonName.fromRaw("Juan Perez").flaggedMinor).toBe(false);
   });
 });
