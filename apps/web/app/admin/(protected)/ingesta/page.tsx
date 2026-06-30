@@ -1,8 +1,8 @@
 import { IngestaClient } from "./ingesta-client";
 
-// Red de seguridad de tiempo para archivos en el límite. Hobby tope 60s; el peso
-// real lo lleva el bulk insert (segundos). Si se pasa a Vercel Pro, subir a 300.
-export const maxDuration = 60;
+// Red de seguridad de tiempo para archivos grandes. Vercel Pro permite hasta 300s;
+// el peso real lo lleva el bulk insert (segundos), esto evita el corte por timeout.
+export const maxDuration = 300;
 export const runtime = "nodejs";
 
 /**
