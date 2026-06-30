@@ -151,7 +151,8 @@ export class IngestPatientList {
         const document = r.documentNumber ? DocumentId.fromRaw(r.documentNumber) : null;
         // La condición de menor puede venir por edad o escrita en el nombre (flaggedMinor).
         const isMinor = isMinorAge(r.age) || name.flaggedMinor;
-        const deceased = looksDeceased(r.clinicalNotes);
+        // El fallecimiento puede venir en observaciones o escrito en el nombre (flaggedDeceased).
+        const deceased = looksDeceased(r.clinicalNotes) || name.flaggedDeceased;
         const status: PatientStatus = deceased ? "deceased" : "admitted";
 
         const incomingHospitalId = r.hospitalName
@@ -223,13 +224,17 @@ export class IngestPatientList {
         if (r.phone || r.address) {
           contactsToInsert.push({ patientId, phone: r.phone, address: r.address });
         }
-        // La condición de menor se preserva en el schema sensible (NO expuesto), no en el nombre.
+        // La condición de menor/fallecido se preserva en el schema sensible (NO expuesto), no en el nombre.
         const minorNote = name.flaggedMinor
           ? "Registrado como menor de edad en la lista."
           : null;
+        const deceasedNote = name.flaggedDeceased
+          ? "Registrado como fallecido en la lista."
+          : null;
         const noteText =
-          [r.clinicalNotes, minorNote].filter((s): s is string => s !== null).join(" — ") ||
-          null;
+          [r.clinicalNotes, minorNote, deceasedNote]
+            .filter((s): s is string => s !== null)
+            .join(" — ") || null;
         if (noteText && admissionId) {
           notesToInsert.push({ admissionId, text: noteText });
         }

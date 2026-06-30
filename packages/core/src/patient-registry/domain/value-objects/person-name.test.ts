@@ -32,4 +32,24 @@ describe("PersonName", () => {
     expect(PersonName.fromRaw("Adrian Diaz Menor").flaggedMinor).toBe(true);
     expect(PersonName.fromRaw("Juan Perez").flaggedMinor).toBe(false);
   });
+
+  it("strips death markers from the name (privacy: never expose death status)", () => {
+    expect(PersonName.fromRaw("Juan Perez FALLECIDO").normalized).toBe("juan perez");
+    expect(PersonName.fromRaw("Maria Fallecida Diaz").tokens).toEqual(["diaz", "maria"]);
+    expect(PersonName.fromRaw("Pedro Murio").normalized).toBe("pedro");
+    expect(PersonName.fromRaw("Ana Muerta").normalized).toBe("ana");
+    // un marcador suelto deja el nombre vacío.
+    expect(PersonName.fromRaw("falleció").isEmpty).toBe(true);
+  });
+
+  it("does NOT strip words that merely contain a death marker", () => {
+    expect(PersonName.fromRaw("Pedro Murillo").normalized).toBe("pedro murillo");
+    expect(PersonName.fromRaw("Pedro Murillo").flaggedDeceased).toBe(false);
+  });
+
+  it("exposes flaggedDeceased when the name contained a death marker", () => {
+    expect(PersonName.fromRaw("Juan Perez Fallecio").flaggedDeceased).toBe(true);
+    expect(PersonName.fromRaw("Ana Muerta").flaggedDeceased).toBe(true);
+    expect(PersonName.fromRaw("Juan Perez").flaggedDeceased).toBe(false);
+  });
 });
