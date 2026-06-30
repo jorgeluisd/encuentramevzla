@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  ExportHospitalPatients,
   GetLastUpdate,
   IngestPatientList,
   ListAuditLog,
@@ -18,6 +19,7 @@ import {
   DrizzleAuditLog,
   DrizzleIngestionUnitOfWork,
 } from "@/lib/infrastructure/patient-registry/drizzle-repositories";
+import { DrizzleHospitalPatientExportReader } from "@/lib/infrastructure/patient-registry/drizzle-hospital-patient-export-reader";
 import { DrizzleTeamMemberRepository } from "@/lib/infrastructure/patient-registry/drizzle-team-member-repository";
 import { DrizzleAuditLogReader } from "@/lib/infrastructure/patient-registry/drizzle-audit-log-reader";
 import { DrizzleLastUpdateReader } from "@/lib/infrastructure/patient-registry/drizzle-last-update-reader";
@@ -69,4 +71,13 @@ export function resolveReviewCaseUseCase(): ResolveReviewCase {
 
 export function mergePatientsUseCase(): MergePatients {
   return new MergePatients(new DrizzlePatientMerger(getDb()));
+}
+
+export function exportHospitalPatientsUseCase(): ExportHospitalPatients {
+  return new ExportHospitalPatients(new DrizzleHospitalPatientExportReader(getDb()));
+}
+
+// Escritor de auditoría (server-side) para acciones fuera del flujo de ingesta (p.ej. descargas).
+export function auditLogWriter(): DrizzleAuditLog {
+  return new DrizzleAuditLog(getDb());
 }

@@ -46,6 +46,8 @@ export async function subirExcelAction(
     const resumen = await ingestPatientListUseCase().execute({
       fileBytes,
       uploadedBy: member.id,
+      // Miembro acotado → se IGNORA la columna de hospital del Excel y todo va al suyo (D4).
+      forcedHospitalId: member.hospitalId,
     });
     // Regenera el home estático para refrescar el sello "última actualización".
     revalidatePath("/");
