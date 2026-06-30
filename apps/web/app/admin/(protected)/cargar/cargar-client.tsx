@@ -9,6 +9,7 @@ import {
   editarPacienteAction,
 } from "@/lib/actions/voz";
 import { subirExcelAction } from "@/lib/actions/ingesta";
+import { ExcelUploadField } from "@/components/excel-upload-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardTitle } from "@/components/ui/card";
@@ -399,13 +400,7 @@ export function CargarClient({
             <CardBody className="space-y-3">
               <CardTitle>Subir Excel</CardTitle>
               <form onSubmit={subirExcel} className="flex flex-wrap items-center gap-3">
-                <input
-                  type="file"
-                  name="archivo"
-                  accept=".xlsx,.xls"
-                  required
-                  className="text-sm text-text-2"
-                />
+                <ExcelUploadField name="archivo" required disabled={guardando} />
                 <Button type="submit" variant="outline" disabled={guardando}>
                   Procesar archivo
                 </Button>
