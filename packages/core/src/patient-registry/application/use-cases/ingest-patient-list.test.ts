@@ -313,4 +313,29 @@ describe("IngestPatientList", () => {
     expect(inserted.isMinor).toBe(true); // campo NO expuesto por el buscador
     expect(sensitive.notes.some((nt) => /menor de edad/i.test(nt.text))).toBe(true);
   });
+
+  it("preserva el fallecimiento del nombre como status deceased + nota sensible (no en el nombre)", async () => {
+    const repos = buildRepos();
+    const patients = repos.patients as FakePatients;
+    const sensitive = repos.sensitive as FakeSensitive;
+    const uow = new FakeUnitOfWork(repos);
+    let n = 0;
+
+    const summary = await new IngestPatientList({
+      parser: new FakeParser({
+        sheet: "S",
+        rows: [
+          row({ fingerprint: "d1", fullName: "Pedro Gomez Fallecido", hospitalName: "Hospital X" }),
+        ],
+      }),
+      uow,
+      newId: () => `id-${++n}`,
+    }).execute({ fileBytes: new Uint8Array(), uploadedBy: null });
+
+    const inserted = patients.inserted[0]!;
+    expect(inserted.name.normalized).toBe("pedro gomez"); // el nombre NO contiene el marcador
+    expect(inserted.status).toBe("deceased"); // estado NO expuesto en claro por el buscador
+    expect(summary.deceased).toBe(1);
+    expect(sensitive.notes.some((nt) => /fallecido/i.test(nt.text))).toBe(true);
+  });
 });
