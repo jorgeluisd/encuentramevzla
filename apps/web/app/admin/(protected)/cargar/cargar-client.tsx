@@ -100,7 +100,14 @@ export function CargarClient({
     setAviso(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
+      // Voz a bitrate bajo (Opus): subida liviana en redes lentas. 32 kbps tolera el
+      // ruido de hospital sin perder inteligibilidad. Feature-detect: iOS/Safari no
+      // graba webm → cae al códec por defecto del navegador.
+      const opts: MediaRecorderOptions = { audioBitsPerSecond: 32_000 };
+      if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+        opts.mimeType = "audio/webm;codecs=opus";
+      }
+      const mr = new MediaRecorder(stream, opts);
       chunksRef.current = [];
       mr.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
@@ -244,7 +251,7 @@ export function CargarClient({
     <div className="space-y-6">
       {/* Cabecera: hospital fijo (acotado) o selector (global) + contador. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h1 className="text-xl font-semibold text-text">Cargar pacientes</h1>
           {isScoped ? (
             <Badge variant="primary">{activeHospitalName ?? "Tu hospital"}</Badge>

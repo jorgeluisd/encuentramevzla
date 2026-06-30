@@ -187,7 +187,7 @@ export function EquipoClient({ isGlobal, hospitals, members, hospitalName }: Pro
                           className="flex items-center gap-2"
                         >
                           <input type="hidden" name="memberId" value={m.id} />
-                          <select name="role" defaultValue={m.role} className={cn(fieldClass, "h-[40px] w-auto py-0")}>
+                          <select key={m.role} name="role" defaultValue={m.role} className={cn(fieldClass, "h-[40px] w-auto py-0")}>
                             {assignableRoles.map((r) => (
                               <option key={r} value={r}>
                                 {ROLE_LABELS[r]}

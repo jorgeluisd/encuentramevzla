@@ -50,7 +50,7 @@ export default async function ProtectedAdminLayout({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-        <nav className="flex items-center gap-4 text-sm">
+        <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
           <Link href="/admin/cargar" className="font-medium text-text hover:text-primary">
             Cargar
           </Link>
@@ -76,9 +76,9 @@ export default async function ProtectedAdminLayout({
             </Link>
           )}
         </nav>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-text-2">{member.email}</span>
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 items-center gap-2 text-sm">
+            <span className="truncate text-text-2">{member.email}</span>
             <Badge variant={member.role === "uploader" ? "muted" : "primary"}>
               {member.role === "moderator"
                 ? "Moderador"
