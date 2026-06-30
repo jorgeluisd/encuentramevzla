@@ -289,4 +289,28 @@ describe("IngestPatientList", () => {
       ].sort(),
     );
   });
+
+  it("preserva 'menor' del nombre como is_minor + nota sensible (no en el nombre)", async () => {
+    const repos = buildRepos();
+    const patients = repos.patients as FakePatients;
+    const sensitive = repos.sensitive as FakeSensitive;
+    const uow = new FakeUnitOfWork(repos);
+    let n = 0;
+
+    await new IngestPatientList({
+      parser: new FakeParser({
+        sheet: "S",
+        rows: [
+          row({ fingerprint: "m1", fullName: "Adrian Diaz Menor", hospitalName: "Hospital X" }),
+        ],
+      }),
+      uow,
+      newId: () => `id-${++n}`,
+    }).execute({ fileBytes: new Uint8Array(), uploadedBy: null });
+
+    const inserted = patients.inserted[0]!;
+    expect(inserted.name.normalized).toBe("adrian diaz"); // el nombre NO contiene 'menor'
+    expect(inserted.isMinor).toBe(true); // campo NO expuesto por el buscador
+    expect(sensitive.notes.some((nt) => /menor de edad/i.test(nt.text))).toBe(true);
+  });
 });
