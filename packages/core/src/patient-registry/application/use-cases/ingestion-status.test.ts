@@ -16,6 +16,7 @@ const base: IngestionSummary = {
   newAdmissions: 10,
   minors: 0,
   deceased: 0,
+  otherHospitalsMentioned: 0,
 };
 
 describe("ingestionDisplayStatus", () => {

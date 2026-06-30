@@ -6,7 +6,7 @@ import {
   looksDeceased,
   type PatientStatus,
 } from "../../domain/value-objects/patient-status";
-import type { PatientListParser } from "../ports/patient-list-parser";
+import type { ParsedPatientList, PatientListParser } from "../ports/patient-list-parser";
 import type {
   AuditEntry,
   ExistingPatient,
@@ -33,6 +33,9 @@ export interface IngestionSummary {
   newAdmissions: number;
   minors: number;
   deceased: number;
+  // Cuántos hospitales DISTINTOS mencionaba el archivo cuando la carga viene forzada a uno (scoped).
+  // 0 si no hay scoping o si el archivo no nombra hospitales.
+  otherHospitalsMentioned: number;
 }
 
 export interface IngestDependencies {
@@ -47,12 +50,29 @@ export interface IngestDependencies {
 export class IngestPatientList {
   constructor(private readonly deps: IngestDependencies) {}
 
+  // Camino Excel: parsea bytes y delega en el núcleo compartido.
   async execute(input: {
     fileBytes: Uint8Array;
     uploadedBy: string | null;
+    // Miembro scoped → todas las filas van a este hospital (server-side, no manipulable). D4.
+    forcedHospitalId?: string | null;
   }): Promise<IngestionSummary> {
-    const { parser, uow, newId } = this.deps;
-    const { sheet, rows } = parser.parse(input.fileBytes);
+    const parsed = this.deps.parser.parse(input.fileBytes);
+    return this.ingestParsed(parsed, {
+      uploadedBy: input.uploadedBy,
+      forcedHospitalId: input.forcedHospitalId ?? null,
+    });
+  }
+
+  // Núcleo de dedup + persistencia, compartido por Excel / voz / manual (todos arman un
+  // ParsedPatientList y entran por aquí → heredan dedup, merge, conflictos, menor/fallecido y audit).
+  async ingestParsed(
+    list: ParsedPatientList,
+    opts: { uploadedBy: string | null; forcedHospitalId?: string | null },
+  ): Promise<IngestionSummary> {
+    const { uow, newId } = this.deps;
+    const { sheet, rows } = list;
+    const forced = opts.forcedHospitalId ?? null;
 
     const seen = new Set<string>();
     const unique = rows.filter((r) =>
@@ -62,17 +82,29 @@ export class IngestPatientList {
     const fileId = newId();
 
     return uow.runAtomic(async (repos) => {
-      // Resolver cada hospital una sola vez (dentro de la tx: atómico).
+      // Resolución de hospital: si la carga viene forzada (miembro scoped) se IGNORA la columna
+      // del archivo y todo va al hospital forzado; solo se cuenta cuántos otros mencionaba (D4).
+      // Si no, se resuelve por nombre cada uno una sola vez (dentro de la tx: atómico).
       const hospitalIds = new Map<string, string>();
-      for (const r of unique) {
-        if (r.hospitalName && !hospitalIds.has(r.hospitalName)) {
-          hospitalIds.set(r.hospitalName, await repos.hospitals.resolveByName(r.hospitalName));
+      let otherHospitalsMentioned = 0;
+      if (forced) {
+        const mentioned = new Set<string>();
+        for (const r of unique) if (r.hospitalName) mentioned.add(r.hospitalName);
+        otherHospitalsMentioned = mentioned.size;
+      } else {
+        for (const r of unique) {
+          if (r.hospitalName && !hospitalIds.has(r.hospitalName)) {
+            hospitalIds.set(r.hospitalName, await repos.hospitals.resolveByName(r.hospitalName));
+          }
         }
       }
+      // Hospital efectivo de una fila: el forzado (si lo hay) o el resuelto por nombre.
+      const hospitalIdForRow = (r: (typeof unique)[number]): string | null =>
+        forced ?? (r.hospitalName ? (hospitalIds.get(r.hospitalName) ?? null) : null);
 
       const newFingerprints = await repos.rawRows.persistNew(unique, {
         fileId,
-        uploadedBy: input.uploadedBy,
+        uploadedBy: opts.uploadedBy,
       });
       const toProcess = unique.filter((r) => newFingerprints.has(r.fingerprint));
 
@@ -134,7 +166,7 @@ export class IngestPatientList {
         uniqueRows: unique.length,
         newRows: newFingerprints.size,
         alreadyPresent: unique.length - newFingerprints.size,
-        hospitals: hospitalIds.size,
+        hospitals: forced ? 1 : hospitalIds.size,
         newPatients: 0,
         mergedPatients: 0,
         documentConflicts: 0,
@@ -142,6 +174,7 @@ export class IngestPatientList {
         newAdmissions: 0,
         minors: 0,
         deceased: 0,
+        otherHospitalsMentioned,
       };
 
       for (const r of toProcess) {
@@ -155,9 +188,7 @@ export class IngestPatientList {
         const deceased = looksDeceased(r.clinicalNotes) || name.flaggedDeceased;
         const status: PatientStatus = deceased ? "deceased" : "admitted";
 
-        const incomingHospitalId = r.hospitalName
-          ? (hospitalIds.get(r.hospitalName) ?? null)
-          : null;
+        const incomingHospitalId = hospitalIdForRow(r);
         const decision = decideMatch({ name, document }, candidates, incomingHospitalId);
 
         let patientId: string;
@@ -180,7 +211,7 @@ export class IngestPatientList {
           if (decision.kind === "conflict") {
             summary.documentConflicts++;
             dedupEntries.push({
-              actorId: input.uploadedBy,
+              actorId: opts.uploadedBy,
               action: "dedup_document_conflict",
               entity: "patient",
               entityId: patientId,
@@ -189,7 +220,7 @@ export class IngestPatientList {
           } else if (decision.kind === "review") {
             summary.pendingReview++;
             dedupEntries.push({
-              actorId: input.uploadedBy,
+              actorId: opts.uploadedBy,
               action: "dedup_pending_review",
               entity: "patient",
               entityId: patientId,
@@ -205,8 +236,8 @@ export class IngestPatientList {
         // Ingreso (persona ↔ hospital); permite traslados. Reusa la admisión
         // existente (mismo archivo o ya en DB) en lugar de duplicarla.
         let admissionId: string | null = null;
-        if (r.hospitalName) {
-          const hospitalId = hospitalIds.get(r.hospitalName)!;
+        const hospitalId = hospitalIdForRow(r);
+        if (hospitalId) {
           const key = `${patientId}|${hospitalId}`;
           admissionId = admissionByKey.get(key) ?? existingAdmissions.get(key) ?? null;
           if (!admissionId) {
@@ -256,7 +287,7 @@ export class IngestPatientList {
       await repos.audit.recordMany([
         ...dedupEntries,
         {
-          actorId: input.uploadedBy,
+          actorId: opts.uploadedBy,
           action: "ingest_patient_list",
           entity: "raw_rows",
           entityId: null,

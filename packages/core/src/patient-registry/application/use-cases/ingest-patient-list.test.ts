@@ -69,8 +69,10 @@ class FakePatients implements PatientRepository {
 
 class FakeHospitals implements HospitalRepository {
   private seq = 0;
+  resolveCalls = 0;
   ids = new Map<string, string>();
   async resolveByName(name: string): Promise<string> {
+    this.resolveCalls++;
     const found = this.ids.get(name);
     if (found) return found;
     const id = `ho-${++this.seq}`;
@@ -337,5 +339,93 @@ describe("IngestPatientList", () => {
     expect(inserted.status).toBe("deceased"); // estado NO expuesto en claro por el buscador
     expect(summary.deceased).toBe(1);
     expect(sensitive.notes.some((nt) => /fallecido/i.test(nt.text))).toBe(true);
+  });
+});
+
+describe("IngestPatientList.ingestParsed", () => {
+  // Paridad: ingestParsed sobre una lista ya parseada deduplica/persiste igual que execute.
+  it("deduplica y persiste igual que el camino Excel (paridad de summary)", async () => {
+    const list: ParsedPatientList = {
+      sheet: "Sheet1",
+      rows: [
+        row({ fingerprint: "h1", fullName: "Carlos Mendoza", age: 40, documentNumber: "24.140.952", phone: "0412-1112233" }),
+        row({ fingerprint: "h2", fullName: "Carlos Mendoza", age: 40, documentNumber: "24.140.952" }), // merge
+        row({ fingerprint: "h3", fullName: "Lucia Perez", age: 10 }), // menor, new
+      ],
+    };
+    const repos = buildRepos();
+    const patients = repos.patients as FakePatients;
+    const uow = new FakeUnitOfWork(repos);
+    let n = 0;
+
+    const summary = await new IngestPatientList({
+      parser: new FakeParser(list),
+      uow,
+      newId: () => `id-${++n}`,
+    }).ingestParsed(list, { uploadedBy: null });
+
+    expect(summary.rowsRead).toBe(3);
+    expect(summary.newPatients).toBe(2);
+    expect(summary.mergedPatients).toBe(1);
+    expect(summary.minors).toBe(1);
+    expect(summary.newAdmissions).toBe(2);
+    expect(summary.otherHospitalsMentioned).toBe(0);
+    expect(uow.runs).toBe(1);
+    expect(patients.createManyCalls).toBe(1);
+    expect(patients.inserted).toHaveLength(2);
+  });
+
+  // D4: miembro scoped → la columna de hospital del archivo se IGNORA, todo va al hospital forzado.
+  it("forcedHospitalId fuerza el hospital ignorando la columna del archivo", async () => {
+    const list: ParsedPatientList = {
+      sheet: "S",
+      rows: [row({ fingerprint: "f1", fullName: "Ana Rojas", documentNumber: "12.345.678", hospitalName: "Hospital Y" })],
+    };
+    const repos = buildRepos();
+    const patients = repos.patients as FakePatients;
+    const admissions = repos.admissions as FakeAdmissions;
+    const hospitals = repos.hospitals as FakeHospitals;
+    let n = 0;
+
+    const summary = await new IngestPatientList({
+      parser: new FakeParser(list),
+      uow: new FakeUnitOfWork(repos),
+      newId: () => `id-${++n}`,
+    }).ingestParsed(list, { uploadedBy: null, forcedHospitalId: "ho-forced" });
+
+    // No se resuelve ningún hospital por nombre: el id viene forzado del servidor.
+    expect(hospitals.resolveCalls).toBe(0);
+    expect(summary.newAdmissions).toBe(1);
+    expect(admissions.inserted).toHaveLength(1);
+    expect(admissions.inserted[0]!.hospitalId).toBe("ho-forced");
+    expect(patients.inserted).toHaveLength(1);
+    // El archivo mencionaba otro hospital → se reporta (no se cargó en él).
+    expect(summary.otherHospitalsMentioned).toBe(1);
+    expect(summary.hospitals).toBe(1);
+  });
+
+  // Fila dictada (voz/manual): sin columna de hospital, igual se admite en el hospital forzado.
+  it("una fila sin hospital + forcedHospitalId crea la admisión en el hospital forzado", async () => {
+    const list: ParsedPatientList = {
+      sheet: "voz",
+      rows: [row({ fingerprint: "v1", fullName: "Pedro Suarez", documentNumber: "30.111.222", hospitalName: null, clinicalNotes: "dolor toracico" })],
+    };
+    const repos = buildRepos();
+    const admissions = repos.admissions as FakeAdmissions;
+    const sensitive = repos.sensitive as FakeSensitive;
+    let n = 0;
+
+    const summary = await new IngestPatientList({
+      parser: new FakeParser(list),
+      uow: new FakeUnitOfWork(repos),
+      newId: () => `id-${++n}`,
+    }).ingestParsed(list, { uploadedBy: "uploader@hosp.test", forcedHospitalId: "ho-A" });
+
+    expect(summary.newPatients).toBe(1);
+    expect(summary.newAdmissions).toBe(1);
+    expect(admissions.inserted[0]!.hospitalId).toBe("ho-A");
+    expect(summary.otherHospitalsMentioned).toBe(0);
+    // La nota clínica se ancla a la admisión del hospital forzado.
+    expect(sensitive.notes).toHaveLength(1);
   });
 });

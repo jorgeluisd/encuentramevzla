@@ -1,7 +1,11 @@
 import "server-only";
 
 import { cache } from "react";
-import type { TeamMember } from "@evzla/core";
+import {
+  canManageHospitalTeam,
+  canResolveReview,
+  type TeamMember,
+} from "@evzla/core";
 import { getSessionEmail } from "@/lib/supabase/ssr-server";
 import { resolveTeamMemberUseCase } from "@/lib/composition";
 
@@ -21,3 +25,24 @@ export const getCurrentMember = cache(async (): Promise<CurrentMember> => {
   if (result.kind !== "authorized") return { kind: "unauthorized", email };
   return { kind: "authorized", member: result.member };
 });
+
+// --- Helpers de scope server-side (defensa en profundidad sobre el dominio) ---
+
+// Hospital del miembro autenticado; `null` = global (owner/moderador) o sin sesión.
+export function memberHospitalId(current: CurrentMember): string | null {
+  return current.kind === "authorized" ? current.member.hospitalId : null;
+}
+
+// ¿Puede gestionar (invitar) personal de un equipo? hospital_admin (el suyo) o moderador global.
+export function memberCanManageHospitalTeam(current: CurrentMember): boolean {
+  return current.kind === "authorized" && canManageHospitalTeam(current.member.role);
+}
+
+// ¿Puede resolver un caso de la cola de revisión? Moderador global (cualquiera) o
+// hospital_admin SOLO de su propio hospital. Scoping server-side (D5/P5).
+export function memberCanResolveReview(
+  current: CurrentMember,
+  caseHospitalId: string | null,
+): boolean {
+  return current.kind === "authorized" && canResolveReview(current.member, caseHospitalId);
+}
