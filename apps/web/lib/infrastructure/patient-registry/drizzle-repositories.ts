@@ -1,4 +1,4 @@
-import { arrayOverlaps, eq, inArray, or, sql } from "drizzle-orm";
+import { arrayOverlaps, inArray, or, sql } from "drizzle-orm";
 import {
   admissions,
   auditLog,
@@ -128,10 +128,12 @@ export class DrizzleHospitalRepository implements HospitalRepository {
   constructor(private readonly db: DbOrTx) {}
 
   async resolveByName(name: string): Promise<string> {
+    // Case-insensitive: "Campo de Golf Caribe" y "CAMPO DE GOLF CARIBE" son el mismo
+    // hospital. Se conserva la capitalización del PRIMERO que se haya insertado.
     const existing = await this.db
       .select({ id: hospitals.id })
       .from(hospitals)
-      .where(eq(hospitals.name, name))
+      .where(sql`lower(${hospitals.name}) = lower(${name})`)
       .limit(1);
     if (existing[0]) return existing[0].id;
     const [row] = await this.db
