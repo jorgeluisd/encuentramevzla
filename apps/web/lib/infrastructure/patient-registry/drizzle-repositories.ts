@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { arrayOverlaps, eq, inArray, or } from "drizzle-orm";
 import {
   admissions,
   auditLog,
@@ -15,6 +15,7 @@ import {
   type AdmissionRepository,
   type AuditEntry,
   type AuditLog,
+  type CandidateKeys,
   type ExistingPatient,
   type HospitalRepository,
   type IngestionRepositories,
@@ -47,7 +48,14 @@ function chunk<T>(items: T[], size: number): T[][] {
 export class DrizzlePatientRepository implements PatientRepository {
   constructor(private readonly db: DbOrTx) {}
 
-  async loadAll(): Promise<ExistingPatient[]> {
+  async loadCandidates(keys: CandidateKeys): Promise<ExistingPatient[]> {
+    // Solo candidatos plausibles del lote: misma cédula O ≥1 token de nombre en común.
+    const conds = [];
+    if (keys.documents.length > 0)
+      conds.push(inArray(patients.normalizedDocNumber, keys.documents));
+    if (keys.tokens.length > 0)
+      conds.push(arrayOverlaps(patients.nameTokens, keys.tokens));
+    if (conds.length === 0) return [];
     const rows = await this.db
       .select({
         id: patients.id,
@@ -56,7 +64,8 @@ export class DrizzlePatientRepository implements PatientRepository {
         isMinor: patients.isMinor,
         status: patients.status,
       })
-      .from(patients);
+      .from(patients)
+      .where(conds.length === 1 ? conds[0] : or(...conds));
     return rows.map((r) => ({
       id: r.id,
       name: PersonName.fromRaw(r.name),
