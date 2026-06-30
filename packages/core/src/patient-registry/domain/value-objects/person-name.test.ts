@@ -15,4 +15,15 @@ describe("PersonName", () => {
   it("flags blank names as empty", () => {
     expect(PersonName.fromRaw("   ").isEmpty).toBe(true);
   });
+
+  it("strips the exact word 'menor' (privacy: never expose minor status)", () => {
+    expect(PersonName.fromRaw("Juan Menor").normalized).toBe("juan");
+    expect(PersonName.fromRaw("Pedro Perez MENOR").tokens).toEqual(["pedro", "perez"]);
+    // 'menor' suelto deja el nombre vacío.
+    expect(PersonName.fromRaw("menor").isEmpty).toBe(true);
+  });
+
+  it("does NOT strip words that merely contain 'menor'", () => {
+    expect(PersonName.fromRaw("Maria Menores").normalized).toBe("maria menores");
+  });
 });

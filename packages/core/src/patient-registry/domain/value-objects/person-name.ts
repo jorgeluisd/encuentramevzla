@@ -26,6 +26,9 @@ function normalize(raw: string): string {
     .replace(DIACRITICS, "")
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
+    // Privacidad: nunca exponer la condición de menor de edad. Se elimina la
+    // palabra exacta "menor" (no "menores"/"menorca") si viene dentro del nombre.
+    .replace(/\bmenor\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
