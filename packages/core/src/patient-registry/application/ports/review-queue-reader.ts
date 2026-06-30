@@ -11,6 +11,7 @@ export interface PatientBrief {
   id: string;
   name: string;
   document: string | null;
+  hospitals?: string[]; // hospitales con ingreso (para el detalle de "Más info")
 }
 
 // Port de LECTURA de la cola (la resolución se escribe por el port AuditLog).
@@ -18,4 +19,6 @@ export interface ReviewQueueReader {
   listOpenFlags(): Promise<ReviewFlag[]>; // dedup_* sin review_resolved
   findByDocument(document: string): Promise<PatientBrief[]>;
   loadBriefs(): Promise<PatientBrief[]>; // para recompute de zona gris
+  // Hospitales (por nombre) de cada paciente; para mostrar dónde están los duplicados.
+  hospitalsOf(patientIds: readonly string[]): Promise<Map<string, string[]>>;
 }
