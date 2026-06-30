@@ -83,7 +83,9 @@ class FakeAdmissions implements AdmissionRepository {
   createManyCalls = 0;
   inserted: NewAdmissionRow[] = [];
   constructor(private readonly existing = new Map<string, string>()) {}
-  async loadExistingIds(): Promise<Map<string, string>> {
+  loadExistingIdsArg: string[] | null = null;
+  async loadExistingIds(patientIds: string[]): Promise<Map<string, string>> {
+    this.loadExistingIdsArg = patientIds;
     return new Map(this.existing);
   }
   async createMany(rows: NewAdmissionRow[]): Promise<void> {

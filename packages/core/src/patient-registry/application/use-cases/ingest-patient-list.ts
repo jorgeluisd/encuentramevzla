@@ -87,7 +87,16 @@ export class IngestPatientList {
         const document = r.documentNumber ? DocumentId.fromRaw(r.documentNumber) : null;
         if (document?.isValid) documents.add(document.normalized);
       }
-      const existingAdmissions = await repos.admissions.loadExistingIds();
+      const loaded = await repos.patients.loadCandidates({
+        documents: [...documents],
+        tokens: [...tokens],
+      });
+
+      // Admisiones SOLO de los candidatos (no toda la tabla): para reusar ingresos
+      // existentes y desambiguar homónimos. Los pacientes nuevos no tienen admisiones.
+      const existingAdmissions = await repos.admissions.loadExistingIds(
+        loaded.map((c) => c.id),
+      );
 
       // patientId → hospitales con ingreso (desambigua homónimos sin cédula). El Set se
       // comparte con el candidato, así que sumar una admisión nueva se refleja en el matching.
@@ -105,13 +114,10 @@ export class IngestPatientList {
         if (pid && hid) hospitalsOf(pid).add(hid);
       }
 
-      // Solo candidatos plausibles del lote (perf), enriquecidos con sus hospitales.
-      const candidates: ExistingPatient[] = (
-        await repos.patients.loadCandidates({
-          documents: [...documents],
-          tokens: [...tokens],
-        })
-      ).map((c) => ({ ...c, hospitalIds: hospitalsOf(c.id) }));
+      const candidates: ExistingPatient[] = loaded.map((c) => ({
+        ...c,
+        hospitalIds: hospitalsOf(c.id),
+      }));
 
       // Acumuladores en memoria (se persisten en lote al final).
       const patientsToInsert: NewPatientRow[] = [];
