@@ -129,18 +129,18 @@ export default function RootLayout({
               <span className="text-text">encuentrame</span>
               <span className="text-primary">VZLA</span>
             </Link>
-            <div className="flex items-center gap-4 text-sm text-text-2">
+            <div className="flex items-center gap-3 text-sm text-text-2 sm:gap-4">
               <Link href="/" className="hover:text-primary">
                 Inicio
               </Link>
               <Link href="/confianza" className="hover:text-primary">
                 Privacidad
               </Link>
-              <Link
-                href="/admin/ingesta"
-                className="hidden hover:text-primary sm:inline"
-              >
-                Portal del equipo
+              {/* Visible también en móvil (etiqueta corta para que quepa); el staff carga
+                  desde el teléfono. Entra por /admin/cargar (acotado/login según sesión). */}
+              <Link href="/admin/cargar" className="hover:text-primary">
+                <span className="sm:hidden">Equipo</span>
+                <span className="hidden sm:inline">Portal del equipo</span>
               </Link>
             </div>
           </nav>
