@@ -2,8 +2,8 @@ import { canModerate, displayName, type ReviewCase } from "@evzla/core";
 import { getCurrentMember } from "@/lib/auth/current-member";
 import { listReviewQueueUseCase } from "@/lib/composition";
 import { resolveReviewAction } from "@/lib/actions/review";
+import { ReviewCaseActions } from "./review-case-actions";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
@@ -93,39 +93,21 @@ function ReviewCaseCard({ item }: { item: ReviewCase }): React.ReactElement {
           </div>
         </div>
 
-        <form className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row">
-          <input type="hidden" name="patientId" value={item.patientId} />
-          <input type="hidden" name="candidateId" value={candidateId} />
-          <Button
-            type="submit"
-            name="decision"
-            value="merge"
-            formAction={resolveReviewAction}
-            className="w-full sm:w-auto"
-          >
-            Fusionar
-          </Button>
-          <Button
-            type="submit"
-            name="decision"
-            value="keep"
-            variant="outline"
-            formAction={resolveReviewAction}
-            className="w-full sm:w-auto"
-          >
-            Mantener separados
-          </Button>
-          <Button
-            type="submit"
-            name="decision"
-            value="more_info"
-            variant="outline"
-            formAction={resolveReviewAction}
-            className="w-full sm:w-auto"
-          >
-            Más info
-          </Button>
-        </form>
+        <ReviewCaseActions
+          patientId={item.patientId}
+          candidateId={candidateId}
+          action={resolveReviewAction}
+          source={{ name: displayName(item.name), hospitals: item.hospitals }}
+          candidate={
+            item.candidates[0]
+              ? {
+                  name: displayName(item.candidates[0].name),
+                  document: item.candidates[0].document,
+                  hospitals: item.candidates[0].hospitals ?? [],
+                }
+              : null
+          }
+        />
       </CardBody>
     </Card>
   );

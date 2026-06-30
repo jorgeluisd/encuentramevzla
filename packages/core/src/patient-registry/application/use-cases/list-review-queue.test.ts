@@ -10,6 +10,7 @@ class FakeReader implements ReviewQueueReader {
     private readonly flags: ReviewFlag[],
     private readonly byDoc: Record<string, PatientBrief[]> = {},
     private readonly briefs: PatientBrief[] = [],
+    private readonly hospitals: Record<string, string[]> = {},
   ) {}
   async listOpenFlags(): Promise<ReviewFlag[]> {
     return this.flags;
@@ -19,6 +20,9 @@ class FakeReader implements ReviewQueueReader {
   }
   async loadBriefs(): Promise<PatientBrief[]> {
     return this.briefs;
+  }
+  async hospitalsOf(patientIds: readonly string[]): Promise<Map<string, string[]>> {
+    return new Map(patientIds.map((id) => [id, this.hospitals[id] ?? []]));
   }
 }
 
@@ -50,5 +54,22 @@ describe("ListReviewQueue", () => {
     );
     const cases = await new ListReviewQueue(reader).execute();
     expect(cases[0]!.candidates.map((c) => c.id)).toEqual(["sim"]);
+  });
+
+  it("enriches the case and its candidates with their hospitals", async () => {
+    const reader = new FakeReader(
+      [{ patientId: "new", name: "gosling raymond", document: "29900166", reason: "document_conflict" }],
+      {
+        "29900166": [
+          { id: "new", name: "gosling raymond", document: "29900166" },
+          { id: "old", name: "gosling hairmon", document: "29900166" },
+        ],
+      },
+      [],
+      { new: ["Hospital X"], old: ["Hospital Y", "Hospital Z"] },
+    );
+    const cases = await new ListReviewQueue(reader).execute();
+    expect(cases[0]!.hospitals).toEqual(["Hospital X"]);
+    expect(cases[0]!.candidates[0]!.hospitals).toEqual(["Hospital Y", "Hospital Z"]);
   });
 });
