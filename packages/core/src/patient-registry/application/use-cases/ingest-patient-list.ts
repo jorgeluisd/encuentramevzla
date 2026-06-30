@@ -76,7 +76,7 @@ export class IngestPatientList {
       });
       const toProcess = unique.filter((r) => newFingerprints.has(r.fingerprint));
 
-      // Candidatos acotados al lote (no toda la tabla): misma cédula o ≥1 token de nombre.
+      // Claves del lote para acotar candidatos (no toda la tabla): cédula o ≥1 token de nombre.
       const documents = new Set<string>();
       const tokens = new Set<string>();
       for (const r of toProcess) {
@@ -87,11 +87,31 @@ export class IngestPatientList {
         const document = r.documentNumber ? DocumentId.fromRaw(r.documentNumber) : null;
         if (document?.isValid) documents.add(document.normalized);
       }
-      const candidates: ExistingPatient[] = await repos.patients.loadCandidates({
-        documents: [...documents],
-        tokens: [...tokens],
-      });
       const existingAdmissions = await repos.admissions.loadExistingIds();
+
+      // patientId → hospitales con ingreso (desambigua homónimos sin cédula). El Set se
+      // comparte con el candidato, así que sumar una admisión nueva se refleja en el matching.
+      const patientHospitals = new Map<string, Set<string>>();
+      const hospitalsOf = (patientId: string): Set<string> => {
+        let set = patientHospitals.get(patientId);
+        if (!set) {
+          set = new Set<string>();
+          patientHospitals.set(patientId, set);
+        }
+        return set;
+      };
+      for (const key of existingAdmissions.keys()) {
+        const [pid, hid] = key.split("|");
+        if (pid && hid) hospitalsOf(pid).add(hid);
+      }
+
+      // Solo candidatos plausibles del lote (perf), enriquecidos con sus hospitales.
+      const candidates: ExistingPatient[] = (
+        await repos.patients.loadCandidates({
+          documents: [...documents],
+          tokens: [...tokens],
+        })
+      ).map((c) => ({ ...c, hospitalIds: hospitalsOf(c.id) }));
 
       // Acumuladores en memoria (se persisten en lote al final).
       const patientsToInsert: NewPatientRow[] = [];
@@ -127,7 +147,10 @@ export class IngestPatientList {
         const deceased = looksDeceased(r.clinicalNotes);
         const status: PatientStatus = deceased ? "deceased" : "admitted";
 
-        const decision = decideMatch({ name, document }, candidates);
+        const incomingHospitalId = r.hospitalName
+          ? (hospitalIds.get(r.hospitalName) ?? null)
+          : null;
+        const decision = decideMatch({ name, document }, candidates, incomingHospitalId);
 
         let patientId: string;
         if (decision.kind === "merge") {
@@ -145,7 +168,7 @@ export class IngestPatientList {
         } else {
           patientId = newId();
           patientsToInsert.push({ id: patientId, name, document, age: r.age, isMinor, status });
-          candidates.push({ id: patientId, name, document, isMinor, status });
+          candidates.push({ id: patientId, name, document, isMinor, status, hospitalIds: hospitalsOf(patientId) });
           if (decision.kind === "conflict") {
             summary.documentConflicts++;
             dedupEntries.push({
@@ -186,6 +209,7 @@ export class IngestPatientList {
           } else {
             admissionByKey.set(key, admissionId);
           }
+          hospitalsOf(patientId).add(hospitalId);
         }
 
         // Datos sensibles (esquema aislado).

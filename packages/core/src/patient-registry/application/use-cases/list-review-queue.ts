@@ -15,6 +15,7 @@ export interface ReviewCase {
   name: string;
   reason: ReviewFlag["reason"];
   candidates: PatientBrief[];
+  hospitals: string[]; // hospitales del registro dudoso (source)
 }
 
 /**
@@ -54,7 +55,18 @@ export class ListReviewQueue {
         name: flag.name,
         reason: flag.reason,
         candidates,
+        hospitals: [],
       });
+    }
+
+    // Enriquecer con hospitales (una sola lectura) para el detalle de "Más info".
+    const ids = cases.flatMap((c) => [c.patientId, ...c.candidates.map((b) => b.id)]);
+    if (ids.length > 0) {
+      const byPatient = await this.reader.hospitalsOf(ids);
+      for (const c of cases) {
+        c.hospitals = byPatient.get(c.patientId) ?? [];
+        for (const cand of c.candidates) cand.hospitals = byPatient.get(cand.id) ?? [];
+      }
     }
 
     return cases;

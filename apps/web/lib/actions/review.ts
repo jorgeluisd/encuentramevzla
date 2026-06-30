@@ -12,14 +12,16 @@ import {
  * Registra la decisión del moderador sobre un caso dudoso (triage). Re-verifica el
  * rol server-side; no ejecuta la fusión (eso es una entrega aparte).
  */
-export async function resolveReviewAction(formData: FormData): Promise<void> {
+export async function resolveReviewAction(
+  decision: string,
+  formData: FormData,
+): Promise<void> {
   const current = await getCurrentMember();
   if (current.kind !== "authorized" || !canModerate(current.member.role)) {
     throw new Error("No autorizado.");
   }
 
   const patientId = String(formData.get("patientId") ?? "");
-  const decision = String(formData.get("decision") ?? "");
   const candidate = formData.get("candidateId")
     ? String(formData.get("candidateId"))
     : null;

@@ -1,6 +1,6 @@
 import type { DocumentId } from "../value-objects/document-id";
 import type { PersonName } from "../value-objects/person-name";
-import { tokenSetSimilarity, trigramSimilarity } from "./string-similarity";
+import { levenshtein, tokenSetSimilarity, trigramSimilarity } from "./string-similarity";
 
 export interface PatientIdentity {
   name: PersonName;
@@ -9,6 +9,8 @@ export interface PatientIdentity {
 
 export interface MatchCandidate extends PatientIdentity {
   id: string;
+  // Hospitales donde el candidato tiene ingreso (para desambiguar homónimos sin cédula).
+  hospitalIds?: ReadonlySet<string>;
 }
 
 export type MatchDecision =
@@ -20,6 +22,7 @@ export type MatchDecision =
 const MERGE_BY_NAME = 0.92;
 const REVIEW_BY_NAME = 0.8;
 const SAME_DOCUMENT_NAME = 0.5;
+const DOC_TYPO_DISTANCE = 2; // cédulas que difieren ≤ 2 dígitos: posible typo → revisión
 
 // Combinación trigram + token-set en [0,1].
 export function nameSimilarity(a: PersonName, b: PersonName): number {
@@ -49,6 +52,7 @@ export function mostSimilarByName(
 export function decideMatch(
   incoming: PatientIdentity,
   candidates: readonly MatchCandidate[],
+  incomingHospitalId?: string | null,
 ): MatchDecision {
   const document = incoming.document;
   if (document && document.isValid) {
@@ -71,7 +75,30 @@ export function decideMatch(
       best = candidate;
     }
   }
-  if (best && bestScore >= MERGE_BY_NAME) return { kind: "merge", targetId: best.id };
+  if (best && bestScore >= MERGE_BY_NAME) {
+    const bestDoc = best.document;
+    // Ambos con cédula válida pero DISTINTA: pocos dígitos = posible typo → revisión;
+    // muy distintas = persona distinta → no fusionar.
+    if (document?.isValid && bestDoc?.isValid && bestDoc.normalized !== document.normalized) {
+      return levenshtein(document.normalized, bestDoc.normalized) <= DOC_TYPO_DISTANCE
+        ? { kind: "review" }
+        : { kind: "new" };
+    }
+    // Ninguno aporta cédula que distinga: desambiguar por hospital. Si sabemos ambos
+    // hospitales y el del registro NO está entre los del candidato → posibles homónimos
+    // en hospitales distintos → no fusionar (la búsqueda igual muestra ambas coincidencias).
+    if (
+      !document?.isValid &&
+      !bestDoc?.isValid &&
+      incomingHospitalId &&
+      best.hospitalIds &&
+      best.hospitalIds.size > 0 &&
+      !best.hospitalIds.has(incomingHospitalId)
+    ) {
+      return { kind: "new" };
+    }
+    return { kind: "merge", targetId: best.id };
+  }
   if (best && bestScore >= REVIEW_BY_NAME) return { kind: "review" };
   return { kind: "new" };
 }

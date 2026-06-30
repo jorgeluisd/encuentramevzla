@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
-import { auditLog, patients } from "@evzla/db";
+import { admissions, auditLog, hospitals, patients } from "@evzla/db";
 import type { getDb } from "@evzla/db/client";
 import type {
   PatientBrief,
@@ -77,5 +77,21 @@ export class DrizzleReviewQueueReader implements ReviewQueueReader {
       .from(patients)
       .where(where);
     return rows.map((r) => ({ id: r.id, name: r.name, document: r.document }));
+  }
+
+  async hospitalsOf(patientIds: readonly string[]): Promise<Map<string, string[]>> {
+    const map = new Map<string, string[]>();
+    if (patientIds.length === 0) return map;
+    const rows = await this.db
+      .select({ patientId: admissions.patientId, hospital: hospitals.name })
+      .from(admissions)
+      .innerJoin(hospitals, eq(hospitals.id, admissions.hospitalId))
+      .where(inArray(admissions.patientId, [...patientIds]));
+    for (const r of rows) {
+      const list = map.get(r.patientId) ?? [];
+      if (!list.includes(r.hospital)) list.push(r.hospital);
+      map.set(r.patientId, list);
+    }
+    return map;
   }
 }

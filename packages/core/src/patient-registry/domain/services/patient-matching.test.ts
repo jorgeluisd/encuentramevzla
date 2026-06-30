@@ -64,6 +64,49 @@ describe("decideMatch", () => {
       decideMatch(incoming("Carlos Mendoza", "22.89"), [candidate("p1", "Carlos Mendoza", "22.89")]),
     ).toEqual({ kind: "merge", targetId: "p1" });
   });
+
+  it("sends to review when both documents differ by only a few digits (likely typo)", () => {
+    // Distancia ≤ 2 = posible error de tipeo en la cédula → revisión humana.
+    expect(
+      decideMatch(incoming("Carlos Mendoza", "11111111"), [
+        candidate("p1", "Carlos Mendoza", "11111133"),
+      ]),
+    ).toEqual({ kind: "review" });
+  });
+
+  it("creates new when both documents differ a lot (different people)", () => {
+    expect(
+      decideMatch(incoming("Carlos Mendoza", "11111111"), [
+        candidate("p1", "Carlos Mendoza", "99999999"),
+      ]),
+    ).toEqual({ kind: "new" });
+  });
+
+  it("still merges an identical name when only one side has a document", () => {
+    expect(
+      decideMatch(incoming("Carlos Mendoza", "11111111"), [candidate("p1", "Carlos Mendoza", null)]),
+    ).toEqual({ kind: "merge", targetId: "p1" });
+    expect(
+      decideMatch(incoming("Carlos Mendoza", null), [candidate("p1", "Carlos Mendoza", "11111111")]),
+    ).toEqual({ kind: "merge", targetId: "p1" });
+  });
+
+  const withHospitals = (id: string, name: string, hospitals: string[]): MatchCandidate => ({
+    ...candidate(id, name, null),
+    hospitalIds: new Set(hospitals),
+  });
+
+  it("merges same name without document when in the SAME hospital", () => {
+    expect(
+      decideMatch(incoming("Carlos Mendoza", null), [withHospitals("p1", "Carlos Mendoza", ["H1"])], "H1"),
+    ).toEqual({ kind: "merge", targetId: "p1" });
+  });
+
+  it("creates new for same name without document in a DIFFERENT hospital", () => {
+    expect(
+      decideMatch(incoming("Carlos Mendoza", null), [withHospitals("p1", "Carlos Mendoza", ["H1"])], "H2"),
+    ).toEqual({ kind: "new" });
+  });
 });
 
 describe("mostSimilarByName", () => {
