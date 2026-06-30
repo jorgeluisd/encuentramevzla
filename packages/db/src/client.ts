@@ -23,7 +23,9 @@ export function getDb() {
     throw new Error("Falta DATABASE_URL en el entorno del servidor.");
   }
   // prepare:false => compatible con el pooler de Supabase (pgbouncer, modo transacción).
-  _sql = postgres(url, { prepare: false, max: 5 });
+  // En serverless cada instancia tiene su propio pool; los timeouts liberan conexiones
+  // ociosas rápido y evitan colgarse si el pooler está saturado. `max` se deja bajo.
+  _sql = postgres(url, { prepare: false, max: 5, idle_timeout: 20, connect_timeout: 10 });
   _db = drizzle(_sql, { schema });
   return _db;
 }

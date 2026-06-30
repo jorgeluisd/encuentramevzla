@@ -76,7 +76,17 @@ export class IngestPatientList {
       });
       const toProcess = unique.filter((r) => newFingerprints.has(r.fingerprint));
 
-      // Estado existente: pacientes y admisiones (una lectura cada uno).
+      // Claves del lote para acotar candidatos (no toda la tabla): cédula o ≥1 token de nombre.
+      const documents = new Set<string>();
+      const tokens = new Set<string>();
+      for (const r of toProcess) {
+        if (!r.fullName) continue;
+        const name = PersonName.fromRaw(r.fullName);
+        if (name.isEmpty) continue;
+        for (const t of name.tokens) tokens.add(t);
+        const document = r.documentNumber ? DocumentId.fromRaw(r.documentNumber) : null;
+        if (document?.isValid) documents.add(document.normalized);
+      }
       const existingAdmissions = await repos.admissions.loadExistingIds();
 
       // patientId → hospitales con ingreso (desambigua homónimos sin cédula). El Set se
@@ -95,10 +105,13 @@ export class IngestPatientList {
         if (pid && hid) hospitalsOf(pid).add(hid);
       }
 
-      const candidates: ExistingPatient[] = (await repos.patients.loadAll()).map((c) => ({
-        ...c,
-        hospitalIds: hospitalsOf(c.id),
-      }));
+      // Solo candidatos plausibles del lote (perf), enriquecidos con sus hospitales.
+      const candidates: ExistingPatient[] = (
+        await repos.patients.loadCandidates({
+          documents: [...documents],
+          tokens: [...tokens],
+        })
+      ).map((c) => ({ ...c, hospitalIds: hospitalsOf(c.id) }));
 
       // Acumuladores en memoria (se persisten en lote al final).
       const patientsToInsert: NewPatientRow[] = [];
