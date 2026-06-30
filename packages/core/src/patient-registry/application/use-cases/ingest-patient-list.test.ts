@@ -404,6 +404,26 @@ describe("IngestPatientList.ingestParsed", () => {
     expect(summary.hospitals).toBe(1);
   });
 
+  // D8: el toggle explícito "¿falleció?" marca el estado aunque la nota no lo diga.
+  it("deceased=true fuerza el estado fallecido sin marcador en la nota", async () => {
+    const list: ParsedPatientList = {
+      sheet: "voz",
+      rows: [row({ fingerprint: "d1", fullName: "Rosa Mora", clinicalNotes: "estable", deceased: true })],
+    };
+    const repos = buildRepos();
+    const patients = repos.patients as FakePatients;
+    let n = 0;
+
+    const summary = await new IngestPatientList({
+      parser: new FakeParser(list),
+      uow: new FakeUnitOfWork(repos),
+      newId: () => `id-${++n}`,
+    }).ingestParsed(list, { uploadedBy: null, forcedHospitalId: "ho-A" });
+
+    expect(patients.inserted[0]!.status).toBe("deceased");
+    expect(summary.deceased).toBe(1);
+  });
+
   // Fila dictada (voz/manual): sin columna de hospital, igual se admite en el hospital forzado.
   it("una fila sin hospital + forcedHospitalId crea la admisión en el hospital forzado", async () => {
     const list: ParsedPatientList = {

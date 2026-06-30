@@ -184,8 +184,8 @@ export class IngestPatientList {
         const document = r.documentNumber ? DocumentId.fromRaw(r.documentNumber) : null;
         // La condición de menor puede venir por edad o escrita en el nombre (flaggedMinor).
         const isMinor = isMinorAge(r.age) || name.flaggedMinor;
-        // El fallecimiento puede venir en observaciones o escrito en el nombre (flaggedDeceased).
-        const deceased = looksDeceased(r.clinicalNotes) || name.flaggedDeceased;
+        // El fallecimiento puede venir por el toggle explícito (D8), en observaciones o en el nombre.
+        const deceased = r.deceased === true || looksDeceased(r.clinicalNotes) || name.flaggedDeceased;
         const status: PatientStatus = deceased ? "deceased" : "admitted";
 
         const incomingHospitalId = hospitalIdForRow(r);

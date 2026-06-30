@@ -10,6 +10,7 @@ import {
   ResolveReviewCase,
   ResolveTeamMember,
   SearchPatients,
+  TranscribePatientDictation,
   VerifyHumanChallenge,
 } from "@evzla/core";
 import { getDb } from "@evzla/db/client";
@@ -20,6 +21,8 @@ import {
   DrizzleIngestionUnitOfWork,
 } from "@/lib/infrastructure/patient-registry/drizzle-repositories";
 import { DrizzleHospitalPatientExportReader } from "@/lib/infrastructure/patient-registry/drizzle-hospital-patient-export-reader";
+import { OpenAiSpeechTranscriber } from "@/lib/infrastructure/patient-registry/openai-speech-transcriber";
+import { ClaudePatientRowExtractor } from "@/lib/infrastructure/patient-registry/claude-patient-row-extractor";
 import { DrizzleTeamMemberRepository } from "@/lib/infrastructure/patient-registry/drizzle-team-member-repository";
 import { DrizzleAuditLogReader } from "@/lib/infrastructure/patient-registry/drizzle-audit-log-reader";
 import { DrizzleLastUpdateReader } from "@/lib/infrastructure/patient-registry/drizzle-last-update-reader";
@@ -80,4 +83,12 @@ export function exportHospitalPatientsUseCase(): ExportHospitalPatients {
 // Escritor de auditoría (server-side) para acciones fuera del flujo de ingesta (p.ej. descargas).
 export function auditLogWriter(): DrizzleAuditLog {
   return new DrizzleAuditLog(getDb());
+}
+
+export function transcribePatientDictationUseCase(): TranscribePatientDictation {
+  // Los SDK externos (STT + extracción) viven en infraestructura; las claves, en el entorno.
+  return new TranscribePatientDictation({
+    transcriber: new OpenAiSpeechTranscriber(process.env.OPENAI_API_KEY ?? ""),
+    extractor: new ClaudePatientRowExtractor(process.env.ANTHROPIC_API_KEY ?? ""),
+  });
 }
