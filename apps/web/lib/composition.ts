@@ -1,16 +1,19 @@
 import "server-only";
 
 import {
+  CreateHospital,
   EditPatient,
   ExportHospitalPatients,
   GetLastUpdate,
   IngestPatientList,
+  InviteTeamMember,
   ListAuditLog,
   ListReviewQueue,
   MergePatients,
   ResolveReviewCase,
   ResolveTeamMember,
   SearchPatients,
+  SetTeamMemberAccess,
   TranscribePatientDictation,
   VerifyHumanChallenge,
 } from "@evzla/core";
@@ -27,6 +30,8 @@ import { ClaudePatientRowExtractor } from "@/lib/infrastructure/patient-registry
 import { DrizzlePatientEditor } from "@/lib/infrastructure/patient-registry/drizzle-patient-editor";
 import { DrizzleHospitalPatientListReader } from "@/lib/infrastructure/patient-registry/drizzle-hospital-patient-list-reader";
 import { DrizzleHospitalDirectory } from "@/lib/infrastructure/patient-registry/drizzle-hospital-directory";
+import { DrizzleHospitalAdmin } from "@/lib/infrastructure/patient-registry/drizzle-hospital-admin";
+import { DrizzleTeamMemberAdmin } from "@/lib/infrastructure/patient-registry/drizzle-team-member-admin";
 import { DrizzleTeamMemberRepository } from "@/lib/infrastructure/patient-registry/drizzle-team-member-repository";
 import { DrizzleAuditLogReader } from "@/lib/infrastructure/patient-registry/drizzle-audit-log-reader";
 import { DrizzleLastUpdateReader } from "@/lib/infrastructure/patient-registry/drizzle-last-update-reader";
@@ -99,6 +104,23 @@ export function hospitalPatientListReader(): DrizzleHospitalPatientListReader {
 
 export function hospitalDirectory(): DrizzleHospitalDirectory {
   return new DrizzleHospitalDirectory(getDb());
+}
+
+// El admin de equipo se comparte entre las tres acciones (lista + invitar + acceso).
+export function teamMemberAdmin(): DrizzleTeamMemberAdmin {
+  return new DrizzleTeamMemberAdmin(getDb());
+}
+
+export function createHospitalUseCase(): CreateHospital {
+  return new CreateHospital(new DrizzleHospitalAdmin(getDb()));
+}
+
+export function inviteTeamMemberUseCase(): InviteTeamMember {
+  return new InviteTeamMember(teamMemberAdmin());
+}
+
+export function setTeamMemberAccessUseCase(): SetTeamMemberAccess {
+  return new SetTeamMemberAccess(teamMemberAdmin());
 }
 
 export function transcribePatientDictationUseCase(): TranscribePatientDictation {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { canModerate } from "@evzla/core";
+import { canManageHospitalTeam, canModerate } from "@evzla/core";
 import { getCurrentMember } from "@/lib/auth/current-member";
 import { signOutAction } from "@/lib/actions/auth";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +54,11 @@ export default async function ProtectedAdminLayout({
           <Link href="/admin/cargar" className="font-medium text-text hover:text-primary">
             Cargar
           </Link>
+          {canManageHospitalTeam(member.role) && (
+            <Link href="/admin/equipo" className="font-medium text-text hover:text-primary">
+              Equipo
+            </Link>
+          )}
           {canModerate(member.role) && (
             <>
               <Link
