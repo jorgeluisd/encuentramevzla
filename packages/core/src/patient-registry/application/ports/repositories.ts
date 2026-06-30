@@ -51,8 +51,17 @@ export interface NewClinicalNoteRow {
   text: string;
 }
 
+// Claves del lote para acotar los candidatos a comparar (en vez de cargar toda la tabla).
+export interface CandidateKeys {
+  documents: string[]; // cédulas normalizadas válidas presentes en el lote
+  tokens: string[]; // unión de tokens de nombre del lote
+}
+
 export interface PatientRepository {
-  loadAll(): Promise<ExistingPatient[]>;
+  // Carga SOLO candidatos plausibles: misma cédula O que comparten ≥1 token de nombre.
+  // Es un SUPERCONJUNTO demostrable de lo que `decideMatch` puede fusionar/revisar
+  // (nameSimilarity ≥ 0.8 ⇒ tokenJaccard ≥ 0.6 ⇒ comparten ≥1 token exacto).
+  loadCandidates(keys: CandidateKeys): Promise<ExistingPatient[]>;
   createMany(rows: NewPatientRow[]): Promise<void>;
   updateMany(updates: PatientUpdateRow[]): Promise<void>;
 }
