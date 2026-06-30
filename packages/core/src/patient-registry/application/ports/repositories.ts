@@ -71,8 +71,9 @@ export interface HospitalRepository {
 }
 
 export interface AdmissionRepository {
-  // Mapa `patientId|hospitalId` → admissionId de TODAS las admisiones (una lectura, no N findId).
-  loadExistingIds(): Promise<Map<string, string>>;
+  // Mapa `patientId|hospitalId` → admissionId, SOLO de los pacientes dados (los
+  // candidatos del lote), no toda la tabla. Para reusar ingresos sin duplicar.
+  loadExistingIds(patientIds: string[]): Promise<Map<string, string>>;
   createMany(rows: NewAdmissionRow[]): Promise<void>;
 }
 

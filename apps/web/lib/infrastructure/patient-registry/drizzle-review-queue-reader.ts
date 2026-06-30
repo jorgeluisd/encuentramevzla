@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
 import { admissions, auditLog, hospitals, patients } from "@evzla/db";
 import type { getDb } from "@evzla/db/client";
 import type {
@@ -19,14 +19,11 @@ export class DrizzleReviewQueueReader implements ReviewQueueReader {
   constructor(private readonly db: Db) {}
 
   async listOpenFlags(): Promise<ReviewFlag[]> {
-    // Pacientes ya resueltos (para excluirlos de la cola).
-    const resolvedRows = await this.db
+    // Subconsulta de pacientes ya resueltos: se excluyen en SQL (no cargando todo a memoria).
+    const resolved = this.db
       .select({ id: auditLog.entityId })
       .from(auditLog)
-      .where(eq(auditLog.action, "review_resolved"));
-    const resolved = resolvedRows
-      .map((r) => r.id)
-      .filter((id): id is string => id !== null);
+      .where(and(eq(auditLog.action, "review_resolved"), isNotNull(auditLog.entityId)));
 
     const rows = await this.db
       .select({
@@ -41,7 +38,7 @@ export class DrizzleReviewQueueReader implements ReviewQueueReader {
       .where(
         and(
           inArray(auditLog.action, DEDUP_ACTIONS),
-          resolved.length > 0 ? notInArray(auditLog.entityId, resolved) : undefined,
+          notInArray(auditLog.entityId, resolved),
         ),
       )
       .orderBy(asc(auditLog.createdAt));

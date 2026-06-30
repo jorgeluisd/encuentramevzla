@@ -1,4 +1,4 @@
-import { arrayOverlaps, eq, inArray, or } from "drizzle-orm";
+import { arrayOverlaps, eq, inArray, or, sql } from "drizzle-orm";
 import {
   admissions,
   auditLog,
@@ -93,15 +93,33 @@ export class DrizzlePatientRepository implements PatientRepository {
   }
 
   async updateMany(updates: PatientUpdateRow[]): Promise<void> {
-    // Las fusiones son minoría; cada una es un UPDATE puntual dentro de la tx.
-    for (const u of updates) {
-      const values: Partial<typeof patients.$inferInsert> = {};
-      if (u.changes.document) values.normalizedDocNumber = u.changes.document.normalized;
-      if (u.changes.isMinor !== undefined) values.isMinor = u.changes.isMinor;
-      if (u.changes.status) values.status = u.changes.status;
-      if (Object.keys(values).length > 0) {
-        await this.db.update(patients).set(values).where(eq(patients.id, u.id));
-      }
+    // Un solo UPDATE ... FROM (VALUES ...) por lote (anti-N+1). Los campos no
+    // cambiados van NULL y COALESCE conserva el valor existente.
+    const rows = updates
+      .map((u) => ({
+        id: u.id,
+        doc: u.changes.document ? u.changes.document.normalized : null,
+        isMinor: u.changes.isMinor ?? null,
+        status: u.changes.status ?? null,
+      }))
+      .filter((r) => r.doc !== null || r.isMinor !== null || r.status !== null);
+    if (rows.length === 0) return;
+    for (const part of chunk(rows, BATCH)) {
+      const values = sql.join(
+        part.map(
+          (r) =>
+            sql`(${r.id}::uuid, ${r.doc}::text, ${r.isMinor}::boolean, ${r.status}::public.person_status)`,
+        ),
+        sql`, `,
+      );
+      await this.db.execute(sql`
+        UPDATE public.patients AS p SET
+          normalized_doc_number = COALESCE(v.doc, p.normalized_doc_number),
+          is_minor = COALESCE(v.is_minor, p.is_minor),
+          status = COALESCE(v.status, p.status)
+        FROM (VALUES ${values}) AS v(id, doc, is_minor, status)
+        WHERE p.id = v.id
+      `);
     }
   }
 }
@@ -127,15 +145,17 @@ export class DrizzleHospitalRepository implements HospitalRepository {
 export class DrizzleAdmissionRepository implements AdmissionRepository {
   constructor(private readonly db: DbOrTx) {}
 
-  async loadExistingIds(): Promise<Map<string, string>> {
+  async loadExistingIds(patientIds: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    if (patientIds.length === 0) return map;
     const rows = await this.db
       .select({
         id: admissions.id,
         patientId: admissions.patientId,
         hospitalId: admissions.hospitalId,
       })
-      .from(admissions);
-    const map = new Map<string, string>();
+      .from(admissions)
+      .where(inArray(admissions.patientId, patientIds));
     for (const r of rows) map.set(`${r.patientId}|${r.hospitalId}`, r.id);
     return map;
   }
