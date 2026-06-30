@@ -152,8 +152,14 @@ resultado público. También fuera: offline/PWA (Fase 1b), Telegram (Fase 2), se
 
 - **Separación `public`/`sensitive` intacta.** La descarga lee `sensitive` **solo server-side** vía
   `service_role`, **acotada al hospital**; jamás se importa `sensitive` en cliente.
-- **Buscador público sin cambios.** Sigue solo por `search_patient`; menores/fallecidos siguen sin exponer
-  nombre. (El efecto del estado en el buscador es otro spec.)
+- **Buscador público sin cambios.** Esta feature **no toca** `search_patient`. La política vigente del
+  buscador es la de **ADR-0003 / spec 0015** (migración `0006_search_patient_show_all`): toda coincidencia
+  —**incluidos menores y fallecidos**— devuelve hospital + nombre + mesa de información, porque tras el
+  sismo las familias necesitan saber **en qué hospital** está la persona. Lo que se mantiene protegido: el
+  buscador **jamás** devuelve datos del esquema `sensitive` (teléfono/dirección/notas del paciente), solo el
+  `info_desk_phone` del hospital; y el nombre se muestra **limpio de marcadores** ("menor"/"fallecido", PRs
+  #53/#58). 0018 solo **captura** `is_minor` y el estado/`¿falleció?`; **no** cambia lo que ve el buscador.
+  (El efecto del *estado* en el buscador —localizado/de alta salen, trasladado actualiza— es otro mini-spec.)
 - **Voz a terceros:** el STT ve PII → adapter con **cláusula no-train**, **procesador documentado**, **aviso
   visible** al personal. **Audio descartado** tras transcribir (no se persiste blob).
 - **Scoping:** un miembro de hospital A no lee/descarga/edita/resuelve nada de B (validado server-side).
