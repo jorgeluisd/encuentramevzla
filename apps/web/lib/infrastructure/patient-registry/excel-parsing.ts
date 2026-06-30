@@ -104,13 +104,27 @@ export function parsePatientSheet(bytes: ArrayBuffer | Uint8Array): ParsedSheet 
   return chosen ?? { sheet: "", headers: [], rows: [] };
 }
 
-export type ColumnMap = Partial<Record<keyof MappedPatient, string>>;
+export type ColumnMap = Partial<Record<keyof MappedPatient, string>> & {
+  surname?: string; // columna de apellidos, SOLO si el nombre viene separado de los nombres
+};
 
 export function mapColumns(headers: string[]): ColumnMap {
   const map: ColumnMap = {};
   for (const field of FIELDS) {
+    if (field === "fullName") continue; // el nombre se resuelve aparte (puede venir separado)
     const column = headers.find((h) => PATTERNS[field].test(h));
     if (column) map[field] = column;
+  }
+  // Si hay una columna de APELLIDOS y una de NOMBRES distinta, el nombre viene
+  // SEPARADO y se concatenará. Si no, se usa la única columna de nombre tal cual.
+  const surnameCol = headers.find((h) => /apellid/i.test(h));
+  const givenCol = headers.find((h) => /nombre/i.test(h) && !/apellid/i.test(h));
+  if (surnameCol && givenCol) {
+    map.fullName = givenCol;
+    map.surname = surnameCol;
+  } else {
+    const single = headers.find((h) => PATTERNS.fullName.test(h));
+    if (single) map.fullName = single;
   }
   return map;
 }
@@ -131,9 +145,15 @@ function toStr(value: unknown): string | null {
 export function mapRow(row: RawRow, map: ColumnMap): MappedPatient {
   const get = (field: keyof MappedPatient): unknown =>
     map[field] ? row[map[field] as string] : null;
+  // Nombre completo: concatena nombres + apellidos SOLO si vinieron en columnas separadas.
+  const given = toStr(get("fullName"));
+  const surname = map.surname ? toStr(row[map.surname]) : null;
+  const fullName = map.surname
+    ? ([given, surname].filter((s): s is string => s !== null).join(" ") || null)
+    : given;
   return {
     hospitalName: toStr(get("hospitalName")),
-    fullName: toStr(get("fullName")),
+    fullName,
     age: parseAge(get("age")),
     documentNumber: toStr(get("documentNumber")),
     phone: toStr(get("phone")),

@@ -45,3 +45,28 @@ describe("mapRow", () => {
     expect(mapped.hospitalName).toBe("Hospital X");
   });
 });
+
+// Hoja con el nombre SEPARADO en NOMBRES + APELLIDOS.
+function buildSplitWorkbook(): Uint8Array {
+  const aoa = [
+    ["N°", "HOSPITAL", "NOMBRES", "APELLIDOS", "EDAD", "CÉDULA"],
+    ["1", "Hospital X", "Juan Carlos", "Perez Lopez", "40", "24.140.952"],
+    ["2", "Hospital Y", "Ana", null, "30", null], // apellido vacío
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Pacientes");
+  return new Uint8Array(XLSX.write(wb, { type: "array", bookType: "xlsx" }));
+}
+
+describe("nombre separado en NOMBRES + APELLIDOS", () => {
+  it("concatena nombres y apellidos cuando vienen en columnas separadas", () => {
+    const { headers, rows } = parsePatientSheet(buildSplitWorkbook());
+    const map = mapColumns(headers);
+    expect(map.fullName).toBe("NOMBRES");
+    expect(map.surname).toBe("APELLIDOS");
+    expect(mapRow(rows[0]!, map).fullName).toBe("Juan Carlos Perez Lopez");
+    // Apellido vacío → solo el nombre, sin espacios colgando.
+    expect(mapRow(rows[1]!, map).fullName).toBe("Ana");
+  });
+});
