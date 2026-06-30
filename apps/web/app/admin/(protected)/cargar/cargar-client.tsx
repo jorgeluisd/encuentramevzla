@@ -27,6 +27,10 @@ interface Props {
   activeHospitalId: string | null;
   activeHospitalName: string | null;
   items: HospitalPatientListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  search: string;
 }
 
 const STATUS_LABELS: Record<PatientStatus, string> = {
@@ -83,6 +87,10 @@ export function CargarClient({
   activeHospitalId,
   activeHospitalName,
   items,
+  total,
+  page,
+  pageSize,
+  search,
 }: Props): React.ReactElement {
   const router = useRouter();
   const [panel, setPanel] = useState<PanelMode>({ kind: "closed" });
@@ -95,6 +103,25 @@ export function CargarClient({
   const chunksRef = useRef<Blob[]>([]);
 
   const sinHospital = activeHospitalId === null;
+  const [busqueda, setBusqueda] = useState(search);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  // URL de la lista preservando hospital (global) + búsqueda + página.
+  function listUrl(next: { q?: string; page?: number }): string {
+    const params = new URLSearchParams();
+    if (!isScoped && activeHospitalId) params.set("hospitalId", activeHospitalId);
+    const q = next.q !== undefined ? next.q : search;
+    if (q) params.set("q", q);
+    const p = next.page ?? 1;
+    if (p > 1) params.set("page", String(p));
+    const qs = params.toString();
+    return qs ? `/admin/cargar?${qs}` : "/admin/cargar";
+  }
+
+  function onBuscar(e: React.FormEvent<HTMLFormElement>): void {
+    e.preventDefault();
+    router.push(listUrl({ q: busqueda.trim(), page: 1 }));
+  }
 
   // --- Grabación por voz (MediaRecorder). El audio NO se persiste; se manda a STT y se descarta.
   async function iniciarGrabacion(): Promise<void> {
@@ -273,7 +300,7 @@ export function CargarClient({
               ))}
             </select>
           )}
-          <Badge variant="muted">{items.length} en la lista</Badge>
+          <Badge variant="muted">{total} en la lista</Badge>
         </div>
         {exportHref && (
           <a href={exportHref} download>
@@ -399,9 +426,11 @@ export function CargarClient({
           <Card>
             <CardBody className="space-y-3">
               <CardTitle>Subir Excel</CardTitle>
-              <form onSubmit={subirExcel} className="flex flex-wrap items-center gap-3">
+              <form onSubmit={subirExcel} className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                {/* La carga por Excel desde Cargar va SOLO al hospital seleccionado (forzado). */}
+                <input type="hidden" name="hospitalId" value={activeHospitalId ?? ""} />
                 <ExcelUploadField name="archivo" required disabled={guardando} />
-                <Button type="submit" variant="outline" disabled={guardando}>
+                <Button type="submit" variant="outline" disabled={guardando} className="w-full sm:w-auto">
                   Procesar archivo
                 </Button>
               </form>
@@ -411,9 +440,28 @@ export function CargarClient({
           {/* Lista en vivo de lo cargado por este hospital. */}
           <Card>
             <CardBody className="space-y-3">
-              <CardTitle>Pacientes del hospital</CardTitle>
-              {items.length === 0 ? (
-                <p className="text-sm text-text-3">Todavía no hay pacientes cargados.</p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle>Pacientes del hospital</CardTitle>
+                <form onSubmit={onBuscar} className="flex w-full gap-2 sm:w-auto">
+                  <input
+                    type="search"
+                    name="q"
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    placeholder="Buscar por nombre o cédula"
+                    className={cn(fieldClass, "h-[40px] py-0 sm:w-64")}
+                  />
+                  <Button type="submit" variant="outline" className="h-[40px]">
+                    Buscar
+                  </Button>
+                </form>
+              </div>
+              {total === 0 ? (
+                <p className="text-sm text-text-3">
+                  {search
+                    ? `Sin resultados para «${search}».`
+                    : "Todavía no hay pacientes cargados."}
+                </p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -450,6 +498,33 @@ export function CargarClient({
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between gap-3 pt-2 text-sm">
+                  <span className="text-text-3">
+                    Página {page} de {totalPages} · {total} pacientes
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="md"
+                      disabled={page <= 1}
+                      onClick={() => router.push(listUrl({ page: page - 1 }))}
+                    >
+                      Anterior
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="md"
+                      disabled={page >= totalPages}
+                      onClick={() => router.push(listUrl({ page: page + 1 }))}
+                    >
+                      Siguiente
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardBody>

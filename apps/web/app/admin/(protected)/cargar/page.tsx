@@ -15,7 +15,7 @@ export const maxDuration = 300;
 export default async function CargarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ hospitalId?: string }>;
+  searchParams: Promise<{ hospitalId?: string; q?: string; page?: string }>;
 }): Promise<React.ReactElement> {
   const current = await getCurrentMember();
   if (current.kind !== "authorized") redirect("/admin/login");
@@ -26,9 +26,17 @@ export default async function CargarPage({
   const sp = await searchParams;
   // Acotado → su hospital, fijo (no manipulable). Global → el elegido por query (o ninguno aún).
   const activeHospitalId = isScoped ? member.hospitalId : (sp.hospitalId ?? null);
-  const items = activeHospitalId
-    ? await hospitalPatientListReader().listForHospital(activeHospitalId)
-    : [];
+  const search = (sp.q ?? "").trim();
+  const pageSize = 50;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const { items, total } = activeHospitalId
+    ? await hospitalPatientListReader().listForHospital({
+        hospitalId: activeHospitalId,
+        search,
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+      })
+    : { items: [], total: 0 };
   const activeHospitalName = hospitales.find((h) => h.id === activeHospitalId)?.name ?? null;
 
   return (
@@ -38,6 +46,10 @@ export default async function CargarPage({
       activeHospitalId={activeHospitalId}
       activeHospitalName={activeHospitalName}
       items={items}
+      total={total}
+      page={page}
+      pageSize={pageSize}
+      search={search}
     />
   );
 }

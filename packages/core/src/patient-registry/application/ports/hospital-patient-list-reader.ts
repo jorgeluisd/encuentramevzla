@@ -15,8 +15,22 @@ export interface HospitalPatientListItem {
   clinicalNotes: string | null;
 }
 
+// Consulta paginada y con búsqueda (por nombre o cédula) acotada a un hospital.
+export interface HospitalPatientListQuery {
+  hospitalId: string;
+  search?: string | null; // filtra por nombre o cédula; vacío = sin filtro
+  limit: number;
+  offset: number;
+}
+
+// Una página de resultados + el total que matchea (para construir la paginación).
+export interface HospitalPatientListPage {
+  items: HospitalPatientListItem[];
+  total: number;
+}
+
 // Port de LECTURA de la lista de un hospital. La implementación filtra por hospitalId
 // (service_role); el scope lo controla quién pasa el hospitalId (página server-side).
 export interface HospitalPatientListReader {
-  listForHospital(hospitalId: string): Promise<HospitalPatientListItem[]>;
+  listForHospital(query: HospitalPatientListQuery): Promise<HospitalPatientListPage>;
 }

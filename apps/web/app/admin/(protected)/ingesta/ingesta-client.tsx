@@ -106,9 +106,9 @@ export function IngestaClient(): React.ReactElement {
 
       <Card>
         <CardBody>
-          <form onSubmit={onSubmit} className="flex flex-wrap items-center gap-3">
+          <form onSubmit={onSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <ExcelUploadField name="archivo" required disabled={processing} />
-            <Button type="submit" disabled={processing}>
+            <Button type="submit" disabled={processing} className="w-full sm:w-auto">
               {processing ? "Procesando…" : "Subir y procesar"}
             </Button>
           </form>

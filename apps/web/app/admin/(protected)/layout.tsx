@@ -54,6 +54,11 @@ export default async function ProtectedAdminLayout({
           <Link href="/admin/cargar" className="font-medium text-text hover:text-primary">
             Cargar
           </Link>
+          {canModerate(member.role) && (
+            <Link href="/admin/ingesta" className="font-medium text-text hover:text-primary">
+              Ingesta
+            </Link>
+          )}
           {canManageHospitalTeam(member.role) && (
             <Link href="/admin/equipo" className="font-medium text-text hover:text-primary">
               Equipo
