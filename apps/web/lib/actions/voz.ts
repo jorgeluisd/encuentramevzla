@@ -1,8 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { canUpload, type IngestionSummary, type ParsedPatientRow } from "@evzla/core";
 import {
+  canUpload,
+  CrossHospitalEditError,
+  InvalidPatientError,
+  PatientNotFoundError,
+  type IngestionSummary,
+  type ParsedPatientRow,
+  type PatientStatus,
+  type Role,
+} from "@evzla/core";
+import {
+  editPatientUseCase,
   ingestPatientListUseCase,
   resolveTeamMemberUseCase,
   transcribePatientDictationUseCase,
@@ -31,7 +41,7 @@ export interface EstadoDictado {
 // Re-verifica sesión + rol server-side (defensa en profundidad). Las acciones de voz/manual
 // no confían en el guard de la UI.
 async function requireUploader(): Promise<
-  | { ok: true; memberId: string; hospitalId: string | null }
+  | { ok: true; memberId: string; hospitalId: string | null; role: Role }
   | { ok: false; mensaje: string }
 > {
   const email = await getSessionEmail();
@@ -40,7 +50,26 @@ async function requireUploader(): Promise<
   if (resolved.kind !== "authorized" || !canUpload(resolved.member.role)) {
     return { ok: false, mensaje: "No tienes permiso para cargar pacientes." };
   }
-  return { ok: true, memberId: resolved.member.id, hospitalId: resolved.member.hospitalId };
+  return {
+    ok: true,
+    memberId: resolved.member.id,
+    hospitalId: resolved.member.hospitalId,
+    role: resolved.member.role,
+  };
+}
+
+const STATUSES: readonly PatientStatus[] = [
+  "admitted",
+  "transferred",
+  "discharged",
+  "located",
+  "deceased",
+];
+
+function asStatus(value: FormDataEntryValue | null): PatientStatus {
+  return typeof value === "string" && (STATUSES as readonly string[]).includes(value)
+    ? (value as PatientStatus)
+    : "admitted";
 }
 
 // Dicta un paciente: STT + extracción. NO guarda nada; el audio se descarta tras transcribir (D7).
@@ -147,11 +176,76 @@ export async function confirmarDictadoAction(
       { uploadedBy: auth.memberId, forcedHospitalId: hospitalId },
     );
     revalidatePath("/");
+    revalidatePath("/admin/cargar");
     return { ok: true, resumen };
   } catch (error) {
     return {
       ok: false,
       mensaje: error instanceof Error ? error.message : "No se pudo guardar el paciente.",
+    };
+  }
+}
+
+// Alta manual: mismo camino que la confirmación de dictado (un paciente → ingestParsed forzado),
+// solo que sin transcript. El panel de confirmación es compartido (D10).
+export async function cargarPacienteManualAction(
+  prev: EstadoConfirmacion,
+  formData: FormData,
+): Promise<EstadoConfirmacion> {
+  return confirmarDictadoAction(prev, formData);
+}
+
+export interface EstadoEdicion {
+  ok: boolean;
+  mensaje?: string;
+}
+
+// Editar (no borrar) un paciente propio (D11). Recalcula value objects y queda auditado; scoped.
+export async function editarPacienteAction(
+  _prev: EstadoEdicion,
+  formData: FormData,
+): Promise<EstadoEdicion> {
+  const auth = await requireUploader();
+  if (!auth.ok) return { ok: false, mensaje: auth.mensaje };
+
+  const patientId = campo(formData, "patientId");
+  if (!patientId) return { ok: false, mensaje: "Falta el paciente a editar." };
+
+  const ageRaw = campo(formData, "age");
+  const ageNum = ageRaw ? parseInt(ageRaw.replace(/[^0-9]/g, ""), 10) : NaN;
+
+  try {
+    await editPatientUseCase().execute({
+      actor: { role: auth.role, hospitalId: auth.hospitalId },
+      actorId: auth.memberId,
+      patientId,
+      fields: {
+        fullName: campo(formData, "fullName"),
+        age: Number.isNaN(ageNum) || ageNum < 0 || ageNum > 120 ? null : ageNum,
+        documentNumber: campo(formData, "documentNumber"),
+        phone: campo(formData, "phone"),
+        address: campo(formData, "address"),
+        clinicalNotes: campo(formData, "clinicalNotes"),
+        status: asStatus(formData.get("status")),
+        deceased: formData.get("deceased") === "on" || formData.get("deceased") === "true",
+      },
+    });
+    revalidatePath("/");
+    revalidatePath("/admin/cargar");
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof CrossHospitalEditError) {
+      return { ok: false, mensaje: "No puedes editar pacientes de otro hospital." };
+    }
+    if (error instanceof PatientNotFoundError) {
+      return { ok: false, mensaje: "El paciente ya no existe." };
+    }
+    if (error instanceof InvalidPatientError) {
+      return { ok: false, mensaje: "Indica al menos el nombre o la cédula." };
+    }
+    return {
+      ok: false,
+      mensaje: error instanceof Error ? error.message : "No se pudo editar el paciente.",
     };
   }
 }

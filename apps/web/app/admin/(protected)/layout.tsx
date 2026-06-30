@@ -51,8 +51,8 @@ export default async function ProtectedAdminLayout({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
         <nav className="flex items-center gap-4 text-sm">
-          <Link href="/admin/ingesta" className="font-medium text-text hover:text-primary">
-            Cargar listas
+          <Link href="/admin/cargar" className="font-medium text-text hover:text-primary">
+            Cargar
           </Link>
           {canModerate(member.role) && (
             <>
@@ -74,8 +74,12 @@ export default async function ProtectedAdminLayout({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 text-sm">
             <span className="text-text-2">{member.email}</span>
-            <Badge variant={member.role === "moderator" ? "primary" : "muted"}>
-              {member.role === "moderator" ? "Moderador" : "Uploader"}
+            <Badge variant={member.role === "uploader" ? "muted" : "primary"}>
+              {member.role === "moderator"
+                ? "Moderador"
+                : member.role === "hospital_admin"
+                  ? "Admin hospital"
+                  : "Uploader"}
             </Badge>
           </div>
           <form action={signOutAction}>

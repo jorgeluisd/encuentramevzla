@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  EditPatient,
   ExportHospitalPatients,
   GetLastUpdate,
   IngestPatientList,
@@ -23,6 +24,9 @@ import {
 import { DrizzleHospitalPatientExportReader } from "@/lib/infrastructure/patient-registry/drizzle-hospital-patient-export-reader";
 import { OpenAiSpeechTranscriber } from "@/lib/infrastructure/patient-registry/openai-speech-transcriber";
 import { ClaudePatientRowExtractor } from "@/lib/infrastructure/patient-registry/claude-patient-row-extractor";
+import { DrizzlePatientEditor } from "@/lib/infrastructure/patient-registry/drizzle-patient-editor";
+import { DrizzleHospitalPatientListReader } from "@/lib/infrastructure/patient-registry/drizzle-hospital-patient-list-reader";
+import { DrizzleHospitalDirectory } from "@/lib/infrastructure/patient-registry/drizzle-hospital-directory";
 import { DrizzleTeamMemberRepository } from "@/lib/infrastructure/patient-registry/drizzle-team-member-repository";
 import { DrizzleAuditLogReader } from "@/lib/infrastructure/patient-registry/drizzle-audit-log-reader";
 import { DrizzleLastUpdateReader } from "@/lib/infrastructure/patient-registry/drizzle-last-update-reader";
@@ -83,6 +87,18 @@ export function exportHospitalPatientsUseCase(): ExportHospitalPatients {
 // Escritor de auditoría (server-side) para acciones fuera del flujo de ingesta (p.ej. descargas).
 export function auditLogWriter(): DrizzleAuditLog {
   return new DrizzleAuditLog(getDb());
+}
+
+export function editPatientUseCase(): EditPatient {
+  return new EditPatient(new DrizzlePatientEditor(getDb()));
+}
+
+export function hospitalPatientListReader(): DrizzleHospitalPatientListReader {
+  return new DrizzleHospitalPatientListReader(getDb());
+}
+
+export function hospitalDirectory(): DrizzleHospitalDirectory {
+  return new DrizzleHospitalDirectory(getDb());
 }
 
 export function transcribePatientDictationUseCase(): TranscribePatientDictation {
