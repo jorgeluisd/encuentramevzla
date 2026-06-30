@@ -18,7 +18,8 @@ export const statusEnum = pgEnum("person_status", [
 
 /**
  * Rol del personal verificado en el portal /admin.
- * - uploader:  puede subir listas de pacientes.
- * - moderator: uploader + revisión humana / audit log (decide fusiones).
+ * - uploader:       puede subir/editar/descargar lo suyo (acotado a su hospital).
+ * - hospital_admin: uploader + resuelve la cola de revisión de SU hospital + gestiona su personal.
+ * - moderator:      moderador global (revisión humana / audit log; decide fusiones). owner = moderador global.
  */
-export const teamRoleEnum = pgEnum("team_role", ["uploader", "moderator"]);
+export const teamRoleEnum = pgEnum("team_role", ["uploader", "hospital_admin", "moderator"]);

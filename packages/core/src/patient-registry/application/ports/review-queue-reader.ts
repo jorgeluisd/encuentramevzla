@@ -21,4 +21,6 @@ export interface ReviewQueueReader {
   loadBriefs(): Promise<PatientBrief[]>; // para recompute de zona gris
   // Hospitales (por nombre) de cada paciente; para mostrar dónde están los duplicados.
   hospitalsOf(patientIds: readonly string[]): Promise<Map<string, string[]>>;
+  // IDs de hospital (no nombres) de cada paciente; para acotar la cola al hospital del actor.
+  hospitalIdsOf(patientIds: readonly string[]): Promise<Map<string, string[]>>;
 }

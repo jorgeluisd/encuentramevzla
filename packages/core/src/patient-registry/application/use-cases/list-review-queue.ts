@@ -25,7 +25,10 @@ export interface ReviewCase {
 export class ListReviewQueue {
   constructor(private readonly reader: ReviewQueueReader) {}
 
-  async execute(): Promise<ReviewCase[]> {
+  // `scopeHospitalId` acota la cola al hospital del actor (hospital_admin); `null`/ausente = todos
+  // (moderador global). El caso se conserva si su registro dudoso tiene ingreso en ese hospital.
+  async execute(input?: { scopeHospitalId?: string | null }): Promise<ReviewCase[]> {
+    const scopeHospitalId = input?.scopeHospitalId ?? null;
     const flags = await this.reader.listOpenFlags();
     const cases: ReviewCase[] = [];
     let briefs: PatientBrief[] | null = null; // carga perezosa para zona gris
@@ -59,16 +62,26 @@ export class ListReviewQueue {
       });
     }
 
+    // Scoping por hospital (P5): conserva solo los casos cuyo registro dudoso tiene ingreso
+    // en el hospital del actor. El global (scopeHospitalId null) no filtra.
+    let scoped = cases;
+    if (scopeHospitalId !== null && cases.length > 0) {
+      const idsByPatient = await this.reader.hospitalIdsOf(cases.map((c) => c.patientId));
+      scoped = cases.filter((c) =>
+        (idsByPatient.get(c.patientId) ?? []).includes(scopeHospitalId),
+      );
+    }
+
     // Enriquecer con hospitales (una sola lectura) para el detalle de "Más info".
-    const ids = cases.flatMap((c) => [c.patientId, ...c.candidates.map((b) => b.id)]);
+    const ids = scoped.flatMap((c) => [c.patientId, ...c.candidates.map((b) => b.id)]);
     if (ids.length > 0) {
       const byPatient = await this.reader.hospitalsOf(ids);
-      for (const c of cases) {
+      for (const c of scoped) {
         c.hospitals = byPatient.get(c.patientId) ?? [];
         for (const cand of c.candidates) cand.hospitals = byPatient.get(cand.id) ?? [];
       }
     }
 
-    return cases;
+    return scoped;
   }
 }

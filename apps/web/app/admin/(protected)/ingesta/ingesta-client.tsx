@@ -9,6 +9,7 @@ import { subirExcelAction } from "@/lib/actions/ingesta";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
+import { ExcelUploadField } from "@/components/excel-upload-field";
 
 // Estados explícitos de la carga: nunca un spinner perpetuo.
 type Status = "idle" | "processing" | "done" | "error";
@@ -105,16 +106,9 @@ export function IngestaClient(): React.ReactElement {
 
       <Card>
         <CardBody>
-          <form onSubmit={onSubmit} className="space-y-4">
-            <input
-              type="file"
-              name="archivo"
-              accept=".xlsx,.xls"
-              required
-              disabled={processing}
-              className="block w-full rounded-[var(--radius-control)] border border-border bg-surface p-3 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:font-medium file:text-white disabled:opacity-60"
-            />
-            <Button type="submit" disabled={processing}>
+          <form onSubmit={onSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <ExcelUploadField name="archivo" required disabled={processing} />
+            <Button type="submit" disabled={processing} className="w-full sm:w-auto">
               {processing ? "Procesando…" : "Subir y procesar"}
             </Button>
           </form>

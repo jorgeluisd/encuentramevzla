@@ -11,6 +11,7 @@ class FakeReader implements ReviewQueueReader {
     private readonly byDoc: Record<string, PatientBrief[]> = {},
     private readonly briefs: PatientBrief[] = [],
     private readonly hospitals: Record<string, string[]> = {},
+    private readonly hospitalIds: Record<string, string[]> = {},
   ) {}
   async listOpenFlags(): Promise<ReviewFlag[]> {
     return this.flags;
@@ -23,6 +24,9 @@ class FakeReader implements ReviewQueueReader {
   }
   async hospitalsOf(patientIds: readonly string[]): Promise<Map<string, string[]>> {
     return new Map(patientIds.map((id) => [id, this.hospitals[id] ?? []]));
+  }
+  async hospitalIdsOf(patientIds: readonly string[]): Promise<Map<string, string[]>> {
+    return new Map(patientIds.map((id) => [id, this.hospitalIds[id] ?? []]));
   }
 }
 
@@ -71,5 +75,29 @@ describe("ListReviewQueue", () => {
     const cases = await new ListReviewQueue(reader).execute();
     expect(cases[0]!.hospitals).toEqual(["Hospital X"]);
     expect(cases[0]!.candidates[0]!.hospitals).toEqual(["Hospital Y", "Hospital Z"]);
+  });
+
+  it("acota la cola al hospital del actor (P5): conserva solo casos de su hospital", async () => {
+    const reader = new FakeReader(
+      [
+        { patientId: "p-a", name: "ana rojas", document: "11111111", reason: "document_conflict" },
+        { patientId: "p-b", name: "beto paz", document: "22222222", reason: "document_conflict" },
+      ],
+      {
+        "11111111": [{ id: "p-a", name: "ana rojas", document: "11111111" }, { id: "x", name: "ana r", document: "11111111" }],
+        "22222222": [{ id: "p-b", name: "beto paz", document: "22222222" }, { id: "y", name: "beto p", document: "22222222" }],
+      },
+      [],
+      {},
+      { "p-a": ["ho-1"], "p-b": ["ho-2"] }, // p-a en ho-1, p-b en ho-2
+    );
+
+    // Acotado a ho-1 → solo el caso p-a.
+    const scoped = await new ListReviewQueue(reader).execute({ scopeHospitalId: "ho-1" });
+    expect(scoped.map((c) => c.patientId)).toEqual(["p-a"]);
+
+    // Global (null) → ambos.
+    const all = await new ListReviewQueue(reader).execute({ scopeHospitalId: null });
+    expect(all.map((c) => c.patientId).sort()).toEqual(["p-a", "p-b"]);
   });
 });

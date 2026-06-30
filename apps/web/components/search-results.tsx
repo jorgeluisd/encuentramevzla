@@ -121,21 +121,21 @@ export function SearchResults({
               hospital te dirá qué hacer.
             </p>
 
-            <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-text-2">
-                Mesa de información:{" "}
-                <strong className="text-text">
-                  {group.infoDeskPhone ?? "(consulta en el hospital)"}
-                </strong>
-              </p>
-              {group.infoDeskPhone && (
+            {/* Solo si el hospital cargó un número de mesa. Sin número: no se muestra
+                (no están atendiendo llamadas); el texto de arriba ya dirige a la mesa. */}
+            {group.infoDeskPhone && (
+              <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-text-2">
+                  Mesa de información:{" "}
+                  <strong className="text-text">{group.infoDeskPhone}</strong>
+                </p>
                 <a href={`tel:${group.infoDeskPhone}`}>
                   <Button variant="danger" className="w-full sm:w-auto">
                     Llamar
                   </Button>
                 </a>
-              )}
-            </div>
+              </div>
+            )}
           </CardBody>
         </Card>
       ))}

@@ -1,14 +1,20 @@
 import "server-only";
 
 import {
+  CreateHospital,
+  EditPatient,
+  ExportHospitalPatients,
   GetLastUpdate,
   IngestPatientList,
+  InviteTeamMember,
   ListAuditLog,
   ListReviewQueue,
   MergePatients,
   ResolveReviewCase,
   ResolveTeamMember,
   SearchPatients,
+  SetTeamMemberAccess,
+  TranscribePatientDictation,
   VerifyHumanChallenge,
 } from "@evzla/core";
 import { getDb } from "@evzla/db/client";
@@ -18,6 +24,14 @@ import {
   DrizzleAuditLog,
   DrizzleIngestionUnitOfWork,
 } from "@/lib/infrastructure/patient-registry/drizzle-repositories";
+import { DrizzleHospitalPatientExportReader } from "@/lib/infrastructure/patient-registry/drizzle-hospital-patient-export-reader";
+import { OpenAiSpeechTranscriber } from "@/lib/infrastructure/patient-registry/openai-speech-transcriber";
+import { ClaudePatientRowExtractor } from "@/lib/infrastructure/patient-registry/claude-patient-row-extractor";
+import { DrizzlePatientEditor } from "@/lib/infrastructure/patient-registry/drizzle-patient-editor";
+import { DrizzleHospitalPatientListReader } from "@/lib/infrastructure/patient-registry/drizzle-hospital-patient-list-reader";
+import { DrizzleHospitalDirectory } from "@/lib/infrastructure/patient-registry/drizzle-hospital-directory";
+import { DrizzleHospitalAdmin } from "@/lib/infrastructure/patient-registry/drizzle-hospital-admin";
+import { DrizzleTeamMemberAdmin } from "@/lib/infrastructure/patient-registry/drizzle-team-member-admin";
 import { DrizzleTeamMemberRepository } from "@/lib/infrastructure/patient-registry/drizzle-team-member-repository";
 import { DrizzleAuditLogReader } from "@/lib/infrastructure/patient-registry/drizzle-audit-log-reader";
 import { DrizzleLastUpdateReader } from "@/lib/infrastructure/patient-registry/drizzle-last-update-reader";
@@ -59,8 +73,12 @@ export function getLastUpdateUseCase(): GetLastUpdate {
   return new GetLastUpdate(new DrizzleLastUpdateReader(getDb()));
 }
 
+export function reviewQueueReader(): DrizzleReviewQueueReader {
+  return new DrizzleReviewQueueReader(getDb());
+}
+
 export function listReviewQueueUseCase(): ListReviewQueue {
-  return new ListReviewQueue(new DrizzleReviewQueueReader(getDb()));
+  return new ListReviewQueue(reviewQueueReader());
 }
 
 export function resolveReviewCaseUseCase(): ResolveReviewCase {
@@ -69,4 +87,50 @@ export function resolveReviewCaseUseCase(): ResolveReviewCase {
 
 export function mergePatientsUseCase(): MergePatients {
   return new MergePatients(new DrizzlePatientMerger(getDb()));
+}
+
+export function exportHospitalPatientsUseCase(): ExportHospitalPatients {
+  return new ExportHospitalPatients(new DrizzleHospitalPatientExportReader(getDb()));
+}
+
+// Escritor de auditoría (server-side) para acciones fuera del flujo de ingesta (p.ej. descargas).
+export function auditLogWriter(): DrizzleAuditLog {
+  return new DrizzleAuditLog(getDb());
+}
+
+export function editPatientUseCase(): EditPatient {
+  return new EditPatient(new DrizzlePatientEditor(getDb()));
+}
+
+export function hospitalPatientListReader(): DrizzleHospitalPatientListReader {
+  return new DrizzleHospitalPatientListReader(getDb());
+}
+
+export function hospitalDirectory(): DrizzleHospitalDirectory {
+  return new DrizzleHospitalDirectory(getDb());
+}
+
+// El admin de equipo se comparte entre las tres acciones (lista + invitar + acceso).
+export function teamMemberAdmin(): DrizzleTeamMemberAdmin {
+  return new DrizzleTeamMemberAdmin(getDb());
+}
+
+export function createHospitalUseCase(): CreateHospital {
+  return new CreateHospital(new DrizzleHospitalAdmin(getDb()));
+}
+
+export function inviteTeamMemberUseCase(): InviteTeamMember {
+  return new InviteTeamMember(teamMemberAdmin());
+}
+
+export function setTeamMemberAccessUseCase(): SetTeamMemberAccess {
+  return new SetTeamMemberAccess(teamMemberAdmin());
+}
+
+export function transcribePatientDictationUseCase(): TranscribePatientDictation {
+  // Los SDK externos (STT + extracción) viven en infraestructura; las claves, en el entorno.
+  return new TranscribePatientDictation({
+    transcriber: new OpenAiSpeechTranscriber(process.env.OPENAI_API_KEY ?? ""),
+    extractor: new ClaudePatientRowExtractor(process.env.ANTHROPIC_API_KEY ?? ""),
+  });
 }

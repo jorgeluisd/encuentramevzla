@@ -40,12 +40,21 @@ export async function subirExcelAction(
     return { ok: false, mensaje: "Selecciona un archivo .xlsx válido." };
   }
 
+  // Hospital objetivo. Acotado → SIEMPRE el suyo (no manipulable, D4). Global → el que mande el
+  // form: Cargar fuerza el hospital seleccionado; Ingesta no lo manda → por columna del Excel.
+  const formHospitalId = (() => {
+    const v = formData.get("hospitalId");
+    return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+  })();
+  const forcedHospitalId = member.hospitalId ?? formHospitalId;
+
   // 3. Procesar con el uploader real.
   try {
     const fileBytes = new Uint8Array(await archivo.arrayBuffer());
     const resumen = await ingestPatientListUseCase().execute({
       fileBytes,
       uploadedBy: member.id,
+      forcedHospitalId,
     });
     // Regenera el home estático para refrescar el sello "última actualización".
     revalidatePath("/");

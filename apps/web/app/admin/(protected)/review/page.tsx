@@ -1,4 +1,4 @@
-import { canModerate, displayName, type ReviewCase } from "@evzla/core";
+import { canAccessReviewQueue, displayName, type ReviewCase } from "@evzla/core";
 import { getCurrentMember } from "@/lib/auth/current-member";
 import { listReviewQueueUseCase } from "@/lib/composition";
 import { resolveReviewAction } from "@/lib/actions/review";
@@ -9,23 +9,25 @@ import { Card, CardBody } from "@/components/ui/card";
 export const dynamic = "force-dynamic";
 
 /**
- * `/admin/review` — Cola de revisión humana (triage). Solo MODERADOR. Muestra los
- * casos dudosos de la dedup con sus candidatos y registra la decisión (sin ejecutar
- * la fusión todavía).
+ * `/admin/review` — Cola de revisión humana (triage). Moderador (toda) o hospital_admin (la de
+ * su hospital, P5). Muestra los casos dudosos de la dedup con sus candidatos y registra la decisión.
  */
 export default async function ReviewPage(): Promise<React.ReactElement> {
   const current = await getCurrentMember();
-  if (current.kind !== "authorized" || !canModerate(current.member.role)) {
+  if (current.kind !== "authorized" || !canAccessReviewQueue(current.member.role)) {
     return (
       <Card className="border-warning/30 bg-warning/5">
         <CardBody className="text-sm text-warning">
-          Esta sección es solo para moderadores.
+          Esta sección es solo para moderadores y administradores de hospital.
         </CardBody>
       </Card>
     );
   }
 
-  const cases = await listReviewQueueUseCase().execute();
+  // El hospital_admin solo ve su cola; el moderador global, toda.
+  const scopeHospitalId =
+    current.member.role === "moderator" ? null : current.member.hospitalId;
+  const cases = await listReviewQueueUseCase().execute({ scopeHospitalId });
 
   return (
     <div className="space-y-4">

@@ -8,6 +8,9 @@ export interface ParsedPatientRow {
   phone: string | null;
   address: string | null;
   clinicalNotes: string | null;
+  // Toggle explícito "¿falleció?" (voz/manual, D8). El Excel no lo trae → undefined.
+  // Si es true fuerza el estado fallecido aunque la nota no contenga el marcador.
+  deceased?: boolean;
 }
 
 export interface ParsedPatientList {
