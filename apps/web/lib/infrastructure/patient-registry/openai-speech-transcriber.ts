@@ -17,6 +17,8 @@ export class OpenAiSpeechTranscriber implements SpeechTranscriber {
       file,
       model: this.model,
       language: opts?.language ?? "es",
+      // Contexto/vocabulario para sesgar la ortografía de nombres propios (D2/precisión).
+      ...(opts?.prompt ? { prompt: opts.prompt } : {}),
     });
     return { text: result.text ?? "" };
   }

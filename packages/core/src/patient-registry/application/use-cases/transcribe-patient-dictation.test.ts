@@ -1,7 +1,7 @@
 import type { ParsedPatientRow } from "../ports/patient-list-parser";
 import type { PatientRowExtractor } from "../ports/patient-row-extractor";
 import type { SpeechTranscriber, TranscribeOptions } from "../ports/speech-transcriber";
-import { TranscribePatientDictation } from "./transcribe-patient-dictation";
+import { DICTATION_STT_PROMPT, TranscribePatientDictation } from "./transcribe-patient-dictation";
 
 class FakeTranscriber implements SpeechTranscriber {
   receivedBytes: Uint8Array | null = null;
@@ -48,8 +48,9 @@ describe("TranscribePatientDictation", () => {
     });
 
     // El audio y las opciones llegan al transcriptor; el transcript al extractor.
+    // El use case inyecta el prompt de contexto por defecto (mejora nombres propios).
     expect(transcriber.receivedBytes).toBe(audio);
-    expect(transcriber.receivedOpts).toEqual({ language: "es" });
+    expect(transcriber.receivedOpts).toEqual({ language: "es", prompt: DICTATION_STT_PROMPT });
     expect(extractor.receivedTranscript).toBe("Rosa Mora, cédula 12345678, 60 años");
 
     expect(result.transcript).toBe("Rosa Mora, cédula 12345678, 60 años");
@@ -68,5 +69,29 @@ describe("TranscribePatientDictation", () => {
     expect(result.transcript).toBe("   ");
     expect(result.rows).toEqual([]);
     expect(extractor.receivedTranscript).toBeNull(); // no se llamó al extractor
+  });
+
+  it("inyecta el prompt de contexto por defecto cuando el llamador no lo pasa", async () => {
+    const transcriber = new FakeTranscriber("Ana");
+    const extractor = new FakeExtractor([]);
+
+    await new TranscribePatientDictation({ transcriber, extractor }).execute({
+      audio: new Uint8Array([1]),
+      opts: { mimeType: "audio/webm" },
+    });
+
+    expect(transcriber.receivedOpts).toEqual({ mimeType: "audio/webm", prompt: DICTATION_STT_PROMPT });
+  });
+
+  it("respeta el prompt del llamador si viene explícito (no lo pisa)", async () => {
+    const transcriber = new FakeTranscriber("Ana");
+    const extractor = new FakeExtractor([]);
+
+    await new TranscribePatientDictation({ transcriber, extractor }).execute({
+      audio: new Uint8Array([1]),
+      opts: { prompt: "contexto propio" },
+    });
+
+    expect(transcriber.receivedOpts).toEqual({ prompt: "contexto propio" });
   });
 });
