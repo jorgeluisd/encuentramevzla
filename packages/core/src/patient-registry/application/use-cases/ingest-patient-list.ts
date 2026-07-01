@@ -1,5 +1,6 @@
 import { decideMatch } from "../../domain/services/patient-matching";
 import { DocumentId } from "../../domain/value-objects/document-id";
+import { NormalizedPhone } from "../../domain/value-objects/normalized-phone";
 import { PersonName } from "../../domain/value-objects/person-name";
 import {
   isMinorAge,
@@ -182,6 +183,8 @@ export class IngestPatientList {
         const name = PersonName.fromRaw(r.fullName);
         if (name.isEmpty) continue;
         const document = r.documentNumber ? DocumentId.fromRaw(r.documentNumber) : null;
+        // Teléfono: señal media-fuerte. Se compara en memoria (nunca se expone en `public`).
+        const phone = r.phone ? NormalizedPhone.fromRaw(r.phone) : null;
         // La condición de menor puede venir por edad o escrita en el nombre (flaggedMinor).
         const isMinor = isMinorAge(r.age) || name.flaggedMinor;
         // El fallecimiento puede venir por el toggle explícito (D8), en observaciones o en el nombre.
@@ -189,7 +192,11 @@ export class IngestPatientList {
         const status: PatientStatus = deceased ? "deceased" : "admitted";
 
         const incomingHospitalId = hospitalIdForRow(r);
-        const decision = decideMatch({ name, document }, candidates, incomingHospitalId);
+        const decision = decideMatch(
+          { name, document, phone, age: r.age },
+          candidates,
+          incomingHospitalId,
+        );
 
         let patientId: string;
         if (decision.kind === "merge") {
@@ -199,6 +206,8 @@ export class IngestPatientList {
           if (isMinor && !target.isMinor) changes.isMinor = true;
           if (document?.isValid && !target.document?.isValid) changes.document = document;
           if (deceased && target.status !== "deceased") changes.status = "deceased";
+          // Completar edad solo si el target no la tiene (nunca pisa un dato existente).
+          if (r.age != null && target.age == null) changes.age = r.age;
           if (Object.keys(changes).length > 0) {
             patientUpdates.set(patientId, { ...patientUpdates.get(patientId), ...changes });
             Object.assign(target, changes);
@@ -207,7 +216,7 @@ export class IngestPatientList {
         } else {
           patientId = newId();
           patientsToInsert.push({ id: patientId, name, document, age: r.age, isMinor, status });
-          candidates.push({ id: patientId, name, document, isMinor, status, hospitalIds: hospitalsOf(patientId) });
+          candidates.push({ id: patientId, name, document, phone, age: r.age, isMinor, status, hospitalIds: hospitalsOf(patientId) });
           if (decision.kind === "conflict") {
             summary.documentConflicts++;
             dedupEntries.push({

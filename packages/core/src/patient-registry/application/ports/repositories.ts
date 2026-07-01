@@ -26,6 +26,7 @@ export interface PatientUpdate {
   document?: DocumentId;
   isMinor?: boolean;
   status?: PatientStatus;
+  age?: number;
 }
 
 export interface PatientUpdateRow {
