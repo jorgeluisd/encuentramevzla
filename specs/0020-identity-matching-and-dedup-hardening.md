@@ -223,6 +223,143 @@ Dos pedidos que viajan con este incremento (presentación, sin tocar dominio):
 - Deshacer fusión con UI (undo). Fusión de >2 registros en un clic.
 - Aprendizaje/ML de matching. Blocking distribuido a gran escala.
 
+## 11. Plan de tareas (aprobado en GATE 1)
+
+Orden por dependencia: **dominio puro → aplicación → infraestructura → presentación → remediación**.
+Cada fase queda verde antes de la siguiente. PRs pequeños a `develop`; **G va al final** (operacional,
+con OK explícito de Jorge y ensayo en dump). Formato: `.claude/orchestrator/agents/task-planner.md`.
+
+### Fase A — Dominio puro (núcleo del cambio)
+
+```
+[T1] Add NormalizedPhone value object
+  Capa: domain/value-objects · Capacidad: patient-registry
+  Archivos: packages/core/.../value-objects/normalized-phone.ts (+ .test.ts)
+  Criterios: §2.1, §2.4 (equals por últimos 7 dígitos; <7 dígitos → inválido)
+  Strict TDD: ON · Privacidad: VO puro, no persiste ni loguea el teléfono
+
+[T2] Add normalizeHospitalName (dominio puro)
+  Capa: domain/services · Capacidad: patient-registry
+  Archivos: .../services/hospital-name.ts (+ .test.ts)
+  Criterios: §4 (NFD, sin acentos, quita prefijos hospital/hosp/h/clinica/centro…)
+  Strict TDD: ON · Privacidad: no aplica
+
+[T3] Extend decideMatch — señal teléfono + política conservadora
+  Capa: domain/services · Capacidad: patient-registry
+  Archivos: .../services/patient-matching.ts (+ .test.ts)
+  Criterios: §2.2, §2.3 (casos 1–9), §2.4
+    · caso 5: teléfono igual + nombre ≥0.85 → merge
+    · caso 6: mismo hospital + nombre alto sin cédula/teléfono → review (ya NO merge)
+    · edad separa/desempata, nunca fusiona
+  Strict TDD: ON (refactor; ajustar tests que hoy esperan merge en caso 6)
+  Privacidad: recibe teléfono ya normalizado; no lo expone
+
+[T4] Extend mergedFields — completar teléfono/dirección faltantes
+  Capa: domain/services · Capacidad: patient-registry
+  Archivos: .../services/patient-merge.ts (+ .test.ts)
+  Criterios: §3 (solo completar/elevar, sin perder dato)
+  Strict TDD: ON · Privacidad: reconciliación real ocurre en infra dentro de la tx
+```
+
+### Fase B — Aplicación (ingesta)
+
+```
+[T5] Ampliar loadCandidates para traer teléfono desde sensitive (server-side)
+  Capa: application/ports · Capacidad: patient-registry
+  Archivos: .../application/ports/repositories.ts, tipos de candidato
+  Criterios: §8 (match por teléfono server-side; NO phone_hash en public)
+  Strict TDD: ON (fakes del port)
+  Privacidad: ⚠️ ALTA — el teléfono cruza de sensitive solo en la ingesta; ver privacy-and-security.md
+
+[T6] IngestPatientList: pasar phone+age al motor y mapear decisiones
+  Capa: application/use-cases · Capacidad: patient-registry
+  Archivos: .../use-cases/ingest-patient-list.ts (+ .test.ts)
+  Criterios: §2, §3 (caso 6 → dedup_pending_review; caso 5 → merge en ingesta)
+  Strict TDD: ON · Privacidad: no loguea teléfono en audit
+```
+
+### Fase C — Catálogo canónico de hospitales (ADR-0005)
+
+```
+[T7] Migración: tabla hospital_aliases (+ marca de "provisional")
+  Capa: infrastructure/db · Archivos: packages/db/src/schema/public.ts, migración drizzle
+  Criterios: §4 · Strict TDD: OFF (migración) — verificación: migrate + typecheck verdes
+  Privacidad: no aplica
+
+[T8] resolveByName: exacto → alias → fuzzy (trigram ≥0.6) → provisional
+  Capa: infrastructure (adapter) · Archivos: apps/web/.../drizzle-repositories.ts (+ test)
+  Criterios: §4 (no crear variantes en silencio; dudoso → provisional a revisión)
+  Strict TDD: ON · Privacidad: no aplica
+
+[T9] Seed del catálogo canónico (lista oficial)
+  Capa: infrastructure/scripts · Archivos: packages/db/scripts/seed-hospitals.mjs
+  Criterios: §4 · Strict TDD: OFF (data) — verificación manual · Privacidad: no aplica
+```
+
+### Fase D — Carga scoped: filas de otro hospital (ADR-0006)
+
+```
+[T10] Segregar filas de otro hospital + audit por fila
+  Capa: application/use-cases · Archivos: .../use-cases/ingest-patient-list.ts (+ .test.ts)
+  Criterios: §5 (ingest_foreign_hospital_row; no atribuir como propia)
+  Strict TDD: ON · Privacidad: audit sin datos sensibles (solo nombre hospital + fingerprint)
+
+[T11] UI bandeja "filas de otro hospital" + reasignación (moderador)
+  Capa: presentation · Archivos: apps/web/app/admin/(protected)/… + server action
+  Criterios: §5 · Strict TDD: ON (acción) · verificación E2E manual
+  Privacidad: re-verifica rol moderador server-side
+```
+
+### Fase E — Cola de revisión (reuso 0009/0010)
+
+```
+[T12] Verificar cola con el nuevo volumen (caso 6) — sin tabla nueva
+  Capa: application/presentation · Archivos: list-review-queue.ts, /admin/review (verificación)
+  Criterios: §3 (mapea a dedup_pending_review; mostSimilarByName ya recalcula candidato)
+  Strict TDD: ON solo si hay ajuste; si no, tarea de verificación · Privacidad: no aplica
+```
+
+### Fase F — UX complementaria (§7)
+
+```
+[T13] Skeleton al cambiar de hospital en /admin/cargar
+  Capa: presentation · Archivos: apps/web/.../cargar-client.tsx
+  Criterios: §7 · Nota: revisar si ya lo cubre b8ffb7e (useTransition al cambiar hospital);
+    si sí → verificación; si falta → ajuste
+  Strict TDD: ON (o verificación) · Privacidad: no aplica
+
+[T14] Botón de dictado despliega el formulario al pulsarlo
+  Capa: presentation (voz) · Archivos: apps/web/components/… (dictado)
+  Criterios: §7 (revela el formulario y arranca captura a la vez)
+  Strict TDD: ON (estado del componente) · verificación manual
+  Privacidad: reusa flujo de voz (audio no se persiste, D7)
+```
+
+### Fase G — Remediación de prod (ADR-0007) — al final, tras el motor verde
+
+```
+[T15] Script auditoría read-only: clasificación de duplicados
+  Capa: infrastructure/scripts · Archivos: scripts/dedup-audit.mjs
+  Criterios: §6 Fase 0 · Strict TDD: OFF (script read-only); lógica de clasificación sí testeable
+  Privacidad: ⚠️ solo lectura; no imprime datos sensibles innecesarios
+
+[T16] Unificación de hospitales (dry-run → apply) reasignando admissions
+  Capa: infrastructure/scripts · Archivos: scripts/remediate-hospitals.mjs
+  Criterios: §6 (2) — reversible/auditado
+  Strict TDD: ON (lógica de mapeo) · OFF (runner)
+  Privacidad: ⚠️ muta prod → ensayo en dump + OK explícito de Jorge
+
+[T17] Merge escalonado por confianza (dry-run → apply) reusando MergePatients
+  Capa: infrastructure/scripts · Archivos: scripts/remediate-duplicates.mjs
+  Criterios: §6 (3)(4) — auto solo misma-cédula; medio mismo-hospital+teléfono; resto a cola;
+    cross-hospital separados; reversible (old_id→surviving_id)
+  Strict TDD: ON (clasificación) · OFF (runner)
+  Privacidad: ⚠️ ALTA — muta/borra pacientes; ensayo en dump + OK explícito de Jorge
+```
+
+**Camino crítico:** T1→T3 (motor) y T5→T6 (ingesta) resuelven los homónimos. T7–T9 (hospitales)
+desbloquean T10 y T16. G no se ejecuta hasta que A–B estén en prod.
+
 ## Referencias
 
 - ADR-0004 (matching conservador sin cédula) · ADR-0005 (catálogo de hospitales) ·
