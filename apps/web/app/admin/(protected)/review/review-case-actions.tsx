@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useFormStatus } from "react-dom";
+import { useActionState, useState } from "react";
+import type { ReviewActionState } from "@/lib/actions/review";
 import { Button } from "@/components/ui/button";
 
 export interface PatientDetail {
@@ -13,7 +13,7 @@ export interface PatientDetail {
 interface ReviewCaseActionsProps {
   patientId: string;
   candidateId: string;
-  action: (decision: string, formData: FormData) => Promise<void>;
+  action: (prev: ReviewActionState, formData: FormData) => Promise<ReviewActionState>;
   source: PatientDetail;
   candidate: PatientDetail | null;
 }
@@ -27,49 +27,33 @@ function Spinner(): React.ReactElement {
   );
 }
 
-// Submit con feedback "Procesando…" (useFormStatus es por <form>).
-function SubmitButton({
-  decision,
-  label,
-  variant,
-  action,
-}: {
-  decision: "merge" | "keep";
-  label: string;
-  variant?: "primary" | "outline";
-  action: ReviewCaseActionsProps["action"];
-}): React.ReactElement {
-  const { pending } = useFormStatus();
-  return (
-    <Button
-      type="submit"
-      variant={variant}
-      formAction={action.bind(null, decision)}
-      disabled={pending}
-      className="w-full sm:w-auto"
-    >
-      {pending ? (
-        <>
-          <Spinner /> Procesando…
-        </>
-      ) : (
-        label
-      )}
-    </Button>
-  );
-}
-
+// Ficha de un registro: nombre, cédula (si hay) y sus hospitales en lista (uno por línea).
 function DetailLine({ label, d }: { label: string; d: PatientDetail }): React.ReactElement {
   return (
-    <div>
+    <div className="space-y-1">
       <p className="text-text-3">{label}</p>
       <p className="font-medium text-text">
         {d.name}
-        {d.document ? <span className="ml-1 text-text-2">· {d.document}</span> : null}
+        {d.document ? (
+          <span className="ml-1 text-text-2">
+            · Cédula {d.document}
+          </span>
+        ) : (
+          <span className="ml-1 text-text-3">· sin cédula</span>
+        )}
       </p>
-      <p className="text-text-2">
-        Hospital(es): {d.hospitals.length > 0 ? d.hospitals.join(", ") : "—"}
-      </p>
+      <div className="text-text-2">
+        <span className="text-text-3">Hospital(es):</span>{" "}
+        {d.hospitals.length === 0 ? (
+          "—"
+        ) : (
+          <ul className="mt-0.5 list-disc space-y-0.5 pl-5">
+            {d.hospitals.map((h) => (
+              <li key={h}>{h}</li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
@@ -81,6 +65,9 @@ export function ReviewCaseActions({
   source,
   candidate,
 }: ReviewCaseActionsProps): React.ReactElement {
+  const [state, formAction, pending] = useActionState<ReviewActionState, FormData>(action, {
+    error: null,
+  });
   const [showDetail, setShowDetail] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
@@ -91,28 +78,51 @@ export function ReviewCaseActions({
     </>
   );
 
+  const errorMsg = state.error ? (
+    <p className="text-sm text-danger" role="alert">
+      {state.error}
+    </p>
+  ) : null;
+
   // Confirmación inline de la fusión (irreversible): muestra quién sobrevive y quién se elimina.
   if (confirming) {
     return (
       <div className="space-y-3 border-t border-border pt-3">
-        <div className="space-y-2 rounded-[var(--radius-control)] border border-warning/40 bg-warning/5 p-3 text-sm">
+        <div className="space-y-3 rounded-[var(--radius-control)] border border-warning/40 bg-warning/5 p-3 text-sm">
           <p className="font-medium text-text">¿Confirmás la fusión?</p>
           {candidate ? <DetailLine label="Sobrevive" d={candidate} /> : null}
+          <div className="border-t border-border" />
           <DetailLine label="Se elimina (sus ingresos pasan al que sobrevive)" d={source} />
           <p className="font-medium text-danger">Esta acción no se puede deshacer.</p>
         </div>
-        <form className="flex flex-col gap-2 sm:flex-row" aria-live="polite">
+        <form action={formAction} className="flex flex-col gap-2 sm:flex-row" aria-live="polite">
           {hidden}
-          <SubmitButton decision="merge" label="Confirmar fusión" action={action} />
+          <Button
+            type="submit"
+            name="decision"
+            value="merge"
+            disabled={pending}
+            className="w-full sm:w-auto"
+          >
+            {pending ? (
+              <>
+                <Spinner /> Procesando…
+              </>
+            ) : (
+              "Confirmar fusión"
+            )}
+          </Button>
           <Button
             type="button"
             variant="outline"
             onClick={() => setConfirming(false)}
+            disabled={pending}
             className="w-full sm:w-auto"
           >
             Cancelar
           </Button>
         </form>
+        {errorMsg}
       </div>
     );
   }
@@ -120,42 +130,63 @@ export function ReviewCaseActions({
   return (
     <div className="space-y-3 border-t border-border pt-3">
       {showDetail && (
-        <div className="space-y-2 rounded-[var(--radius-control)] bg-surface p-3 text-sm">
-          <DetailLine label="Registro nuevo (se elimina al fusionar)" d={source} />
+        <div className="space-y-3 rounded-[var(--radius-control)] bg-surface p-3 text-sm">
           {candidate ? (
             <>
               <DetailLine label="Candidato (sobrevive a la fusión)" d={candidate} />
-              <p className="text-text-3">
+              <div className="border-t border-border" />
+              <DetailLine label="Registro nuevo (se elimina al fusionar)" d={source} />
+              <p className="border-t border-border pt-3 text-text-3">
                 Al fusionar, <span className="font-medium text-text">sobrevive {candidate.name}</span>{" "}
                 y se elimina {source.name}; sus ingresos se trasladan al que sobrevive.
               </p>
             </>
           ) : (
-            <p className="text-text-3">No hay candidato para comparar.</p>
+            <>
+              <DetailLine label="Registro nuevo" d={source} />
+              <p className="text-text-3">No hay candidato para comparar.</p>
+            </>
           )}
         </div>
       )}
 
-      <form className="flex flex-col gap-2 sm:flex-row" aria-live="polite">
+      <form action={formAction} className="flex flex-col gap-2 sm:flex-row" aria-live="polite">
         {hidden}
         <Button
           type="button"
           onClick={() => setConfirming(true)}
-          disabled={!candidate}
+          disabled={!candidate || pending}
           className="w-full sm:w-auto"
         >
           Fusionar
         </Button>
-        <SubmitButton decision="keep" label="Mantener separados" variant="outline" action={action} />
+        <Button
+          type="submit"
+          name="decision"
+          value="keep"
+          variant="outline"
+          disabled={pending}
+          className="w-full sm:w-auto"
+        >
+          {pending ? (
+            <>
+              <Spinner /> Procesando…
+            </>
+          ) : (
+            "Mantener separados"
+          )}
+        </Button>
         <Button
           type="button"
           variant="outline"
           onClick={() => setShowDetail((v) => !v)}
+          disabled={pending}
           className="w-full sm:w-auto"
         >
           {showDetail ? "Ocultar detalle" : "Más info"}
         </Button>
       </form>
+      {errorMsg}
     </div>
   );
 }

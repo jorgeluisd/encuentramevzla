@@ -13,10 +13,19 @@ import type {
 export interface ReviewCase {
   patientId: string;
   name: string;
+  document: string | null; // cédula del registro nuevo (para comparar con la del candidato)
   reason: ReviewFlag["reason"];
   candidates: PatientBrief[];
   hospitals: string[]; // hospitales del registro dudoso (source)
 }
+
+// Página de la cola: los casos de la ventana + el total (para calcular cuántas páginas hay).
+export interface ReviewQueuePage {
+  cases: ReviewCase[];
+  total: number;
+}
+
+const DEFAULT_PAGE_SIZE = 20;
 
 /**
  * Arma la cola de revisión abierta. Para conflictos de cédula trae los registros que
@@ -26,10 +35,21 @@ export class ListReviewQueue {
   constructor(private readonly reader: ReviewQueueReader) {}
 
   // `scopeHospitalId` acota la cola al hospital del actor (hospital_admin); `null`/ausente = todos
-  // (moderador global). El caso se conserva si su registro dudoso tiene ingreso en ese hospital.
-  async execute(input?: { scopeHospitalId?: string | null }): Promise<ReviewCase[]> {
+  // (moderador global). El scoping y la paginación se resuelven en SQL: solo se trae —y se calcula
+  // el match por nombre de— la ventana pedida (evita recorrer toda la cola en cada carga).
+  async execute(input?: {
+    scopeHospitalId?: string | null;
+    page?: number;
+    pageSize?: number;
+  }): Promise<ReviewQueuePage> {
     const scopeHospitalId = input?.scopeHospitalId ?? null;
-    const flags = await this.reader.listOpenFlags();
+    const pageSize = input?.pageSize ?? DEFAULT_PAGE_SIZE;
+    const page = Math.max(1, Math.trunc(input?.page ?? 1));
+    const { flags, total } = await this.reader.listOpenFlags({
+      scopeHospitalId,
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    });
     const cases: ReviewCase[] = [];
     let briefs: PatientBrief[] | null = null; // carga perezosa para zona gris
 
@@ -56,32 +76,23 @@ export class ListReviewQueue {
       cases.push({
         patientId: flag.patientId,
         name: flag.name,
+        document: flag.document,
         reason: flag.reason,
         candidates,
         hospitals: [],
       });
     }
 
-    // Scoping por hospital (P5): conserva solo los casos cuyo registro dudoso tiene ingreso
-    // en el hospital del actor. El global (scopeHospitalId null) no filtra.
-    let scoped = cases;
-    if (scopeHospitalId !== null && cases.length > 0) {
-      const idsByPatient = await this.reader.hospitalIdsOf(cases.map((c) => c.patientId));
-      scoped = cases.filter((c) =>
-        (idsByPatient.get(c.patientId) ?? []).includes(scopeHospitalId),
-      );
-    }
-
     // Enriquecer con hospitales (una sola lectura) para el detalle de "Más info".
-    const ids = scoped.flatMap((c) => [c.patientId, ...c.candidates.map((b) => b.id)]);
+    const ids = cases.flatMap((c) => [c.patientId, ...c.candidates.map((b) => b.id)]);
     if (ids.length > 0) {
       const byPatient = await this.reader.hospitalsOf(ids);
-      for (const c of scoped) {
+      for (const c of cases) {
         c.hospitals = byPatient.get(c.patientId) ?? [];
         for (const cand of c.candidates) cand.hospitals = byPatient.get(cand.id) ?? [];
       }
     }
 
-    return scoped;
+    return { cases, total };
   }
 }

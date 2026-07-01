@@ -1,5 +1,7 @@
 import { ListReviewQueue } from "./list-review-queue";
 import type {
+  ListOpenFlagsInput,
+  OpenFlagsPage,
   PatientBrief,
   ReviewFlag,
   ReviewQueueReader,
@@ -13,8 +15,13 @@ class FakeReader implements ReviewQueueReader {
     private readonly hospitals: Record<string, string[]> = {},
     private readonly hospitalIds: Record<string, string[]> = {},
   ) {}
-  async listOpenFlags(): Promise<ReviewFlag[]> {
-    return this.flags;
+  // Réplica del scoping + paginación que hace el SQL real.
+  async listOpenFlags({ scopeHospitalId, limit, offset }: ListOpenFlagsInput): Promise<OpenFlagsPage> {
+    let fs = this.flags;
+    if (scopeHospitalId != null) {
+      fs = fs.filter((f) => (this.hospitalIds[f.patientId] ?? []).includes(scopeHospitalId));
+    }
+    return { flags: fs.slice(offset, offset + limit), total: fs.length };
   }
   async findByDocument(document: string): Promise<PatientBrief[]> {
     return this.byDoc[document] ?? [];
@@ -41,7 +48,7 @@ describe("ListReviewQueue", () => {
         ],
       },
     );
-    const cases = await new ListReviewQueue(reader).execute();
+    const { cases } = await new ListReviewQueue(reader).execute();
     expect(cases).toHaveLength(1);
     expect(cases[0]!.candidates.map((c) => c.id)).toEqual(["old"]);
   });
@@ -61,7 +68,7 @@ describe("ListReviewQueue", () => {
         { id: "jp3", name: "juan perez", document: null },
       ],
     );
-    const cases = await new ListReviewQueue(reader).execute();
+    const { cases } = await new ListReviewQueue(reader).execute();
     expect(cases).toHaveLength(2);
     for (const c of cases) {
       expect(c.reason).toBe("pending_review");
@@ -80,7 +87,7 @@ describe("ListReviewQueue", () => {
         { id: "far", name: "carlos gomez", document: null },
       ],
     );
-    const cases = await new ListReviewQueue(reader).execute();
+    const { cases } = await new ListReviewQueue(reader).execute();
     expect(cases[0]!.candidates.map((c) => c.id)).toEqual(["sim"]);
   });
 
@@ -96,7 +103,7 @@ describe("ListReviewQueue", () => {
       [],
       { new: ["Hospital X"], old: ["Hospital Y", "Hospital Z"] },
     );
-    const cases = await new ListReviewQueue(reader).execute();
+    const { cases } = await new ListReviewQueue(reader).execute();
     expect(cases[0]!.hospitals).toEqual(["Hospital X"]);
     expect(cases[0]!.candidates[0]!.hospitals).toEqual(["Hospital Y", "Hospital Z"]);
   });
@@ -117,11 +124,52 @@ describe("ListReviewQueue", () => {
     );
 
     // Acotado a ho-1 → solo el caso p-a.
-    const scoped = await new ListReviewQueue(reader).execute({ scopeHospitalId: "ho-1" });
+    const { cases: scoped } = await new ListReviewQueue(reader).execute({ scopeHospitalId: "ho-1" });
     expect(scoped.map((c) => c.patientId)).toEqual(["p-a"]);
 
     // Global (null) → ambos.
-    const all = await new ListReviewQueue(reader).execute({ scopeHospitalId: null });
+    const { cases: all } = await new ListReviewQueue(reader).execute({ scopeHospitalId: null });
     expect(all.map((c) => c.patientId).sort()).toEqual(["p-a", "p-b"]);
+  });
+
+  it("expone la cédula del registro nuevo en el caso (para comparar ambas cédulas)", async () => {
+    const reader = new FakeReader(
+      [{ patientId: "new", name: "aderson reginfo", document: "79956940", reason: "pending_review" }],
+      {},
+      [
+        { id: "new", name: "aderson reginfo", document: "79956940" },
+        { id: "old", name: "reginfo aderson", document: "7995694" },
+      ],
+    );
+    const { cases } = await new ListReviewQueue(reader).execute();
+    expect(cases[0]!.document).toBe("79956940");
+    expect(cases[0]!.candidates[0]!.document).toBe("7995694");
+  });
+
+  it("pagina: devuelve solo la ventana pedida y el total de la cola", async () => {
+    const flags: ReviewFlag[] = Array.from({ length: 25 }, (_, i) => ({
+      patientId: `p${i}`,
+      name: `juan perez ${i}`,
+      document: `${1000000 + i}`,
+      reason: "document_conflict" as const,
+    }));
+    const byDoc: Record<string, PatientBrief[]> = {};
+    for (const f of flags) {
+      byDoc[f.document!] = [
+        { id: f.patientId, name: f.name, document: f.document },
+        { id: `${f.patientId}-dup`, name: f.name, document: f.document },
+      ];
+    }
+    const reader = new FakeReader(flags, byDoc);
+
+    const p1 = await new ListReviewQueue(reader).execute({ page: 1, pageSize: 10 });
+    expect(p1.total).toBe(25);
+    expect(p1.cases).toHaveLength(10);
+    expect(p1.cases[0]!.patientId).toBe("p0");
+
+    const p3 = await new ListReviewQueue(reader).execute({ page: 3, pageSize: 10 });
+    expect(p3.total).toBe(25);
+    expect(p3.cases).toHaveLength(5); // última página parcial
+    expect(p3.cases[0]!.patientId).toBe("p20");
   });
 });
