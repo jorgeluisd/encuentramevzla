@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canAccessReviewQueue, canManageHospitalTeam, canModerate } from "@evzla/core";
 import { getCurrentMember } from "@/lib/auth/current-member";
@@ -6,6 +5,7 @@ import { signOutAction } from "@/lib/actions/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
+import { AdminNav, type AdminNavItem } from "./admin-nav";
 
 // Rutas del portal: render por request (usan sesión + DB); nunca estáticas.
 export const dynamic = "force-dynamic";
@@ -47,48 +47,29 @@ export default async function ProtectedAdminLayout({
 
   const { member } = current;
 
+  const navItems: AdminNavItem[] = [
+    { href: "/admin/cargar", label: "Cargar" },
+    ...(canModerate(member.role)
+      ? [{ href: "/admin/ingesta", label: "Ingesta" }]
+      : []),
+    ...(canManageHospitalTeam(member.role)
+      ? [{ href: "/admin/equipo", label: "Equipo" }]
+      : []),
+    ...(canAccessReviewQueue(member.role)
+      ? [{ href: "/admin/review", label: "Revisión" }]
+      : []),
+    ...(canModerate(member.role)
+      ? [{ href: "/admin/foreign-rows", label: "Filas ajenas" }]
+      : []),
+    ...(canModerate(member.role)
+      ? [{ href: "/admin/audit", label: "Audit log" }]
+      : []),
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-        <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-          <Link href="/admin/cargar" className="font-bold text-text hover:text-primary">
-            Cargar
-          </Link>
-          {canModerate(member.role) && (
-            <Link href="/admin/ingesta" className="font-bold text-text hover:text-primary">
-              Ingesta
-            </Link>
-          )}
-          {canManageHospitalTeam(member.role) && (
-            <Link href="/admin/equipo" className="font-bold text-text hover:text-primary">
-              Equipo
-            </Link>
-          )}
-          {canAccessReviewQueue(member.role) && (
-            <Link
-              href="/admin/review"
-              className="font-bold text-text hover:text-primary"
-            >
-              Revisión
-            </Link>
-          )}
-          {canModerate(member.role) && (
-            <Link
-              href="/admin/foreign-rows"
-              className="font-bold text-text hover:text-primary"
-            >
-              Filas ajenas
-            </Link>
-          )}
-          {canModerate(member.role) && (
-            <Link
-              href="/admin/audit"
-              className="font-bold text-text hover:text-primary"
-            >
-              Audit log
-            </Link>
-          )}
-        </nav>
+        <AdminNav items={navItems} />
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex min-w-0 items-center gap-2 text-sm">
             <span className="truncate text-text-2">{member.email}</span>
