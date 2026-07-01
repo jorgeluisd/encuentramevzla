@@ -143,11 +143,20 @@ export function CargarClient({
   async function iniciarGrabacion(): Promise<void> {
     setAviso(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Voz a bitrate bajo (Opus): subida liviana en redes lentas. 32 kbps tolera el
-      // ruido de hospital sin perder inteligibilidad. Feature-detect: iOS/Safari no
-      // graba webm → cae al códec por defecto del navegador.
-      const opts: MediaRecorderOptions = { audioBitsPerSecond: 32_000 };
+      // Constraints explícitas: homogeneízan la captura entre dispositivos (la app instalada
+      // capturaba distinto al navegador). noiseSuppression OFF preserva las fricativas (s/f/jh)
+      // que definen los nombres propios; mono + AGC para nivel parejo.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: false,
+          autoGainControl: true,
+        },
+      });
+      // Voz en Opus a 64 kbps: sigue liviano en redes lentas, pero recupera las consonantes
+      // que 32 kbps aplastaba. Feature-detect: iOS/Safari no graba webm → códec por defecto.
+      const opts: MediaRecorderOptions = { audioBitsPerSecond: 64_000 };
       if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
         opts.mimeType = "audio/webm;codecs=opus";
       }
