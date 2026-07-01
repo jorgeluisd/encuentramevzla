@@ -5,6 +5,7 @@ const side = (over: Partial<MergeSide> = {}): MergeSide => ({
   documentValid: false,
   isMinor: false,
   status: "admitted",
+  age: null,
   ...over,
 });
 
@@ -32,5 +33,13 @@ describe("mergedFields", () => {
     expect(
       mergedFields(side(), side({ isMinor: true, status: "deceased" })),
     ).toEqual({ isMinor: true, status: "deceased" });
+  });
+
+  it("completes a missing age from the source", () => {
+    expect(mergedFields(side(), side({ age: 30 }))).toEqual({ age: 30 });
+  });
+
+  it("never overwrites an existing target age", () => {
+    expect(mergedFields(side({ age: 40 }), side({ age: 30 }))).toEqual({});
   });
 });
