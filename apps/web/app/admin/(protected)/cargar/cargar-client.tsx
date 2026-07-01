@@ -97,6 +97,9 @@ export function CargarClient({
   // (loading.tsx no cubre cambios de searchParam como hospital/búsqueda/página).
   const [isPending, startTransition] = useTransition();
   const [panel, setPanel] = useState<PanelMode>({ kind: "closed" });
+  // Cambia en cada apertura/relleno del panel para RE-MONTAR el form: los inputs usan
+  // defaultValue, así que el dictado que llega después debe montar campos frescos.
+  const [panelKey, setPanelKey] = useState(0);
   const [recording, setRecording] = useState(false);
   const [dictando, setDictando] = useState(false);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
@@ -104,6 +107,12 @@ export function CargarClient({
 
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  // Abre/rellena el panel forzando re-montaje del form (defaultValue).
+  function showPanel(next: Exclude<PanelMode, { kind: "closed" }>): void {
+    setPanel(next);
+    setPanelKey((k) => k + 1);
+  }
 
   const sinHospital = activeHospitalId === null;
   const [busqueda, setBusqueda] = useState(search);
@@ -155,6 +164,11 @@ export function CargarClient({
       mr.start();
       mediaRef.current = mr;
       setRecording(true);
+      // Despliega el formulario ya: la persona ve los campos mientras habla; el dictado
+      // los rellenará al terminar. Si ya venía editando/creando, no lo pisa.
+      if (panel.kind === "closed") {
+        showPanel({ kind: "create", transcript: null, fields: emptyFields() });
+      }
     } catch {
       setAviso({ tipo: "error", texto: "No se pudo acceder al micrófono." });
     }
@@ -177,7 +191,7 @@ export function CargarClient({
         return;
       }
       const b = res.borrador;
-      setPanel({
+      showPanel({
         kind: "create",
         transcript: res.transcript ?? null,
         fields: {
@@ -198,12 +212,12 @@ export function CargarClient({
 
   function abrirManual(): void {
     setAviso(null);
-    setPanel({ kind: "create", transcript: null, fields: emptyFields() });
+    showPanel({ kind: "create", transcript: null, fields: emptyFields() });
   }
 
   function abrirEdicion(item: HospitalPatientListItem): void {
     setAviso(null);
-    setPanel({
+    showPanel({
       kind: "edit",
       patientId: item.patientId,
       fields: {
@@ -365,7 +379,7 @@ export function CargarClient({
                 <CardTitle>
                   {panel.kind === "edit" ? "Editar paciente" : "Confirmar paciente"}
                 </CardTitle>
-                <form onSubmit={guardarPanel} className="space-y-3">
+                <form key={panelKey} onSubmit={guardarPanel} className="space-y-3">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="space-y-1">
                       <span className="text-sm text-text-2">Nombre y apellidos</span>

@@ -14,6 +14,7 @@ interface PatientRow {
   doc: string | null;
   isMinor: boolean;
   status: MergeSide["status"];
+  age: number | null;
 }
 
 function toSide(p: PatientRow): MergeSide {
@@ -23,6 +24,7 @@ function toSide(p: PatientRow): MergeSide {
     documentValid: d?.isValid ?? false,
     isMinor: p.isMinor,
     status: p.status,
+    age: p.age,
   };
 }
 
@@ -48,6 +50,7 @@ export class DrizzlePatientMerger implements PatientMerger {
         doc: patients.normalizedDocNumber,
         isMinor: patients.isMinor,
         status: patients.status,
+        age: patients.age,
       };
       const [target] = await tx
         .select(cols)
@@ -80,6 +83,7 @@ export class DrizzlePatientMerger implements PatientMerger {
       if (changes.documentNormalized) patch.normalizedDocNumber = changes.documentNormalized;
       if (changes.isMinor) patch.isMinor = true;
       if (changes.status) patch.status = changes.status;
+      if (changes.age != null) patch.age = changes.age;
       if (Object.keys(patch).length > 0) {
         await tx.update(patients).set(patch).where(eq(patients.id, targetId));
       }

@@ -9,8 +9,10 @@ export * from "./patient-registry/domain/value-objects/team-role";
 export * from "./patient-registry/domain/value-objects/audit-action";
 export * from "./patient-registry/domain/value-objects/review-decision";
 export * from "./patient-registry/domain/value-objects/document-id";
+export * from "./patient-registry/domain/value-objects/normalized-phone";
 export * from "./patient-registry/domain/value-objects/patient-status";
 export * from "./patient-registry/domain/services/string-similarity";
+export * from "./patient-registry/domain/services/hospital-name";
 export * from "./patient-registry/domain/services/patient-matching";
 export * from "./patient-registry/domain/services/patient-merge";
 
@@ -26,6 +28,7 @@ export * from "./patient-registry/application/ports/team-member-repository";
 export * from "./patient-registry/application/ports/audit-log-reader";
 export * from "./patient-registry/application/ports/last-update-reader";
 export * from "./patient-registry/application/ports/review-queue-reader";
+export * from "./patient-registry/application/ports/foreign-rows-reader";
 export * from "./patient-registry/application/ports/patient-merger";
 export * from "./patient-registry/application/ports/hospital-patient-export-reader";
 export * from "./patient-registry/application/ports/speech-transcriber";

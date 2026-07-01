@@ -79,6 +79,10 @@ class FakeHospitals implements HospitalRepository {
     this.ids.set(name, id);
     return id;
   }
+  // Solo verifica pertenencia (carga scoped): NO crea. Null si no lo conoce.
+  async resolveExisting(name: string): Promise<string | null> {
+    return this.ids.get(name) ?? null;
+  }
 }
 
 class FakeAdmissions implements AdmissionRepository {
@@ -342,6 +346,174 @@ describe("IngestPatientList", () => {
   });
 });
 
+describe("IngestPatientList — señales de identidad (0020)", () => {
+  it("flags a same-name same-hospital row without strong signal as pending_review (no merge)", async () => {
+    const repos = buildRepos();
+    const patients = repos.patients as FakePatients;
+    const audit = repos.audit as FakeAudit;
+    let n = 0;
+
+    const summary = await new IngestPatientList({
+      parser: new FakeParser({
+        sheet: "S",
+        rows: [
+          row({ fingerprint: "j1", fullName: "Juan Perez", hospitalName: "Hospital X" }),
+          row({ fingerprint: "j2", fullName: "Juan Perez", hospitalName: "Hospital X" }),
+        ],
+      }),
+      uow: new FakeUnitOfWork(repos),
+      newId: () => `id-${++n}`,
+    }).execute({ fileBytes: new Uint8Array(), uploadedBy: null });
+
+    // El nombre solo no fusiona: el segundo Juan Perez va a revisión, no se colapsa.
+    expect(summary.mergedPatients).toBe(0);
+    expect(summary.newPatients).toBe(1);
+    expect(summary.pendingReview).toBe(1);
+    expect(patients.inserted).toHaveLength(2);
+    expect(audit.entries.some((e) => e.action === "dedup_pending_review")).toBe(true);
+  });
+
+  it("merges rows that share a phone even across different hospitals (a transfer)", async () => {
+    const { PersonName } = await import("../../domain/value-objects/person-name");
+    const { NormalizedPhone } = await import("../../domain/value-objects/normalized-phone");
+    const existing: ExistingPatient = {
+      id: "pt-maria",
+      name: PersonName.fromRaw("Maria Lopez"),
+      document: null,
+      phone: NormalizedPhone.fromRaw("0414-1234567"),
+      isMinor: false,
+      status: "admitted",
+    };
+    const patients = new FakePatients([existing]);
+    const admissions = new FakeAdmissions(new Map([["pt-maria|ho-1", "ad-maria"]]));
+    const hospitals = new FakeHospitals();
+    hospitals.ids.set("Hospital X", "ho-1");
+    hospitals.ids.set("Hospital Y", "ho-2");
+    const repos = buildRepos({ patients, admissions, hospitals });
+    let n = 0;
+
+    const summary = await new IngestPatientList({
+      parser: new FakeParser({
+        sheet: "S",
+        rows: [
+          row({ fingerprint: "m1", fullName: "Maria Lopez", hospitalName: "Hospital Y", phone: "4141234567" }),
+        ],
+      }),
+      uow: new FakeUnitOfWork(repos),
+      newId: () => `id-${++n}`,
+    }).execute({ fileBytes: new Uint8Array(), uploadedBy: null });
+
+    expect(summary.mergedPatients).toBe(1);
+    expect(summary.newPatients).toBe(0);
+  });
+
+  it("keeps same-name same-hospital rows separate when ages are far apart (homonyms)", async () => {
+    const { PersonName } = await import("../../domain/value-objects/person-name");
+    const existing: ExistingPatient = {
+      id: "pt-c",
+      name: PersonName.fromRaw("Carlos Ruiz"),
+      document: null,
+      age: 8,
+      isMinor: true,
+      status: "admitted",
+    };
+    const patients = new FakePatients([existing]);
+    const admissions = new FakeAdmissions(new Map([["pt-c|ho-1", "ad-c"]]));
+    const hospitals = new FakeHospitals();
+    hospitals.ids.set("Hospital X", "ho-1");
+    const repos = buildRepos({ patients, admissions, hospitals });
+    let n = 0;
+
+    const summary = await new IngestPatientList({
+      parser: new FakeParser({
+        sheet: "S",
+        rows: [row({ fingerprint: "c1", fullName: "Carlos Ruiz", hospitalName: "Hospital X", age: 40 })],
+      }),
+      uow: new FakeUnitOfWork(repos),
+      newId: () => `id-${++n}`,
+    }).execute({ fileBytes: new Uint8Array(), uploadedBy: null });
+
+    expect(summary.mergedPatients).toBe(0);
+    expect(summary.newPatients).toBe(1);
+  });
+
+  it("completes a missing age when merging by document", async () => {
+    const { PersonName } = await import("../../domain/value-objects/person-name");
+    const { DocumentId } = await import("../../domain/value-objects/document-id");
+    const existing: ExistingPatient = {
+      id: "pt-a",
+      name: PersonName.fromRaw("Ana Gil"),
+      document: DocumentId.fromRaw("12.345.678"),
+      age: null,
+      isMinor: false,
+      status: "admitted",
+    };
+    const patients = new FakePatients([existing]);
+    const admissions = new FakeAdmissions(new Map([["pt-a|ho-1", "ad-a"]]));
+    const hospitals = new FakeHospitals();
+    hospitals.ids.set("Hospital X", "ho-1");
+    const repos = buildRepos({ patients, admissions, hospitals });
+    let n = 0;
+
+    await new IngestPatientList({
+      parser: new FakeParser({
+        sheet: "S",
+        rows: [
+          row({ fingerprint: "a1", fullName: "Ana Gil", hospitalName: "Hospital X", documentNumber: "12.345.678", age: 33 }),
+        ],
+      }),
+      uow: new FakeUnitOfWork(repos),
+      newId: () => `id-${++n}`,
+    }).execute({ fileBytes: new Uint8Array(), uploadedBy: null });
+
+    expect(patients.updated.some((u) => u.changes.age === 33)).toBe(true);
+  });
+});
+
+describe("IngestPatientList.ingestParsed — reasignación (skipRawPersist)", () => {
+  // Filas ya presentes en raw_rows (fingerprint conocido).
+  class RawRowsAllPresent implements RawRowStore {
+    async persistNew(): Promise<Set<string>> {
+      return new Set(); // nada nuevo
+    }
+  }
+
+  it("does NOT process an already-present row by default (idempotencia)", async () => {
+    const repos = buildRepos({ rawRows: new RawRowsAllPresent() });
+    const patients = repos.patients as FakePatients;
+    const list: ParsedPatientList = {
+      sheet: "S",
+      rows: [row({ fingerprint: "r1", fullName: "Ana Gil", hospitalName: null })],
+    };
+    let n = 0;
+    await new IngestPatientList({
+      parser: new FakeParser(list),
+      uow: new FakeUnitOfWork(repos),
+      newId: () => `id-${++n}`,
+    }).ingestParsed(list, { uploadedBy: null, forcedHospitalId: "ho-A" });
+
+    expect(patients.inserted).toHaveLength(0);
+  });
+
+  it("reprocesses an already-present row when skipRawPersist is set (reassignment)", async () => {
+    const repos = buildRepos({ rawRows: new RawRowsAllPresent() });
+    const patients = repos.patients as FakePatients;
+    const list: ParsedPatientList = {
+      sheet: "S",
+      rows: [row({ fingerprint: "r1", fullName: "Ana Gil", hospitalName: null })],
+    };
+    let n = 0;
+    const summary = await new IngestPatientList({
+      parser: new FakeParser(list),
+      uow: new FakeUnitOfWork(repos),
+      newId: () => `id-${++n}`,
+    }).ingestParsed(list, { uploadedBy: null, forcedHospitalId: "ho-A", skipRawPersist: true });
+
+    expect(patients.inserted).toHaveLength(1);
+    expect(summary.newAdmissions).toBe(1);
+  });
+});
+
 describe("IngestPatientList.ingestParsed", () => {
   // Paridad: ingestParsed sobre una lista ya parseada deduplica/persiste igual que execute.
   it("deduplica y persiste igual que el camino Excel (paridad de summary)", async () => {
@@ -375,8 +547,9 @@ describe("IngestPatientList.ingestParsed", () => {
     expect(patients.inserted).toHaveLength(2);
   });
 
-  // D4: miembro scoped → la columna de hospital del archivo se IGNORA, todo va al hospital forzado.
-  it("forcedHospitalId fuerza el hospital ignorando la columna del archivo", async () => {
+  // ADR-0006: carga scoped → una fila que nombra OTRO hospital NO se atribuye al propio;
+  // se segrega y se audita fila por fila.
+  it("segregates a row that names a different hospital in a scoped upload", async () => {
     const list: ParsedPatientList = {
       sheet: "S",
       rows: [row({ fingerprint: "f1", fullName: "Ana Rojas", documentNumber: "12.345.678", hospitalName: "Hospital Y" })],
@@ -385,30 +558,51 @@ describe("IngestPatientList.ingestParsed", () => {
     const patients = repos.patients as FakePatients;
     const admissions = repos.admissions as FakeAdmissions;
     const hospitals = repos.hospitals as FakeHospitals;
+    const audit = repos.audit as FakeAudit;
     let n = 0;
 
     const summary = await new IngestPatientList({
       parser: new FakeParser(list),
       uow: new FakeUnitOfWork(repos),
       newId: () => `id-${++n}`,
-    }).ingestParsed(list, { uploadedBy: null, forcedHospitalId: "ho-forced" });
+    }).ingestParsed(list, { uploadedBy: "u@h.test", forcedHospitalId: "ho-forced" });
 
-    // No se resuelve ningún hospital por nombre: el id viene forzado del servidor.
-    expect(hospitals.resolveCalls).toBe(0);
-    expect(summary.newAdmissions).toBe(1);
-    expect(admissions.inserted).toHaveLength(1);
-    expect(admissions.inserted[0]!.hospitalId).toBe("ho-forced");
-    expect(patients.inserted).toHaveLength(1);
-    // El archivo mencionaba otro hospital → se reporta (no se cargó en él).
+    // No se atribuye al hospital propio: no hay paciente ni admisión.
+    expect(hospitals.resolveCalls).toBe(0); // en scoped no se crea por nombre
+    expect(summary.foreignRows).toBe(1);
+    expect(patients.inserted).toHaveLength(0);
+    expect(admissions.inserted).toHaveLength(0);
     expect(summary.otherHospitalsMentioned).toBe(1);
-    expect(summary.hospitals).toBe(1);
+    expect(audit.entries.some((e) => e.action === "ingest_foreign_hospital_row")).toBe(true);
+  });
+
+  it("ingests a scoped row that names the member's OWN hospital (via catalog)", async () => {
+    const hospitals = new FakeHospitals();
+    hospitals.ids.set("Hospital A", "ho-A"); // el hospital del miembro, conocido en el catálogo
+    const repos = buildRepos({ hospitals });
+    const patients = repos.patients as FakePatients;
+    let n = 0;
+    const list: ParsedPatientList = {
+      sheet: "S",
+      rows: [row({ fingerprint: "o1", fullName: "Ana Rojas", documentNumber: "12.345.678", hospitalName: "Hospital A" })],
+    };
+
+    const summary = await new IngestPatientList({
+      parser: new FakeParser(list),
+      uow: new FakeUnitOfWork(repos),
+      newId: () => `id-${++n}`,
+    }).ingestParsed(list, { uploadedBy: null, forcedHospitalId: "ho-A" });
+
+    expect(summary.foreignRows).toBe(0);
+    expect(patients.inserted).toHaveLength(1);
+    expect(summary.newAdmissions).toBe(1);
   });
 
   // D8: el toggle explícito "¿falleció?" marca el estado aunque la nota no lo diga.
   it("deceased=true fuerza el estado fallecido sin marcador en la nota", async () => {
     const list: ParsedPatientList = {
       sheet: "voz",
-      rows: [row({ fingerprint: "d1", fullName: "Rosa Mora", clinicalNotes: "estable", deceased: true })],
+      rows: [row({ fingerprint: "d1", fullName: "Rosa Mora", hospitalName: null, clinicalNotes: "estable", deceased: true })],
     };
     const repos = buildRepos();
     const patients = repos.patients as FakePatients;

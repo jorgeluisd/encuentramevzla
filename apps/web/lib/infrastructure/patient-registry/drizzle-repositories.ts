@@ -1,9 +1,10 @@
-import { arrayOverlaps, inArray, or, sql } from "drizzle-orm";
+import { arrayOverlaps, eq, inArray, or, sql } from "drizzle-orm";
 import {
   admissions,
   auditLog,
   clinicalNotes,
   contacts,
+  hospitalAliases,
   hospitals,
   patients,
   rawRows,
@@ -11,6 +12,9 @@ import {
 import type { getDb } from "@evzla/db/client";
 import {
   DocumentId,
+  matchHospital,
+  normalizeHospitalName,
+  NormalizedPhone,
   PersonName,
   type AdmissionRepository,
   type AuditEntry,
@@ -61,18 +65,39 @@ export class DrizzlePatientRepository implements PatientRepository {
         id: patients.id,
         name: patients.normalizedName,
         document: patients.normalizedDocNumber,
+        age: patients.age,
         isMinor: patients.isMinor,
         status: patients.status,
       })
       .from(patients)
       .where(conds.length === 1 ? conds[0] : or(...conds));
-    return rows.map((r) => ({
-      id: r.id,
-      name: PersonName.fromRaw(r.name),
-      document: r.document ? DocumentId.fromRaw(r.document) : null,
-      isMinor: r.isMinor,
-      status: r.status,
-    }));
+    if (rows.length === 0) return [];
+
+    // Teléfono como señal de identidad: se lee del schema `sensitive` SOLO en este camino
+    // de ingesta (servidor de confianza, dentro de la tx), se compara en memoria y NUNCA
+    // se persiste ni se expone en `public` (evita enumeración). Ver spec 0020 §8.
+    const ids = rows.map((r) => r.id);
+    const phoneRows = await this.db
+      .select({ patientId: contacts.patientId, phone: contacts.phone })
+      .from(contacts)
+      .where(inArray(contacts.patientId, ids));
+    const phoneByPatient = new Map<string, string>();
+    for (const p of phoneRows) {
+      if (p.phone && !phoneByPatient.has(p.patientId)) phoneByPatient.set(p.patientId, p.phone);
+    }
+
+    return rows.map((r) => {
+      const rawPhone = phoneByPatient.get(r.id);
+      return {
+        id: r.id,
+        name: PersonName.fromRaw(r.name),
+        document: r.document ? DocumentId.fromRaw(r.document) : null,
+        phone: rawPhone ? NormalizedPhone.fromRaw(rawPhone) : null,
+        age: r.age,
+        isMinor: r.isMinor,
+        status: r.status,
+      };
+    });
   }
 
   async createMany(rows: NewPatientRow[]): Promise<void> {
@@ -101,14 +126,15 @@ export class DrizzlePatientRepository implements PatientRepository {
         doc: u.changes.document ? u.changes.document.normalized : null,
         isMinor: u.changes.isMinor ?? null,
         status: u.changes.status ?? null,
+        age: u.changes.age ?? null,
       }))
-      .filter((r) => r.doc !== null || r.isMinor !== null || r.status !== null);
+      .filter((r) => r.doc !== null || r.isMinor !== null || r.status !== null || r.age !== null);
     if (rows.length === 0) return;
     for (const part of chunk(rows, BATCH)) {
       const values = sql.join(
         part.map(
           (r) =>
-            sql`(${r.id}::uuid, ${r.doc}::text, ${r.isMinor}::boolean, ${r.status}::public.person_status)`,
+            sql`(${r.id}::uuid, ${r.doc}::text, ${r.isMinor}::boolean, ${r.status}::public.person_status, ${r.age}::integer)`,
         ),
         sql`, `,
       );
@@ -116,8 +142,9 @@ export class DrizzlePatientRepository implements PatientRepository {
         UPDATE public.patients AS p SET
           normalized_doc_number = COALESCE(v.doc, p.normalized_doc_number),
           is_minor = COALESCE(v.is_minor, p.is_minor),
-          status = COALESCE(v.status, p.status)
-        FROM (VALUES ${values}) AS v(id, doc, is_minor, status)
+          status = COALESCE(v.status, p.status),
+          age = COALESCE(v.age, p.age)
+        FROM (VALUES ${values}) AS v(id, doc, is_minor, status, age)
         WHERE p.id = v.id
       `);
     }
@@ -127,20 +154,59 @@ export class DrizzlePatientRepository implements PatientRepository {
 export class DrizzleHospitalRepository implements HospitalRepository {
   constructor(private readonly db: DbOrTx) {}
 
+  // Catálogo canónico (spec 0020, ADR-0005): alias exacto → fuzzy (trigram) → nuevo
+  // provisional. Converge variantes de nombre a un único hospital sin duplicar.
   async resolveByName(name: string): Promise<string> {
-    // Case-insensitive: "Campo de Golf Caribe" y "CAMPO DE GOLF CARIBE" son el mismo
-    // hospital. Se conserva la capitalización del PRIMERO que se haya insertado.
-    const existing = await this.db
-      .select({ id: hospitals.id })
-      .from(hospitals)
-      .where(sql`lower(${hospitals.name}) = lower(${name})`)
+    const norm = normalizeHospitalName(name);
+    const existing = await this.resolveExisting(name);
+    if (existing) {
+      if (norm !== "") await this.recordAlias(norm, existing);
+      return existing;
+    }
+    // Hospital nuevo → provisional + alias, para revisión del moderador.
+    const id = await this.createProvisional(name);
+    if (norm !== "") await this.recordAlias(norm, id);
+    return id;
+  }
+
+  // Igual que resolveByName pero NO crea: null si el hospital no está en el catálogo.
+  // Se usa en carga scoped para verificar pertenencia sin ensuciar el catálogo (ADR-0006).
+  async resolveExisting(name: string): Promise<string | null> {
+    const norm = normalizeHospitalName(name);
+    if (norm === "") {
+      const [existing] = await this.db
+        .select({ id: hospitals.id })
+        .from(hospitals)
+        .where(sql`lower(${hospitals.name}) = lower(${name})`)
+        .limit(1);
+      return existing?.id ?? null;
+    }
+    const [alias] = await this.db
+      .select({ id: hospitalAliases.hospitalId })
+      .from(hospitalAliases)
+      .where(eq(hospitalAliases.aliasNormalized, norm))
       .limit(1);
-    if (existing[0]) return existing[0].id;
+    if (alias) return alias.id;
+    const all = await this.db.select({ id: hospitals.id, name: hospitals.name }).from(hospitals);
+    return matchHospital(
+      norm,
+      all.map((h) => ({ id: h.id, normalized: normalizeHospitalName(h.name) })),
+    );
+  }
+
+  private async createProvisional(name: string): Promise<string> {
     const [row] = await this.db
       .insert(hospitals)
-      .values({ name })
+      .values({ name, provisional: true })
       .returning({ id: hospitals.id });
     return row!.id;
+  }
+
+  private async recordAlias(aliasNormalized: string, hospitalId: string): Promise<void> {
+    await this.db
+      .insert(hospitalAliases)
+      .values({ aliasNormalized, hospitalId })
+      .onConflictDoNothing({ target: hospitalAliases.aliasNormalized });
   }
 }
 

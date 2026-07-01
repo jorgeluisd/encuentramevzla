@@ -22,6 +22,21 @@ export const hospitals = pgTable("hospitals", {
   infoDeskPhone: text("info_desk_phone"),
   city: text("city"),
   active: boolean("active").notNull().default(true),
+  // Creado al vuelo en una ingesta (no del catálogo oficial) → pendiente de que un
+  // moderador confirme si es un hospital nuevo o una variante a fusionar (spec 0020 §4).
+  provisional: boolean("provisional").notNull().default(false),
+});
+
+/**
+ * hospital_aliases — nombres normalizados que apuntan a un hospital canónico. Hace
+ * converger variantes ("H. Vargas" == "Hospital Vargas de Caracas") sin duplicar
+ * hospitales. `alias_normalized` = normalizeHospitalName(...) (spec 0020, ADR-0005).
+ */
+export const hospitalAliases = pgTable("hospital_aliases", {
+  aliasNormalized: text("alias_normalized").primaryKey(),
+  hospitalId: uuid("hospital_id")
+    .notNull()
+    .references(() => hospitals.id),
 });
 
 /**
