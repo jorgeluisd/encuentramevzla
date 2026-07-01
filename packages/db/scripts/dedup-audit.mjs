@@ -16,18 +16,24 @@ const NO_VALID_DOC = sql`(
 try {
   // 1) Misma cédula válida con >1 paciente → separar "mismo nombre" (fusión segura)
   //    de "nombre distinto" (conflicto de cédula → cola de revisión).
-  const docGroups = await sql`
-    SELECT p.normalized_doc_number AS doc,
-           array_agg(p.id) AS ids,
-           array_agg(DISTINCT p.normalized_name) AS names
+  // Conflictos: mismo doc con >1 nombre distinto (van a la cola, no se auto-fusionan).
+  const sameDocDiffName = await sql`
+    SELECT p.normalized_doc_number AS doc, array_agg(DISTINCT p.normalized_name) AS names
     FROM public.patients p
     WHERE p.normalized_doc_number IS NOT NULL
       AND length(regexp_replace(p.normalized_doc_number, '[^0-9]', '', 'g')) >= 6
     GROUP BY p.normalized_doc_number
+    HAVING count(DISTINCT p.normalized_name) > 1
+  `;
+  // Fusión segura: mismo doc + MISMO nombre repetido (lo que auto-fusiona T17 Tier 1).
+  const sameDocSameName = await sql`
+    SELECT p.normalized_doc_number AS doc, p.normalized_name AS name, count(*)::int AS n
+    FROM public.patients p
+    WHERE p.normalized_doc_number IS NOT NULL
+      AND length(regexp_replace(p.normalized_doc_number, '[^0-9]', '', 'g')) >= 6
+    GROUP BY p.normalized_doc_number, p.normalized_name
     HAVING count(*) > 1
   `;
-  const sameDocSameName = docGroups.filter((g) => g.names.length === 1);
-  const sameDocDiffName = docGroups.filter((g) => g.names.length > 1);
 
   // 2) Mismo nombre + MISMO hospital, sin cédula válida → posibles duplicados (cola).
   const sameNameSameHospital = await sql`
@@ -72,7 +78,7 @@ try {
 
   console.log("=== AUDITORÍA DE DUPLICADOS (read-only) ===\n");
   console.log("(1) Misma cédula válida:");
-  console.log(`    · fusión SEGURA (mismo nombre): ${sameDocSameName.length} grupos, ${sum(sameDocSameName, (g) => g.ids.length)} registros`);
+  console.log(`    · fusión SEGURA (mismo doc + mismo nombre → T17 Tier 1): ${sameDocSameName.length} grupos, ${sum(sameDocSameName, (g) => g.n)} registros`);
   console.log(`    · conflicto de cédula (nombre distinto → cola): ${sameDocDiffName.length} grupos`);
   for (const g of sameDocDiffName.slice(0, 5)) console.log(`        doc ${g.doc}: ${g.names.join(" / ")}`);
 
