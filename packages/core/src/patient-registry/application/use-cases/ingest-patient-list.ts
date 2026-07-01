@@ -1,5 +1,6 @@
 import { decideMatch } from "../../domain/services/patient-matching";
 import { DocumentId } from "../../domain/value-objects/document-id";
+import { NormalizedPhone } from "../../domain/value-objects/normalized-phone";
 import { PersonName } from "../../domain/value-objects/person-name";
 import {
   isMinorAge,
@@ -33,9 +34,11 @@ export interface IngestionSummary {
   newAdmissions: number;
   minors: number;
   deceased: number;
-  // Cuántos hospitales DISTINTOS mencionaba el archivo cuando la carga viene forzada a uno (scoped).
-  // 0 si no hay scoping o si el archivo no nombra hospitales.
+  // Cuántos hospitales DISTINTOS (ajenos al del miembro) mencionaba el archivo en carga scoped.
+  // 0 si no hay scoping o si el archivo no nombra otros hospitales.
   otherHospitalsMentioned: number;
+  // Filas segregadas por nombrar un hospital que NO es el del miembro (carga scoped, ADR-0006).
+  foreignRows: number;
 }
 
 export interface IngestDependencies {
@@ -68,7 +71,13 @@ export class IngestPatientList {
   // ParsedPatientList y entran por aquí → heredan dedup, merge, conflictos, menor/fallecido y audit).
   async ingestParsed(
     list: ParsedPatientList,
-    opts: { uploadedBy: string | null; forcedHospitalId?: string | null },
+    opts: {
+      uploadedBy: string | null;
+      forcedHospitalId?: string | null;
+      // Reasignación (ADR-0006): la fila ya está en raw_rows; saltar la idempotencia para
+      // reprocesarla al hospital correcto.
+      skipRawPersist?: boolean;
+    },
   ): Promise<IngestionSummary> {
     const { uow, newId } = this.deps;
     const { sheet, rows } = list;
@@ -87,10 +96,17 @@ export class IngestPatientList {
       // Si no, se resuelve por nombre cada uno una sola vez (dentro de la tx: atómico).
       const hospitalIds = new Map<string, string>();
       let otherHospitalsMentioned = 0;
+      // En carga scoped: por cada nombre de hospital mencionado, ¿es el del miembro? Se
+      // resuelve por catálogo SIN crear. Las filas que nombran otro hospital se segregan.
+      const foreignByName = new Map<string, boolean>();
       if (forced) {
         const mentioned = new Set<string>();
         for (const r of unique) if (r.hospitalName) mentioned.add(r.hospitalName);
-        otherHospitalsMentioned = mentioned.size;
+        for (const nm of mentioned) {
+          const resolved = await repos.hospitals.resolveExisting(nm);
+          foreignByName.set(nm, resolved !== forced);
+        }
+        otherHospitalsMentioned = [...foreignByName.values()].filter(Boolean).length;
       } else {
         for (const r of unique) {
           if (r.hospitalName && !hospitalIds.has(r.hospitalName)) {
@@ -102,10 +118,9 @@ export class IngestPatientList {
       const hospitalIdForRow = (r: (typeof unique)[number]): string | null =>
         forced ?? (r.hospitalName ? (hospitalIds.get(r.hospitalName) ?? null) : null);
 
-      const newFingerprints = await repos.rawRows.persistNew(unique, {
-        fileId,
-        uploadedBy: opts.uploadedBy,
-      });
+      const newFingerprints = opts.skipRawPersist
+        ? new Set(unique.map((r) => r.fingerprint))
+        : await repos.rawRows.persistNew(unique, { fileId, uploadedBy: opts.uploadedBy });
       const toProcess = unique.filter((r) => newFingerprints.has(r.fingerprint));
 
       // Claves del lote para acotar candidatos (no toda la tabla): cédula o ≥1 token de nombre.
@@ -175,13 +190,29 @@ export class IngestPatientList {
         minors: 0,
         deceased: 0,
         otherHospitalsMentioned,
+        foreignRows: 0,
       };
 
       for (const r of toProcess) {
+        // Carga scoped: la fila nombra un hospital que NO es el del miembro → no atribuir;
+        // segregar y auditar por fila para que un moderador la reasigne (ADR-0006).
+        if (forced && r.hospitalName && foreignByName.get(r.hospitalName)) {
+          summary.foreignRows++;
+          dedupEntries.push({
+            actorId: opts.uploadedBy,
+            action: "ingest_foreign_hospital_row",
+            entity: "raw_rows",
+            entityId: null,
+            payload: { hospitalName: r.hospitalName, fingerprint: r.fingerprint },
+          });
+          continue;
+        }
         if (!r.fullName) continue;
         const name = PersonName.fromRaw(r.fullName);
         if (name.isEmpty) continue;
         const document = r.documentNumber ? DocumentId.fromRaw(r.documentNumber) : null;
+        // Teléfono: señal media-fuerte. Se compara en memoria (nunca se expone en `public`).
+        const phone = r.phone ? NormalizedPhone.fromRaw(r.phone) : null;
         // La condición de menor puede venir por edad o escrita en el nombre (flaggedMinor).
         const isMinor = isMinorAge(r.age) || name.flaggedMinor;
         // El fallecimiento puede venir por el toggle explícito (D8), en observaciones o en el nombre.
@@ -189,7 +220,11 @@ export class IngestPatientList {
         const status: PatientStatus = deceased ? "deceased" : "admitted";
 
         const incomingHospitalId = hospitalIdForRow(r);
-        const decision = decideMatch({ name, document }, candidates, incomingHospitalId);
+        const decision = decideMatch(
+          { name, document, phone, age: r.age },
+          candidates,
+          incomingHospitalId,
+        );
 
         let patientId: string;
         if (decision.kind === "merge") {
@@ -199,6 +234,8 @@ export class IngestPatientList {
           if (isMinor && !target.isMinor) changes.isMinor = true;
           if (document?.isValid && !target.document?.isValid) changes.document = document;
           if (deceased && target.status !== "deceased") changes.status = "deceased";
+          // Completar edad solo si el target no la tiene (nunca pisa un dato existente).
+          if (r.age != null && target.age == null) changes.age = r.age;
           if (Object.keys(changes).length > 0) {
             patientUpdates.set(patientId, { ...patientUpdates.get(patientId), ...changes });
             Object.assign(target, changes);
@@ -207,7 +244,7 @@ export class IngestPatientList {
         } else {
           patientId = newId();
           patientsToInsert.push({ id: patientId, name, document, age: r.age, isMinor, status });
-          candidates.push({ id: patientId, name, document, isMinor, status, hospitalIds: hospitalsOf(patientId) });
+          candidates.push({ id: patientId, name, document, phone, age: r.age, isMinor, status, hospitalIds: hospitalsOf(patientId) });
           if (decision.kind === "conflict") {
             summary.documentConflicts++;
             dedupEntries.push({

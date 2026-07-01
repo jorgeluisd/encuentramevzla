@@ -1,10 +1,15 @@
 import type { DocumentId } from "../value-objects/document-id";
+import type { NormalizedPhone } from "../value-objects/normalized-phone";
 import type { PersonName } from "../value-objects/person-name";
 import { levenshtein, tokenSetSimilarity, trigramSimilarity } from "./string-similarity";
 
 export interface PatientIdentity {
   name: PersonName;
   document: DocumentId | null;
+  // Señal media-fuerte de identidad; se compara en memoria (nunca se expone en `public`).
+  phone?: NormalizedPhone | null;
+  // Señal débil: solo separa homónimos y desempata prioridad; nunca fusiona.
+  age?: number | null;
 }
 
 export interface MatchCandidate extends PatientIdentity {
@@ -23,6 +28,18 @@ const MERGE_BY_NAME = 0.92;
 const REVIEW_BY_NAME = 0.8;
 const SAME_DOCUMENT_NAME = 0.5;
 const DOC_TYPO_DISTANCE = 2; // cédulas que difieren ≤ 2 dígitos: posible typo → revisión
+const PHONE_MERGE_NAME = 0.85; // teléfono igual + nombre ≥ esto → misma persona
+const AGE_TOLERANCE = 2; // edades que difieren > esto refuerzan "personas distintas"
+
+// Dos cédulas VÁLIDAS y distintas contradicen la identidad (aunque coincida el teléfono).
+function validDocsConflict(a: DocumentId | null | undefined, b: DocumentId | null | undefined): boolean {
+  return Boolean(a?.isValid && b?.isValid && a.normalized !== b.normalized);
+}
+
+// La edad separa homónimos: ambas presentes y lejanas ⇒ personas distintas.
+function agesFarApart(a: number | null | undefined, b: number | null | undefined): boolean {
+  return a != null && b != null && Math.abs(a - b) > AGE_TOLERANCE;
+}
 
 // Combinación trigram + token-set en [0,1].
 export function nameSimilarity(a: PersonName, b: PersonName): number {
@@ -66,6 +83,20 @@ export function decideMatch(
     }
   }
 
+  // Señal fuerte sin cédula concluyente: mismo teléfono + nombre alto ⇒ misma persona
+  // (incluye traslados entre hospitales). No aplica si dos cédulas válidas se contradicen.
+  const incomingPhone = incoming.phone;
+  if (incomingPhone && incomingPhone.isValid) {
+    const byPhone = candidates.find(
+      (c) =>
+        c.phone?.isValid &&
+        incomingPhone.equals(c.phone) &&
+        nameSimilarity(incoming.name, c.name) >= PHONE_MERGE_NAME &&
+        !validDocsConflict(document, c.document),
+    );
+    if (byPhone) return { kind: "merge", targetId: byPhone.id };
+  }
+
   let best: MatchCandidate | null = null;
   let bestScore = 0;
   for (const candidate of candidates) {
@@ -79,24 +110,30 @@ export function decideMatch(
     const bestDoc = best.document;
     // Ambos con cédula válida pero DISTINTA: pocos dígitos = posible typo → revisión;
     // muy distintas = persona distinta → no fusionar.
-    if (document?.isValid && bestDoc?.isValid && bestDoc.normalized !== document.normalized) {
-      return levenshtein(document.normalized, bestDoc.normalized) <= DOC_TYPO_DISTANCE
+    if (validDocsConflict(document, bestDoc)) {
+      return levenshtein(document!.normalized, bestDoc!.normalized) <= DOC_TYPO_DISTANCE
         ? { kind: "review" }
         : { kind: "new" };
     }
-    // Ninguno aporta cédula que distinga: desambiguar por hospital. Si sabemos ambos
-    // hospitales y el del registro NO está entre los del candidato → posibles homónimos
-    // en hospitales distintos → no fusionar (la búsqueda igual muestra ambas coincidencias).
-    if (
-      !document?.isValid &&
-      !bestDoc?.isValid &&
-      incomingHospitalId &&
-      best.hospitalIds &&
-      best.hospitalIds.size > 0 &&
-      !best.hospitalIds.has(incomingHospitalId)
-    ) {
-      return { kind: "new" };
+    // Sin señal fuerte (ninguna cédula válida y el teléfono no fusionó): el nombre NO decide
+    // solo (ADR-0004).
+    if (!document?.isValid && !bestDoc?.isValid) {
+      // Edad lejana → homónimos → separados (ni siquiera revisión).
+      if (agesFarApart(incoming.age, best.age)) return { kind: "new" };
+      // Hospital distinto conocido → homónimos en hospitales distintos → separados
+      // (la búsqueda igual muestra ambas coincidencias).
+      if (
+        incomingHospitalId &&
+        best.hospitalIds &&
+        best.hospitalIds.size > 0 &&
+        !best.hospitalIds.has(incomingHospitalId)
+      ) {
+        return { kind: "new" };
+      }
+      // Mismo hospital (o desconocido) sin señal fuerte → revisión humana, no auto-merge.
+      return { kind: "review" };
     }
+    // Al menos una cédula válida y sin conflicto → completa la identidad → misma persona.
     return { kind: "merge", targetId: best.id };
   }
   if (best && bestScore >= REVIEW_BY_NAME) return { kind: "review" };

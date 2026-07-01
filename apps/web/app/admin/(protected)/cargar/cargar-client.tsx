@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { HospitalPatientListItem, PatientStatus } from "@evzla/core";
 import {
@@ -93,7 +93,13 @@ export function CargarClient({
   search,
 }: Props): React.ReactElement {
   const router = useRouter();
+  // isPending: la navegación/refresh está en curso → mostramos skeleton en la lista
+  // (loading.tsx no cubre cambios de searchParam como hospital/búsqueda/página).
+  const [isPending, startTransition] = useTransition();
   const [panel, setPanel] = useState<PanelMode>({ kind: "closed" });
+  // Cambia en cada apertura/relleno del panel para RE-MONTAR el form: los inputs usan
+  // defaultValue, así que el dictado que llega después debe montar campos frescos.
+  const [panelKey, setPanelKey] = useState(0);
   const [recording, setRecording] = useState(false);
   const [dictando, setDictando] = useState(false);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
@@ -101,6 +107,12 @@ export function CargarClient({
 
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  // Abre/rellena el panel forzando re-montaje del form (defaultValue).
+  function showPanel(next: Exclude<PanelMode, { kind: "closed" }>): void {
+    setPanel(next);
+    setPanelKey((k) => k + 1);
+  }
 
   const sinHospital = activeHospitalId === null;
   const [busqueda, setBusqueda] = useState(search);
@@ -118,9 +130,13 @@ export function CargarClient({
     return qs ? `/admin/cargar?${qs}` : "/admin/cargar";
   }
 
+  function irA(url: string): void {
+    startTransition(() => router.push(url));
+  }
+
   function onBuscar(e: React.FormEvent<HTMLFormElement>): void {
     e.preventDefault();
-    router.push(listUrl({ q: busqueda.trim(), page: 1 }));
+    irA(listUrl({ q: busqueda.trim(), page: 1 }));
   }
 
   // --- Grabación por voz (MediaRecorder). El audio NO se persiste; se manda a STT y se descarta.
@@ -148,6 +164,11 @@ export function CargarClient({
       mr.start();
       mediaRef.current = mr;
       setRecording(true);
+      // Despliega el formulario ya: la persona ve los campos mientras habla; el dictado
+      // los rellenará al terminar. Si ya venía editando/creando, no lo pisa.
+      if (panel.kind === "closed") {
+        showPanel({ kind: "create", transcript: null, fields: emptyFields() });
+      }
     } catch {
       setAviso({ tipo: "error", texto: "No se pudo acceder al micrófono." });
     }
@@ -170,7 +191,7 @@ export function CargarClient({
         return;
       }
       const b = res.borrador;
-      setPanel({
+      showPanel({
         kind: "create",
         transcript: res.transcript ?? null,
         fields: {
@@ -191,12 +212,12 @@ export function CargarClient({
 
   function abrirManual(): void {
     setAviso(null);
-    setPanel({ kind: "create", transcript: null, fields: emptyFields() });
+    showPanel({ kind: "create", transcript: null, fields: emptyFields() });
   }
 
   function abrirEdicion(item: HospitalPatientListItem): void {
     setAviso(null);
-    setPanel({
+    showPanel({
       kind: "edit",
       patientId: item.patientId,
       fields: {
@@ -239,7 +260,7 @@ export function CargarClient({
         setAviso({ tipo: "ok", texto: "Paciente cargado." });
       }
       setPanel({ kind: "closed" });
-      router.refresh(); // refresca la lista en vivo
+      startTransition(() => router.refresh()); // refresca la lista en vivo (con skeleton)
     } finally {
       setGuardando(false);
     }
@@ -289,7 +310,7 @@ export function CargarClient({
               value={activeHospitalId ?? ""}
               onChange={(ev) => {
                 const id = ev.target.value;
-                router.push(id ? `/admin/cargar?hospitalId=${id}` : "/admin/cargar");
+                irA(id ? `/admin/cargar?hospitalId=${id}` : "/admin/cargar");
               }}
             >
               <option value="">Elige un hospital…</option>
@@ -358,7 +379,7 @@ export function CargarClient({
                 <CardTitle>
                   {panel.kind === "edit" ? "Editar paciente" : "Confirmar paciente"}
                 </CardTitle>
-                <form onSubmit={guardarPanel} className="space-y-3">
+                <form key={panelKey} onSubmit={guardarPanel} className="space-y-3">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="space-y-1">
                       <span className="text-sm text-text-2">Nombre y apellidos</span>
@@ -456,7 +477,9 @@ export function CargarClient({
                   </Button>
                 </form>
               </div>
-              {total === 0 ? (
+              {isPending ? (
+                <ListaSkeleton />
+              ) : total === 0 ? (
                 <p className="text-sm text-text-3">
                   {search
                     ? `Sin resultados para «${search}».`
@@ -500,7 +523,7 @@ export function CargarClient({
                   </table>
                 </div>
               )}
-              {totalPages > 1 && (
+              {!isPending && totalPages > 1 && (
                 <div className="flex items-center justify-between gap-3 pt-2 text-sm">
                   <span className="text-text-3">
                     Página {page} de {totalPages} · {total} pacientes
@@ -511,7 +534,7 @@ export function CargarClient({
                       variant="outline"
                       size="md"
                       disabled={page <= 1}
-                      onClick={() => router.push(listUrl({ page: page - 1 }))}
+                      onClick={() => irA(listUrl({ page: page - 1 }))}
                     >
                       Anterior
                     </Button>
@@ -520,7 +543,7 @@ export function CargarClient({
                       variant="outline"
                       size="md"
                       disabled={page >= totalPages}
-                      onClick={() => router.push(listUrl({ page: page + 1 }))}
+                      onClick={() => irA(listUrl({ page: page + 1 }))}
                     >
                       Siguiente
                     </Button>
@@ -531,6 +554,17 @@ export function CargarClient({
           </Card>
         </>
       )}
+    </div>
+  );
+}
+
+// Skeleton de la lista mientras se refresca (cambio de hospital / búsqueda / página / guardado).
+function ListaSkeleton(): React.ReactElement {
+  return (
+    <div className="space-y-2" aria-busy="true" aria-label="Cargando pacientes">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="h-10 animate-pulse rounded-[var(--radius-control)] bg-surface" />
+      ))}
     </div>
   );
 }

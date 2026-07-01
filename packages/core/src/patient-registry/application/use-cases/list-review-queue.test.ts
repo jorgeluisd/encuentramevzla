@@ -46,6 +46,30 @@ describe("ListReviewQueue", () => {
     expect(cases[0]!.candidates.map((c) => c.id)).toEqual(["old"]);
   });
 
+  // 0020: la política conservadora manda a la cola los homónimos "mismo nombre" que antes
+  // se fusionaban solos (ej. varios "Juan Perez"). Cada uno debe traer a otro como candidato.
+  it("surfaces several same-name pending_review cases, each with a same-name candidate", async () => {
+    const reader = new FakeReader(
+      [
+        { patientId: "jp2", name: "juan perez", document: null, reason: "pending_review" },
+        { patientId: "jp3", name: "juan perez", document: null, reason: "pending_review" },
+      ],
+      {},
+      [
+        { id: "jp1", name: "juan perez", document: null },
+        { id: "jp2", name: "juan perez", document: null },
+        { id: "jp3", name: "juan perez", document: null },
+      ],
+    );
+    const cases = await new ListReviewQueue(reader).execute();
+    expect(cases).toHaveLength(2);
+    for (const c of cases) {
+      expect(c.reason).toBe("pending_review");
+      expect(c.candidates).toHaveLength(1);
+      expect(c.candidates[0]!.id).not.toBe(c.patientId); // no se propone a sí mismo
+    }
+  });
+
   it("recomputes the most similar candidate for a grey-zone case (excluding itself)", async () => {
     const reader = new FakeReader(
       [{ patientId: "g", name: "valeria contreras", document: null, reason: "pending_review" }],

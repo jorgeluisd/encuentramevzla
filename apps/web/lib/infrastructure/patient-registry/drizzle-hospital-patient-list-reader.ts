@@ -41,49 +41,54 @@ export class DrizzleHospitalPatientListReader implements HospitalPatientListRead
     }
     const where = and(...filters);
 
-    const [{ total = 0 } = {}] = await this.db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(admissions)
-      .innerJoin(patients, eq(patients.id, admissions.patientId))
-      .where(where);
-
-    const base = await this.db
-      .select({
-        admissionId: admissions.id,
-        patientId: admissions.patientId,
-        fullName: patients.normalizedName,
-        documentNumber: patients.normalizedDocNumber,
-        age: patients.age,
-        status: admissions.status,
-        isMinor: patients.isMinor,
-      })
-      .from(admissions)
-      .innerJoin(patients, eq(patients.id, admissions.patientId))
-      .where(where)
-      .orderBy(asc(patients.normalizedName))
-      .limit(query.limit)
-      .offset(query.offset);
+    // count y la página son independientes → en paralelo.
+    const [countRows, base] = await Promise.all([
+      this.db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(admissions)
+        .innerJoin(patients, eq(patients.id, admissions.patientId))
+        .where(where),
+      this.db
+        .select({
+          admissionId: admissions.id,
+          patientId: admissions.patientId,
+          fullName: patients.normalizedName,
+          documentNumber: patients.normalizedDocNumber,
+          age: patients.age,
+          status: admissions.status,
+          isMinor: patients.isMinor,
+        })
+        .from(admissions)
+        .innerJoin(patients, eq(patients.id, admissions.patientId))
+        .where(where)
+        .orderBy(asc(patients.normalizedName))
+        .limit(query.limit)
+        .offset(query.offset),
+    ]);
+    const total = countRows[0]?.total ?? 0;
 
     if (base.length === 0) return { items: [], total };
 
     const patientIds = [...new Set(base.map((r) => r.patientId))];
     const admissionIds = base.map((r) => r.admissionId);
 
-    const contactRows = await this.db
-      .select({ patientId: contacts.patientId, phone: contacts.phone, address: contacts.address })
-      .from(contacts)
-      .where(inArray(contacts.patientId, patientIds));
+    // contactos y notas son independientes → en paralelo.
+    const [contactRows, noteRows] = await Promise.all([
+      this.db
+        .select({ patientId: contacts.patientId, phone: contacts.phone, address: contacts.address })
+        .from(contacts)
+        .where(inArray(contacts.patientId, patientIds)),
+      this.db
+        .select({ admissionId: clinicalNotes.admissionId, note: clinicalNotes.note })
+        .from(clinicalNotes)
+        .where(inArray(clinicalNotes.admissionId, admissionIds)),
+    ]);
     const contactByPatient = new Map<string, { phone: string | null; address: string | null }>();
     for (const c of contactRows) {
       if (!contactByPatient.has(c.patientId)) {
         contactByPatient.set(c.patientId, { phone: c.phone, address: c.address });
       }
     }
-
-    const noteRows = await this.db
-      .select({ admissionId: clinicalNotes.admissionId, note: clinicalNotes.note })
-      .from(clinicalNotes)
-      .where(inArray(clinicalNotes.admissionId, admissionIds));
     const noteByAdmission = new Map<string, string | null>();
     for (const n of noteRows) {
       if (!noteByAdmission.has(n.admissionId)) noteByAdmission.set(n.admissionId, n.note);

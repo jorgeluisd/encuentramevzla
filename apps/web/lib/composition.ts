@@ -36,6 +36,7 @@ import { DrizzleTeamMemberRepository } from "@/lib/infrastructure/patient-regist
 import { DrizzleAuditLogReader } from "@/lib/infrastructure/patient-registry/drizzle-audit-log-reader";
 import { DrizzleLastUpdateReader } from "@/lib/infrastructure/patient-registry/drizzle-last-update-reader";
 import { DrizzleReviewQueueReader } from "@/lib/infrastructure/patient-registry/drizzle-review-queue-reader";
+import { DrizzleForeignRowsReader } from "@/lib/infrastructure/patient-registry/drizzle-foreign-rows-reader";
 import { DrizzlePatientMerger } from "@/lib/infrastructure/patient-registry/drizzle-patient-merger";
 import { SupabasePatientSearchGateway } from "@/lib/infrastructure/patient-registry/supabase-patient-search-gateway";
 import { CloudflareTurnstileVerifier } from "@/lib/infrastructure/patient-registry/cloudflare-turnstile-verifier";
@@ -75,6 +76,10 @@ export function getLastUpdateUseCase(): GetLastUpdate {
 
 export function reviewQueueReader(): DrizzleReviewQueueReader {
   return new DrizzleReviewQueueReader(getDb());
+}
+
+export function foreignRowsReader(): DrizzleForeignRowsReader {
+  return new DrizzleForeignRowsReader(getDb());
 }
 
 export function listReviewQueueUseCase(): ListReviewQueue {
