@@ -1,7 +1,9 @@
-import { and, asc, eq, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, eq, exists, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
 import { admissions, auditLog, hospitals, patients } from "@evzla/db";
 import type { getDb } from "@evzla/db/client";
 import type {
+  ListOpenFlagsInput,
+  OpenFlagsPage,
   PatientBrief,
   ReviewFlag,
   ReviewQueueReader,
@@ -18,12 +20,45 @@ const DEDUP_ACTIONS = ["dedup_document_conflict", "dedup_pending_review"];
 export class DrizzleReviewQueueReader implements ReviewQueueReader {
   constructor(private readonly db: Db) {}
 
-  async listOpenFlags(): Promise<ReviewFlag[]> {
+  async listOpenFlags({
+    scopeHospitalId,
+    limit,
+    offset,
+  }: ListOpenFlagsInput): Promise<OpenFlagsPage> {
     // Subconsulta de pacientes ya resueltos: se excluyen en SQL (no cargando todo a memoria).
     const resolved = this.db
       .select({ id: auditLog.entityId })
       .from(auditLog)
       .where(and(eq(auditLog.action, "review_resolved"), isNotNull(auditLog.entityId)));
+
+    // Scope P5 en SQL: el flag sobrevive solo si su paciente tiene ingreso en el hospital del actor.
+    const scopeCond =
+      scopeHospitalId != null
+        ? exists(
+            this.db
+              .select({ x: sql`1` })
+              .from(admissions)
+              .where(
+                and(
+                  eq(admissions.patientId, auditLog.entityId),
+                  eq(admissions.hospitalId, scopeHospitalId),
+                ),
+              ),
+          )
+        : undefined;
+
+    const where = and(
+      inArray(auditLog.action, DEDUP_ACTIONS),
+      notInArray(auditLog.entityId, resolved),
+      scopeCond,
+    );
+
+    // Total de la cola (mismo filtro, sin ventana) para calcular cuántas páginas hay.
+    const [countRow] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(auditLog)
+      .innerJoin(patients, eq(patients.id, auditLog.entityId))
+      .where(where);
 
     const rows = await this.db
       .select({
@@ -35,15 +70,12 @@ export class DrizzleReviewQueueReader implements ReviewQueueReader {
       })
       .from(auditLog)
       .innerJoin(patients, eq(patients.id, auditLog.entityId))
-      .where(
-        and(
-          inArray(auditLog.action, DEDUP_ACTIONS),
-          notInArray(auditLog.entityId, resolved),
-        ),
-      )
-      .orderBy(asc(auditLog.createdAt));
+      .where(where)
+      .orderBy(asc(auditLog.createdAt), asc(auditLog.entityId))
+      .limit(limit)
+      .offset(offset);
 
-    return rows.map((r) => ({
+    const flags: ReviewFlag[] = rows.map((r) => ({
       patientId: r.patientId as string,
       name: r.name,
       document: r.payloadDoc ?? r.patientDoc ?? null,
@@ -52,6 +84,8 @@ export class DrizzleReviewQueueReader implements ReviewQueueReader {
           ? "document_conflict"
           : "pending_review",
     }));
+
+    return { flags, total: countRow?.total ?? 0 };
   }
 
   async findByDocument(document: string): Promise<PatientBrief[]> {
