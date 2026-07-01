@@ -1,9 +1,10 @@
-import { arrayOverlaps, inArray, or, sql } from "drizzle-orm";
+import { arrayOverlaps, eq, inArray, or, sql } from "drizzle-orm";
 import {
   admissions,
   auditLog,
   clinicalNotes,
   contacts,
+  hospitalAliases,
   hospitals,
   patients,
   rawRows,
@@ -11,6 +12,8 @@ import {
 import type { getDb } from "@evzla/db/client";
 import {
   DocumentId,
+  matchHospital,
+  normalizeHospitalName,
   NormalizedPhone,
   PersonName,
   type AdmissionRepository,
@@ -151,20 +154,60 @@ export class DrizzlePatientRepository implements PatientRepository {
 export class DrizzleHospitalRepository implements HospitalRepository {
   constructor(private readonly db: DbOrTx) {}
 
+  // Catálogo canónico (spec 0020, ADR-0005): alias exacto → fuzzy (trigram) → nuevo
+  // provisional. Converge variantes de nombre a un único hospital sin duplicar.
   async resolveByName(name: string): Promise<string> {
-    // Case-insensitive: "Campo de Golf Caribe" y "CAMPO DE GOLF CARIBE" son el mismo
-    // hospital. Se conserva la capitalización del PRIMERO que se haya insertado.
-    const existing = await this.db
-      .select({ id: hospitals.id })
-      .from(hospitals)
-      .where(sql`lower(${hospitals.name}) = lower(${name})`)
+    const norm = normalizeHospitalName(name);
+
+    // Sin nombre canonizable (p.ej. solo "Hospital"): igualdad case-insensitive, como antes.
+    if (norm === "") {
+      const existing = await this.db
+        .select({ id: hospitals.id })
+        .from(hospitals)
+        .where(sql`lower(${hospitals.name}) = lower(${name})`)
+        .limit(1);
+      if (existing[0]) return existing[0].id;
+      return this.createProvisional(name);
+    }
+
+    // 1) Alias exacto: acierto directo (seed o resoluciones previas).
+    const alias = await this.db
+      .select({ id: hospitalAliases.hospitalId })
+      .from(hospitalAliases)
+      .where(eq(hospitalAliases.aliasNormalized, norm))
       .limit(1);
-    if (existing[0]) return existing[0].id;
+    if (alias[0]) return alias[0].id;
+
+    // 2) Fuzzy contra el catálogo (un match exacto normalizado da score 1).
+    const all = await this.db.select({ id: hospitals.id, name: hospitals.name }).from(hospitals);
+    const matchedId = matchHospital(
+      norm,
+      all.map((h) => ({ id: h.id, normalized: normalizeHospitalName(h.name) })),
+    );
+    if (matchedId) {
+      await this.recordAlias(norm, matchedId);
+      return matchedId;
+    }
+
+    // 3) Hospital nuevo → provisional + alias, para revisión del moderador.
+    const id = await this.createProvisional(name);
+    await this.recordAlias(norm, id);
+    return id;
+  }
+
+  private async createProvisional(name: string): Promise<string> {
     const [row] = await this.db
       .insert(hospitals)
-      .values({ name })
+      .values({ name, provisional: true })
       .returning({ id: hospitals.id });
     return row!.id;
+  }
+
+  private async recordAlias(aliasNormalized: string, hospitalId: string): Promise<void> {
+    await this.db
+      .insert(hospitalAliases)
+      .values({ aliasNormalized, hospitalId })
+      .onConflictDoNothing({ target: hospitalAliases.aliasNormalized });
   }
 }
 
