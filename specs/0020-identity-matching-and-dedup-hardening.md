@@ -1,6 +1,6 @@
 # 0020 — Endurecimiento de identidad, deduplicación y limpieza de prod
 
-Estado: **propuesto** · Rama sugerida: `feat/0020-dedup-hardening` (desde `develop`).
+Estado: **implementado** (Fases A–G) · desplegado a `main` (PR #62) · remediación de prod ejecutada 2026-07-01.
 Capas: domain (matching + identidad) · application (ingesta + ports) · infrastructure (Drizzle +
 catálogo hospitales) · presentation (`/admin/cargar`, `/admin/review`, dictado).
 **Privacidad: toca identidad de pacientes y usa el teléfono como señal** → `privacy-and-security.md`.
@@ -359,6 +359,30 @@ con OK explícito de Jorge y ensayo en dump). Formato: `.claude/orchestrator/age
 
 **Camino crítico:** T1→T3 (motor) y T5→T6 (ingesta) resuelven los homónimos. T7–T9 (hospitales)
 desbloquean T10 y T16. G no se ejecuta hasta que A–B estén en prod.
+
+## 12. Runbook de remediación (scripts `packages/db/scripts/`)
+
+Todos **dry-run por defecto**; `--apply` escribe. Reversibles por `audit_log`. Ensayar en dump
+antes de prod (ADR-0007). El motor (Fases A–F) ya está en `main`; estos scripts limpian lo cargado
+antes del motor.
+
+- `remediate-prod.mjs` — **orquestador**: corre los pasos en orden pidiendo confirmación por cada
+  `--apply`; verifica el prerrequisito (migración `0014`); sin TTY entra en modo preview.
+- `dedup-audit.mjs` — auditoría read-only (clasifica duplicados).
+- `remediate-hospitals.mjs` — unifica variantes de hospital (mismo nombre normalizado).
+- `remediate-duplicates.mjs` — fusión Tier 1 (misma cédula + nombre idéntico); `--with-phone` Tier 2.
+- `enqueue-existing-dups.mjs` — encola a `/admin/review` los duplicados previos sin flag.
+- `delete-orphans.mjs` — borra huérfanos (sin admisión) **sin** cédula; conserva los que tienen cédula.
+- `reconcile-orphans.mjs` — huérfano con cédula: fusiona si esa cédula ya está en un hospital; si no, borra.
+- `reconcile-with-truth.mjs` — usa el Excel consolidado (fuente de verdad, `draft/data/…`, NO versionado)
+  para adjudicar conflictos de cédula (fusiona typos Lev ≤ 2; limpia cédulas erróneas; marca
+  `review_resolved`) y resolver zona gris con nombre único en la verdad.
+
+**Ejecución en prod (2026-07-01):** migración `0014` aplicada; Vargas unificado y renombrado;
+Tier 1 fusionó 35; reconciliación con la verdad (9 fusiones + 152 cédulas limpiadas + 269 resueltos);
+huérfanos → 0 (borrados 90+101+94, fusionados 44). Resultado: **6.594 pacientes, 0 huérfanos,
+cola `/admin/review` ~912**. Toda la remediación auditada (`patients_merged`, `cedula_cleared`,
+`orphan_deleted`, `hospital_merged`, `review_resolved`).
 
 ## Referencias
 
