@@ -51,23 +51,23 @@ export default async function ProtectedAdminLayout({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
         <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-          <Link href="/admin/cargar" className="font-medium text-text hover:text-primary">
+          <Link href="/admin/cargar" className="font-bold text-text hover:text-primary">
             Cargar
           </Link>
           {canModerate(member.role) && (
-            <Link href="/admin/ingesta" className="font-medium text-text hover:text-primary">
+            <Link href="/admin/ingesta" className="font-bold text-text hover:text-primary">
               Ingesta
             </Link>
           )}
           {canManageHospitalTeam(member.role) && (
-            <Link href="/admin/equipo" className="font-medium text-text hover:text-primary">
+            <Link href="/admin/equipo" className="font-bold text-text hover:text-primary">
               Equipo
             </Link>
           )}
           {canAccessReviewQueue(member.role) && (
             <Link
               href="/admin/review"
-              className="font-medium text-text hover:text-primary"
+              className="font-bold text-text hover:text-primary"
             >
               Revisión
             </Link>
@@ -75,7 +75,7 @@ export default async function ProtectedAdminLayout({
           {canModerate(member.role) && (
             <Link
               href="/admin/foreign-rows"
-              className="font-medium text-text hover:text-primary"
+              className="font-bold text-text hover:text-primary"
             >
               Filas ajenas
             </Link>
@@ -83,7 +83,7 @@ export default async function ProtectedAdminLayout({
           {canModerate(member.role) && (
             <Link
               href="/admin/audit"
-              className="font-medium text-text hover:text-primary"
+              className="font-bold text-text hover:text-primary"
             >
               Audit log
             </Link>
