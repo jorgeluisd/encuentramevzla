@@ -98,12 +98,12 @@ export default function LoginPage(): React.ReactElement {
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     pattern="[0-9]*"
-                    maxLength={6}
+                    maxLength={10}
                     required
                     value={code}
-                    onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, ""))}
-                    placeholder="123456"
-                    className="text-center text-lg tracking-[0.4em]"
+                    onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))}
+                    placeholder="12345678"
+                    className="text-center text-lg tracking-[0.3em]"
                   />
                 </div>
                 {error && (
