@@ -74,6 +74,14 @@ export default async function ProtectedAdminLayout({
           )}
           {canModerate(member.role) && (
             <Link
+              href="/admin/foreign-rows"
+              className="font-medium text-text hover:text-primary"
+            >
+              Filas ajenas
+            </Link>
+          )}
+          {canModerate(member.role) && (
+            <Link
               href="/admin/audit"
               className="font-medium text-text hover:text-primary"
             >

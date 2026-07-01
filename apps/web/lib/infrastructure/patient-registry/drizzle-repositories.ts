@@ -158,41 +158,40 @@ export class DrizzleHospitalRepository implements HospitalRepository {
   // provisional. Converge variantes de nombre a un único hospital sin duplicar.
   async resolveByName(name: string): Promise<string> {
     const norm = normalizeHospitalName(name);
+    const existing = await this.resolveExisting(name);
+    if (existing) {
+      if (norm !== "") await this.recordAlias(norm, existing);
+      return existing;
+    }
+    // Hospital nuevo → provisional + alias, para revisión del moderador.
+    const id = await this.createProvisional(name);
+    if (norm !== "") await this.recordAlias(norm, id);
+    return id;
+  }
 
-    // Sin nombre canonizable (p.ej. solo "Hospital"): igualdad case-insensitive, como antes.
+  // Igual que resolveByName pero NO crea: null si el hospital no está en el catálogo.
+  // Se usa en carga scoped para verificar pertenencia sin ensuciar el catálogo (ADR-0006).
+  async resolveExisting(name: string): Promise<string | null> {
+    const norm = normalizeHospitalName(name);
     if (norm === "") {
-      const existing = await this.db
+      const [existing] = await this.db
         .select({ id: hospitals.id })
         .from(hospitals)
         .where(sql`lower(${hospitals.name}) = lower(${name})`)
         .limit(1);
-      if (existing[0]) return existing[0].id;
-      return this.createProvisional(name);
+      return existing?.id ?? null;
     }
-
-    // 1) Alias exacto: acierto directo (seed o resoluciones previas).
-    const alias = await this.db
+    const [alias] = await this.db
       .select({ id: hospitalAliases.hospitalId })
       .from(hospitalAliases)
       .where(eq(hospitalAliases.aliasNormalized, norm))
       .limit(1);
-    if (alias[0]) return alias[0].id;
-
-    // 2) Fuzzy contra el catálogo (un match exacto normalizado da score 1).
+    if (alias) return alias.id;
     const all = await this.db.select({ id: hospitals.id, name: hospitals.name }).from(hospitals);
-    const matchedId = matchHospital(
+    return matchHospital(
       norm,
       all.map((h) => ({ id: h.id, normalized: normalizeHospitalName(h.name) })),
     );
-    if (matchedId) {
-      await this.recordAlias(norm, matchedId);
-      return matchedId;
-    }
-
-    // 3) Hospital nuevo → provisional + alias, para revisión del moderador.
-    const id = await this.createProvisional(name);
-    await this.recordAlias(norm, id);
-    return id;
   }
 
   private async createProvisional(name: string): Promise<string> {

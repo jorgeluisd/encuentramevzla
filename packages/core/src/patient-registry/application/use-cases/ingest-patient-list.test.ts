@@ -79,6 +79,10 @@ class FakeHospitals implements HospitalRepository {
     this.ids.set(name, id);
     return id;
   }
+  // Solo verifica pertenencia (carga scoped): NO crea. Null si no lo conoce.
+  async resolveExisting(name: string): Promise<string | null> {
+    return this.ids.get(name) ?? null;
+  }
 }
 
 class FakeAdmissions implements AdmissionRepository {
@@ -466,6 +470,50 @@ describe("IngestPatientList — señales de identidad (0020)", () => {
   });
 });
 
+describe("IngestPatientList.ingestParsed — reasignación (skipRawPersist)", () => {
+  // Filas ya presentes en raw_rows (fingerprint conocido).
+  class RawRowsAllPresent implements RawRowStore {
+    async persistNew(): Promise<Set<string>> {
+      return new Set(); // nada nuevo
+    }
+  }
+
+  it("does NOT process an already-present row by default (idempotencia)", async () => {
+    const repos = buildRepos({ rawRows: new RawRowsAllPresent() });
+    const patients = repos.patients as FakePatients;
+    const list: ParsedPatientList = {
+      sheet: "S",
+      rows: [row({ fingerprint: "r1", fullName: "Ana Gil", hospitalName: null })],
+    };
+    let n = 0;
+    await new IngestPatientList({
+      parser: new FakeParser(list),
+      uow: new FakeUnitOfWork(repos),
+      newId: () => `id-${++n}`,
+    }).ingestParsed(list, { uploadedBy: null, forcedHospitalId: "ho-A" });
+
+    expect(patients.inserted).toHaveLength(0);
+  });
+
+  it("reprocesses an already-present row when skipRawPersist is set (reassignment)", async () => {
+    const repos = buildRepos({ rawRows: new RawRowsAllPresent() });
+    const patients = repos.patients as FakePatients;
+    const list: ParsedPatientList = {
+      sheet: "S",
+      rows: [row({ fingerprint: "r1", fullName: "Ana Gil", hospitalName: null })],
+    };
+    let n = 0;
+    const summary = await new IngestPatientList({
+      parser: new FakeParser(list),
+      uow: new FakeUnitOfWork(repos),
+      newId: () => `id-${++n}`,
+    }).ingestParsed(list, { uploadedBy: null, forcedHospitalId: "ho-A", skipRawPersist: true });
+
+    expect(patients.inserted).toHaveLength(1);
+    expect(summary.newAdmissions).toBe(1);
+  });
+});
+
 describe("IngestPatientList.ingestParsed", () => {
   // Paridad: ingestParsed sobre una lista ya parseada deduplica/persiste igual que execute.
   it("deduplica y persiste igual que el camino Excel (paridad de summary)", async () => {
@@ -499,8 +547,9 @@ describe("IngestPatientList.ingestParsed", () => {
     expect(patients.inserted).toHaveLength(2);
   });
 
-  // D4: miembro scoped → la columna de hospital del archivo se IGNORA, todo va al hospital forzado.
-  it("forcedHospitalId fuerza el hospital ignorando la columna del archivo", async () => {
+  // ADR-0006: carga scoped → una fila que nombra OTRO hospital NO se atribuye al propio;
+  // se segrega y se audita fila por fila.
+  it("segregates a row that names a different hospital in a scoped upload", async () => {
     const list: ParsedPatientList = {
       sheet: "S",
       rows: [row({ fingerprint: "f1", fullName: "Ana Rojas", documentNumber: "12.345.678", hospitalName: "Hospital Y" })],
@@ -509,30 +558,51 @@ describe("IngestPatientList.ingestParsed", () => {
     const patients = repos.patients as FakePatients;
     const admissions = repos.admissions as FakeAdmissions;
     const hospitals = repos.hospitals as FakeHospitals;
+    const audit = repos.audit as FakeAudit;
     let n = 0;
 
     const summary = await new IngestPatientList({
       parser: new FakeParser(list),
       uow: new FakeUnitOfWork(repos),
       newId: () => `id-${++n}`,
-    }).ingestParsed(list, { uploadedBy: null, forcedHospitalId: "ho-forced" });
+    }).ingestParsed(list, { uploadedBy: "u@h.test", forcedHospitalId: "ho-forced" });
 
-    // No se resuelve ningún hospital por nombre: el id viene forzado del servidor.
-    expect(hospitals.resolveCalls).toBe(0);
-    expect(summary.newAdmissions).toBe(1);
-    expect(admissions.inserted).toHaveLength(1);
-    expect(admissions.inserted[0]!.hospitalId).toBe("ho-forced");
-    expect(patients.inserted).toHaveLength(1);
-    // El archivo mencionaba otro hospital → se reporta (no se cargó en él).
+    // No se atribuye al hospital propio: no hay paciente ni admisión.
+    expect(hospitals.resolveCalls).toBe(0); // en scoped no se crea por nombre
+    expect(summary.foreignRows).toBe(1);
+    expect(patients.inserted).toHaveLength(0);
+    expect(admissions.inserted).toHaveLength(0);
     expect(summary.otherHospitalsMentioned).toBe(1);
-    expect(summary.hospitals).toBe(1);
+    expect(audit.entries.some((e) => e.action === "ingest_foreign_hospital_row")).toBe(true);
+  });
+
+  it("ingests a scoped row that names the member's OWN hospital (via catalog)", async () => {
+    const hospitals = new FakeHospitals();
+    hospitals.ids.set("Hospital A", "ho-A"); // el hospital del miembro, conocido en el catálogo
+    const repos = buildRepos({ hospitals });
+    const patients = repos.patients as FakePatients;
+    let n = 0;
+    const list: ParsedPatientList = {
+      sheet: "S",
+      rows: [row({ fingerprint: "o1", fullName: "Ana Rojas", documentNumber: "12.345.678", hospitalName: "Hospital A" })],
+    };
+
+    const summary = await new IngestPatientList({
+      parser: new FakeParser(list),
+      uow: new FakeUnitOfWork(repos),
+      newId: () => `id-${++n}`,
+    }).ingestParsed(list, { uploadedBy: null, forcedHospitalId: "ho-A" });
+
+    expect(summary.foreignRows).toBe(0);
+    expect(patients.inserted).toHaveLength(1);
+    expect(summary.newAdmissions).toBe(1);
   });
 
   // D8: el toggle explícito "¿falleció?" marca el estado aunque la nota no lo diga.
   it("deceased=true fuerza el estado fallecido sin marcador en la nota", async () => {
     const list: ParsedPatientList = {
       sheet: "voz",
-      rows: [row({ fingerprint: "d1", fullName: "Rosa Mora", clinicalNotes: "estable", deceased: true })],
+      rows: [row({ fingerprint: "d1", fullName: "Rosa Mora", hospitalName: null, clinicalNotes: "estable", deceased: true })],
     };
     const repos = buildRepos();
     const patients = repos.patients as FakePatients;

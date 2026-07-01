@@ -69,6 +69,9 @@ export interface PatientRepository {
 
 export interface HospitalRepository {
   resolveByName(name: string): Promise<string>; // crea si no existe
+  // Resuelve por catálogo (alias/fuzzy) pero NO crea; null si no lo conoce. Para verificar
+  // la pertenencia de una fila en carga scoped sin ensuciar el catálogo (ADR-0006).
+  resolveExisting(name: string): Promise<string | null>;
 }
 
 export interface AdmissionRepository {

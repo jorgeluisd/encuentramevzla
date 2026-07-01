@@ -34,9 +34,11 @@ export interface IngestionSummary {
   newAdmissions: number;
   minors: number;
   deceased: number;
-  // Cuántos hospitales DISTINTOS mencionaba el archivo cuando la carga viene forzada a uno (scoped).
-  // 0 si no hay scoping o si el archivo no nombra hospitales.
+  // Cuántos hospitales DISTINTOS (ajenos al del miembro) mencionaba el archivo en carga scoped.
+  // 0 si no hay scoping o si el archivo no nombra otros hospitales.
   otherHospitalsMentioned: number;
+  // Filas segregadas por nombrar un hospital que NO es el del miembro (carga scoped, ADR-0006).
+  foreignRows: number;
 }
 
 export interface IngestDependencies {
@@ -69,7 +71,13 @@ export class IngestPatientList {
   // ParsedPatientList y entran por aquí → heredan dedup, merge, conflictos, menor/fallecido y audit).
   async ingestParsed(
     list: ParsedPatientList,
-    opts: { uploadedBy: string | null; forcedHospitalId?: string | null },
+    opts: {
+      uploadedBy: string | null;
+      forcedHospitalId?: string | null;
+      // Reasignación (ADR-0006): la fila ya está en raw_rows; saltar la idempotencia para
+      // reprocesarla al hospital correcto.
+      skipRawPersist?: boolean;
+    },
   ): Promise<IngestionSummary> {
     const { uow, newId } = this.deps;
     const { sheet, rows } = list;
@@ -88,10 +96,17 @@ export class IngestPatientList {
       // Si no, se resuelve por nombre cada uno una sola vez (dentro de la tx: atómico).
       const hospitalIds = new Map<string, string>();
       let otherHospitalsMentioned = 0;
+      // En carga scoped: por cada nombre de hospital mencionado, ¿es el del miembro? Se
+      // resuelve por catálogo SIN crear. Las filas que nombran otro hospital se segregan.
+      const foreignByName = new Map<string, boolean>();
       if (forced) {
         const mentioned = new Set<string>();
         for (const r of unique) if (r.hospitalName) mentioned.add(r.hospitalName);
-        otherHospitalsMentioned = mentioned.size;
+        for (const nm of mentioned) {
+          const resolved = await repos.hospitals.resolveExisting(nm);
+          foreignByName.set(nm, resolved !== forced);
+        }
+        otherHospitalsMentioned = [...foreignByName.values()].filter(Boolean).length;
       } else {
         for (const r of unique) {
           if (r.hospitalName && !hospitalIds.has(r.hospitalName)) {
@@ -103,10 +118,9 @@ export class IngestPatientList {
       const hospitalIdForRow = (r: (typeof unique)[number]): string | null =>
         forced ?? (r.hospitalName ? (hospitalIds.get(r.hospitalName) ?? null) : null);
 
-      const newFingerprints = await repos.rawRows.persistNew(unique, {
-        fileId,
-        uploadedBy: opts.uploadedBy,
-      });
+      const newFingerprints = opts.skipRawPersist
+        ? new Set(unique.map((r) => r.fingerprint))
+        : await repos.rawRows.persistNew(unique, { fileId, uploadedBy: opts.uploadedBy });
       const toProcess = unique.filter((r) => newFingerprints.has(r.fingerprint));
 
       // Claves del lote para acotar candidatos (no toda la tabla): cédula o ≥1 token de nombre.
@@ -176,9 +190,23 @@ export class IngestPatientList {
         minors: 0,
         deceased: 0,
         otherHospitalsMentioned,
+        foreignRows: 0,
       };
 
       for (const r of toProcess) {
+        // Carga scoped: la fila nombra un hospital que NO es el del miembro → no atribuir;
+        // segregar y auditar por fila para que un moderador la reasigne (ADR-0006).
+        if (forced && r.hospitalName && foreignByName.get(r.hospitalName)) {
+          summary.foreignRows++;
+          dedupEntries.push({
+            actorId: opts.uploadedBy,
+            action: "ingest_foreign_hospital_row",
+            entity: "raw_rows",
+            entityId: null,
+            payload: { hospitalName: r.hospitalName, fingerprint: r.fingerprint },
+          });
+          continue;
+        }
         if (!r.fullName) continue;
         const name = PersonName.fromRaw(r.fullName);
         if (name.isEmpty) continue;

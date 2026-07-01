@@ -28,6 +28,7 @@ export * from "./patient-registry/application/ports/team-member-repository";
 export * from "./patient-registry/application/ports/audit-log-reader";
 export * from "./patient-registry/application/ports/last-update-reader";
 export * from "./patient-registry/application/ports/review-queue-reader";
+export * from "./patient-registry/application/ports/foreign-rows-reader";
 export * from "./patient-registry/application/ports/patient-merger";
 export * from "./patient-registry/application/ports/hospital-patient-export-reader";
 export * from "./patient-registry/application/ports/speech-transcriber";

@@ -17,6 +17,7 @@ const base: IngestionSummary = {
   minors: 0,
   deceased: 0,
   otherHospitalsMentioned: 0,
+  foreignRows: 0,
 };
 
 describe("ingestionDisplayStatus", () => {
