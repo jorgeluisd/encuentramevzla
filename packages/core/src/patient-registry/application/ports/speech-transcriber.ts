@@ -2,6 +2,7 @@
 export interface TranscribeOptions {
   language?: string; // p.ej. "es"
   mimeType?: string; // p.ej. "audio/webm"
+  prompt?: string; // contexto/vocabulario para sesgar la ortografía (nombres propios)
 }
 
 // Port de STT (audio → texto). Lo implementa un adapter externo (OpenAI/Deepgram);
