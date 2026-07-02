@@ -11,9 +11,11 @@ import {
   type Role,
 } from "@evzla/core";
 import {
+  hospitalDirectory,
   inviteTeamMemberUseCase,
   resolveTeamMemberUseCase,
   setTeamMemberAccessUseCase,
+  welcomeMailer,
 } from "@/lib/composition";
 import { getSessionEmail } from "@/lib/supabase/ssr-server";
 
@@ -64,6 +66,30 @@ function mapError(error: unknown): EstadoEquipo {
   return { ok: false, mensaje: error instanceof Error ? error.message : "No se pudo completar." };
 }
 
+// Envía el correo de bienvenida best-effort: un fallo NO revierte el alta (el miembro
+// entra igual con su OTP). Resuelve el nombre del hospital como en la página de equipo.
+async function sendWelcome(m: {
+  email: string;
+  role: Role;
+  hospitalId: string | null;
+}): Promise<void> {
+  try {
+    const hospitalName = m.hospitalId
+      ? ((await hospitalDirectory().listActive()).find((h) => h.id === m.hospitalId)?.name ?? null)
+      : null;
+    await welcomeMailer().sendWelcome({
+      email: m.email,
+      hospitalName,
+      role: m.role,
+      loginUrl: "https://encuentramevzla.com/admin/login",
+      manualUrl: process.env.NEXT_PUBLIC_MANUAL_URL ?? null,
+    });
+  } catch (error) {
+    // Sin volcar PII: solo el error del proveedor.
+    console.error("[welcome-mailer] envío fallido:", error);
+  }
+}
+
 export async function invitarMiembroAction(
   _prev: EstadoEquipo,
   formData: FormData,
@@ -79,6 +105,7 @@ export async function invitarMiembroAction(
       role,
       hospitalId: str(formData, "hospitalId"),
     });
+    await sendWelcome(m);
     revalidatePath("/admin/equipo");
     return {
       ok: true,

@@ -19,6 +19,7 @@ import {
   TranscribePatientDictation,
   UpdateHospital,
   VerifyHumanChallenge,
+  type WelcomeMailer,
 } from "@evzla/core";
 import { getDb } from "@evzla/db/client";
 import { createAnonClient } from "@/lib/supabase/anon";
@@ -35,6 +36,7 @@ import { DrizzleHospitalPatientListReader } from "@/lib/infrastructure/patient-r
 import { DrizzleHospitalDirectory } from "@/lib/infrastructure/patient-registry/drizzle-hospital-directory";
 import { DrizzleHospitalAdmin } from "@/lib/infrastructure/patient-registry/drizzle-hospital-admin";
 import { DrizzleTeamMemberAdmin } from "@/lib/infrastructure/patient-registry/drizzle-team-member-admin";
+import { ResendWelcomeMailer } from "@/lib/infrastructure/patient-registry/resend-welcome-mailer";
 import { DrizzleTeamMemberRepository } from "@/lib/infrastructure/patient-registry/drizzle-team-member-repository";
 import { DrizzleAuditLogReader } from "@/lib/infrastructure/patient-registry/drizzle-audit-log-reader";
 import { DrizzleLastUpdateReader } from "@/lib/infrastructure/patient-registry/drizzle-last-update-reader";
@@ -142,6 +144,15 @@ export function updateHospitalUseCase(): UpdateHospital {
 
 export function inviteTeamMemberUseCase(): InviteTeamMember {
   return new InviteTeamMember(teamMemberAdmin());
+}
+
+// Correo transaccional de bienvenida. Sin RESEND_API_KEY, el adapter hace no-op
+// (falla cerrado): el alta no depende del correo.
+export function welcomeMailer(): WelcomeMailer {
+  return new ResendWelcomeMailer(
+    process.env.RESEND_API_KEY ?? "",
+    process.env.MAIL_FROM ?? "EncuéntrameVzla <no-reply@encuentramevzla.com>",
+  );
 }
 
 export function listTeamMembersUseCase(): ListTeamMembers {
