@@ -155,7 +155,8 @@ export async function confirmarDictadoAction(
     phone: campo(formData, "phone"),
     address: campo(formData, "address"),
     clinicalNotes: campo(formData, "clinicalNotes"),
-    deceased: formData.get("deceased") === "on" || formData.get("deceased") === "true",
+    // "¿Falleció?" se retiró de la UI: el estado (select) es la única fuente.
+    deceased: asStatus(formData.get("status")) === "deceased",
   };
   const fila: ParsedPatientRow = {
     fingerprint: rowFingerprint(raw),
@@ -227,7 +228,8 @@ export async function editarPacienteAction(
         address: campo(formData, "address"),
         clinicalNotes: campo(formData, "clinicalNotes"),
         status: asStatus(formData.get("status")),
-        deceased: formData.get("deceased") === "on" || formData.get("deceased") === "true",
+        // "¿Falleció?" se retiró de la UI: el estado (select) es la única fuente.
+        deceased: asStatus(formData.get("status")) === "deceased",
       },
     });
     revalidatePath("/");
