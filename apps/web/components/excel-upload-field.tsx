@@ -1,23 +1,49 @@
-import type { InputHTMLAttributes, ReactElement } from "react";
+"use client";
+
+import { useState, type InputHTMLAttributes, type ReactElement } from "react";
 import { cn } from "@/lib/utils";
 
-// Campo de archivo Excel reutilizable (Cargar / Ingesta): botón "Seleccionar" visible
-// (file: pseudo-element), crece para llenar la fila y deja el submit en la misma línea.
+// Campo de archivo Excel reutilizable (Cargar / Ingesta). Control propio: botón visible +
+// nombre del archivo que controlamos nosotros (el texto nativo "sin archivos" se trunca feo
+// en móvil). El input real cubre el botón en opacity-0 para abrir el selector y validar `required`.
 export function ExcelUploadField({
   className,
+  disabled,
+  onChange,
   ...props
 }: InputHTMLAttributes<HTMLInputElement>): ReactElement {
+  const [fileName, setFileName] = useState<string | null>(null);
+
   return (
-    <input
-      type="file"
-      accept=".xlsx,.xls"
+    <div
       className={cn(
-        "min-w-0 flex-1 rounded-[var(--radius-control)] border border-border bg-surface p-3 text-sm text-text-2",
-        "file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:font-medium file:text-white",
-        "disabled:opacity-60",
+        "flex min-w-0 flex-1 items-center gap-3 rounded-[var(--radius-control)] border border-border bg-surface p-2",
+        disabled && "opacity-60",
         className,
       )}
-      {...props}
-    />
+    >
+      <div className="relative shrink-0">
+        <span className="pointer-events-none inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white">
+          Seleccionar archivo
+        </span>
+        <input
+          type="file"
+          accept=".xlsx,.xls"
+          disabled={disabled}
+          onChange={(e) => {
+            setFileName(e.target.files?.[0]?.name ?? null);
+            onChange?.(e);
+          }}
+          className="absolute inset-0 w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+          {...props}
+        />
+      </div>
+      <span
+        className={cn("min-w-0 flex-1 truncate text-sm", fileName ? "text-text-2" : "text-text-3")}
+        title={fileName ?? undefined}
+      >
+        {fileName ?? "Ningún archivo seleccionado"}
+      </span>
+    </div>
   );
 }
