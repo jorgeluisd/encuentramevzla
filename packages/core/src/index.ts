@@ -37,6 +37,7 @@ export * from "./patient-registry/application/ports/patient-editor";
 export * from "./patient-registry/application/ports/hospital-patient-list-reader";
 export * from "./patient-registry/application/ports/hospital-admin";
 export * from "./patient-registry/application/ports/team-member-admin";
+export * from "./patient-registry/application/ports/welcome-mailer";
 export * from "./patient-registry/application/use-cases/search-patients";
 export * from "./patient-registry/application/use-cases/verify-human-challenge";
 export * from "./patient-registry/application/use-cases/ingest-patient-list";

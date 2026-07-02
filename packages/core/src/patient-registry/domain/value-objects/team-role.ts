@@ -31,6 +31,18 @@ export function canAccessReviewQueue(role: Role): boolean {
   return role === "hospital_admin" || role === "moderator";
 }
 
+// Etiqueta legible del rol (español) para UI y correos transaccionales.
+export function roleLabel(role: Role): string {
+  switch (role) {
+    case "uploader":
+      return "Cargador de listas";
+    case "hospital_admin":
+      return "Administrador de hospital";
+    case "moderator":
+      return "Moderador global";
+  }
+}
+
 // Resolver la cola de revisión: el moderador global cualquier caso; el hospital_admin solo
 // los de su propio hospital (scoping server-side). El uploader nunca resuelve.
 export function canResolveReview(
