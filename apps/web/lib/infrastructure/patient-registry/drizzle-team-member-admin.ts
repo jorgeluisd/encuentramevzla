@@ -1,7 +1,13 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, sql } from "drizzle-orm";
 import { teamMembers } from "@evzla/db";
 import type { getDb } from "@evzla/db/client";
-import { isRole, type Role, type TeamMember, type TeamMemberAdmin } from "@evzla/core";
+import {
+  isRole,
+  type Role,
+  type TeamMember,
+  type TeamMemberAdmin,
+  type TeamMembersPage,
+} from "@evzla/core";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -38,6 +44,34 @@ export class DrizzleTeamMemberAdmin implements TeamMemberAdmin {
     return rows.map(toMember).filter((m): m is TeamMember => m !== null);
   }
 
+  async listPaged(
+    hospitalId: string | null,
+    options: { q?: string | null; limit: number; offset: number },
+  ): Promise<TeamMembersPage> {
+    // global (null) → todos; acotado → solo su hospital. `q` filtra por email (ILIKE).
+    const conditions = [
+      hospitalId === null ? undefined : eq(teamMembers.hospitalId, hospitalId),
+      options.q ? ilike(teamMembers.email, `%${options.q}%`) : undefined,
+    ].filter((c): c is NonNullable<typeof c> => c !== undefined);
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [count] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(teamMembers)
+      .where(where);
+    const rows = await this.db
+      .select(COLS)
+      .from(teamMembers)
+      .where(where)
+      .orderBy(asc(teamMembers.email))
+      .limit(options.limit)
+      .offset(options.offset);
+    return {
+      members: rows.map(toMember).filter((m): m is TeamMember => m !== null),
+      total: count?.total ?? 0,
+    };
+  }
+
   async findByEmail(email: string): Promise<TeamMember | null> {
     const [row] = await this.db
       .select(COLS)
@@ -62,10 +96,14 @@ export class DrizzleTeamMemberAdmin implements TeamMemberAdmin {
     return member;
   }
 
-  async setAccess(id: string, changes: { role?: Role; active?: boolean }): Promise<void> {
-    const patch: { role?: Role; active?: boolean } = {};
+  async setAccess(
+    id: string,
+    changes: { role?: Role; active?: boolean; hospitalId?: string | null },
+  ): Promise<void> {
+    const patch: { role?: Role; active?: boolean; hospitalId?: string | null } = {};
     if (changes.role !== undefined) patch.role = changes.role;
     if (changes.active !== undefined) patch.active = changes.active;
+    if (changes.hospitalId !== undefined) patch.hospitalId = changes.hospitalId;
     if (Object.keys(patch).length === 0) return;
     await this.db.update(teamMembers).set(patch).where(eq(teamMembers.id, id));
   }
