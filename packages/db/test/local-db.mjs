@@ -17,7 +17,8 @@ export function connect() {
   return postgres(TEST_URL, { prepare: false, max: 1, onnotice: () => {} });
 }
 
-// Aplica el esquema desde cero. `searchMigration` permite alternar 0008 (actual) vs 0011 (nuevo).
+// Aplica el esquema desde cero. `searchMigration` permite alternar 0008 / 0011 / 0015.
+// (0015 añade la columna hospitals.test vía ALTER, así que es self-contained.)
 export async function loadSchema(sql, { searchMigration = "0008_search_patient_rate_limit_threshold.sql" } = {}) {
   // Reset limpio.
   await sql.unsafe(`DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;`);

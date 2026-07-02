@@ -25,6 +25,9 @@ export const hospitals = pgTable("hospitals", {
   // Creado al vuelo en una ingesta (no del catálogo oficial) → pendiente de que un
   // moderador confirme si es un hospital nuevo o una variante a fusionar (spec 0020 §4).
   provisional: boolean("provisional").notNull().default(false),
+  // Hospital de PRUEBA: excluido del buscador público (RPC search_patient filtra
+  // test=false), pero sigue visible en /admin para cargarle pacientes de prueba.
+  test: boolean("test").notNull().default(false),
 });
 
 /**

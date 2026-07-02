@@ -55,6 +55,9 @@ export default async function ProtectedAdminLayout({
     ...(canManageHospitalTeam(member.role)
       ? [{ href: "/admin/equipo", label: "Equipo" }]
       : []),
+    ...(canModerate(member.role)
+      ? [{ href: "/admin/hospitales", label: "Hospitales" }]
+      : []),
     ...(canAccessReviewQueue(member.role)
       ? [{ href: "/admin/review", label: "Revisión" }]
       : []),
