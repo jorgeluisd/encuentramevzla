@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import Script from "next/script";
 import { searchAction, type SearchState } from "@/lib/actions/search";
 import { SearchResults } from "@/components/search-results";
@@ -37,6 +37,10 @@ export function SearchPanel(): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  // El widget de Turnstile mide 300×65 fijos; en pantallas angostas se escala para
+  // caber dentro del card sin desbordarse (no se puede recortar: su marca debe verse).
+  const widgetWrapRef = useRef<HTMLDivElement>(null);
+  const [widgetScale, setWidgetScale] = useState(1);
 
   // Render EXPLÍCITO con limpieza al desmontar: al volver al home (navegación SPA)
   // se monta un widget nuevo y se elimina el anterior, sin quedar huérfano ni sin token.
@@ -67,6 +71,21 @@ export function SearchPanel(): React.ReactElement {
       clearInterval(iv);
       cleanup();
     };
+  }, [siteKey]);
+
+  // Recalcula la escala del widget según el ancho disponible (300px = ancho nativo).
+  useEffect(() => {
+    if (!siteKey) return;
+    const el = widgetWrapRef.current;
+    if (!el) return;
+    const compute = (): void => {
+      const w = el.clientWidth;
+      setWidgetScale(w > 0 ? Math.min(1, w / 300) : 1);
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [siteKey]);
 
   // El token Turnstile es de un solo uso: tras cada búsqueda se reinicia el widget.
@@ -126,7 +145,25 @@ export function SearchPanel(): React.ReactElement {
               </Button>
             </div>
 
-            {siteKey && <div ref={containerRef} />}
+            {siteKey && (
+              <div ref={widgetWrapRef} className="w-full">
+                {/* Caja de tamaño escalado (evita desbordar/hueco); el widget se escala desde su esquina. */}
+                <div
+                  className="mx-auto"
+                  style={{ width: `${300 * widgetScale}px`, height: `${65 * widgetScale}px` }}
+                >
+                  <div
+                    ref={containerRef}
+                    style={{
+                      width: 300,
+                      height: 65,
+                      transform: `scale(${widgetScale})`,
+                      transformOrigin: "top left",
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
             <p className="text-sm text-text-2">
               Solo verás el hospital y un teléfono de ayuda. Nada de datos médicos.
