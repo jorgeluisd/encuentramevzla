@@ -5,6 +5,7 @@ import {
   canResolveReview,
   canUpload,
   isRole,
+  roleLabel,
 } from "./team-role";
 
 describe("team-role", () => {
@@ -79,6 +80,14 @@ describe("team-role", () => {
     it("denies a hospital_admin without an assigned hospital", () => {
       const member = { role: "hospital_admin" as const, hospitalId: null };
       expect(canResolveReview(member, "ho-1")).toBe(false);
+    });
+  });
+
+  describe("roleLabel", () => {
+    it("da la etiqueta en español de cada rol", () => {
+      expect(roleLabel("uploader")).toBe("Cargador de listas");
+      expect(roleLabel("hospital_admin")).toBe("Administrador de hospital");
+      expect(roleLabel("moderator")).toBe("Moderador global");
     });
   });
 });
