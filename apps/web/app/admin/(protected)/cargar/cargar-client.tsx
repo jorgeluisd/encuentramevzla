@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { HospitalPatientListItem, PatientStatus } from "@evzla/core";
 import {
@@ -48,6 +48,10 @@ const STATUS_ORDER: PatientStatus[] = [
   "located",
   "deceased",
 ];
+
+// Al CREAR, la ingesta solo persiste ingresado/fallecido (ParsedPatientRow solo lleva `deceased`);
+// los demás estados (traslado/alta/localizado) son cambios de ciclo de vida que se hacen al EDITAR.
+const CREATE_STATUS_ORDER: PatientStatus[] = ["admitted", "deceased"];
 
 // Campos del panel compartido (dictado / manual / edición).
 interface PanelFields {
@@ -107,6 +111,15 @@ export function CargarClient({
 
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  // Al abrir el panel (manual/dictado/edición) llevamos la vista al formulario: en móvil
+  // el cambio queda fuera de pantalla y no se percibe.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (panel.kind !== "closed") {
+      panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    // panelKey cambia en cada apertura/relleno → re-dispara el scroll.
+  }, [panelKey, panel.kind]);
 
   // Abre/rellena el panel forzando re-montaje del form (defaultValue).
   function showPanel(next: Exclude<PanelMode, { kind: "closed" }>): void {
@@ -385,7 +398,7 @@ export function CargarClient({
 
           {/* Panel de confirmación compartido (dictado / manual / edición). */}
           {panel.kind !== "closed" && (
-            <Card>
+            <Card ref={panelRef} className="scroll-mt-4">
               <CardBody className="space-y-4">
                 <CardTitle>
                   {panel.kind === "edit" ? "Editar paciente" : "Confirmar paciente"}
@@ -421,24 +434,15 @@ export function CargarClient({
                         className={fieldClass}
                       />
                     </label>
-                    <label className="space-y-1">
+                    <label className="space-y-1 sm:col-span-2">
                       <span className="text-sm text-text-2">Estado</span>
                       <select name="status" defaultValue={panel.fields.status} className={fieldClass}>
-                        {STATUS_ORDER.map((s) => (
+                        {(panel.kind === "edit" ? STATUS_ORDER : CREATE_STATUS_ORDER).map((s) => (
                           <option key={s} value={s}>
                             {STATUS_LABELS[s]}
                           </option>
                         ))}
                       </select>
-                    </label>
-                    <label className="flex items-center gap-2 self-end pb-3">
-                      <input
-                        type="checkbox"
-                        name="deceased"
-                        defaultChecked={panel.fields.deceased}
-                        className="h-5 w-5"
-                      />
-                      <span className="text-sm text-text-2">¿Falleció?</span>
                     </label>
                   </div>
                   <div className="flex gap-3">
