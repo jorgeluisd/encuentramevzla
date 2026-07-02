@@ -52,5 +52,8 @@ export * from "./patient-registry/application/use-cases/transcribe-patient-dicta
 export * from "./patient-registry/application/use-cases/edit-patient";
 export * from "./patient-registry/application/use-cases/team-admin-errors";
 export * from "./patient-registry/application/use-cases/create-hospital";
+export * from "./patient-registry/application/use-cases/list-hospitals";
+export * from "./patient-registry/application/use-cases/update-hospital";
 export * from "./patient-registry/application/use-cases/invite-team-member";
 export * from "./patient-registry/application/use-cases/set-team-member-access";
+export * from "./patient-registry/application/use-cases/list-team-members";

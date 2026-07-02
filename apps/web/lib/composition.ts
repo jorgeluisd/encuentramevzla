@@ -8,13 +8,16 @@ import {
   IngestPatientList,
   InviteTeamMember,
   ListAuditLog,
+  ListHospitals,
   ListReviewQueue,
+  ListTeamMembers,
   MergePatients,
   ResolveReviewCase,
   ResolveTeamMember,
   SearchPatients,
   SetTeamMemberAccess,
   TranscribePatientDictation,
+  UpdateHospital,
   VerifyHumanChallenge,
 } from "@evzla/core";
 import { getDb } from "@evzla/db/client";
@@ -115,17 +118,34 @@ export function hospitalDirectory(): DrizzleHospitalDirectory {
   return new DrizzleHospitalDirectory(getDb());
 }
 
-// El admin de equipo se comparte entre las tres acciones (lista + invitar + acceso).
+// El admin de equipo se comparte entre las acciones (lista + invitar + acceso).
 export function teamMemberAdmin(): DrizzleTeamMemberAdmin {
   return new DrizzleTeamMemberAdmin(getDb());
 }
 
+// El admin de hospitales se comparte entre crear/listar/actualizar.
+export function hospitalAdmin(): DrizzleHospitalAdmin {
+  return new DrizzleHospitalAdmin(getDb());
+}
+
 export function createHospitalUseCase(): CreateHospital {
-  return new CreateHospital(new DrizzleHospitalAdmin(getDb()));
+  return new CreateHospital(hospitalAdmin());
+}
+
+export function listHospitalsUseCase(): ListHospitals {
+  return new ListHospitals(hospitalAdmin());
+}
+
+export function updateHospitalUseCase(): UpdateHospital {
+  return new UpdateHospital(hospitalAdmin());
 }
 
 export function inviteTeamMemberUseCase(): InviteTeamMember {
   return new InviteTeamMember(teamMemberAdmin());
+}
+
+export function listTeamMembersUseCase(): ListTeamMembers {
+  return new ListTeamMembers(teamMemberAdmin());
 }
 
 export function setTeamMemberAccessUseCase(): SetTeamMemberAccess {

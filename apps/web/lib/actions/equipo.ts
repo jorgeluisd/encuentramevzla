@@ -11,7 +11,6 @@ import {
   type Role,
 } from "@evzla/core";
 import {
-  createHospitalUseCase,
   inviteTeamMemberUseCase,
   resolveTeamMemberUseCase,
   setTeamMemberAccessUseCase,
@@ -65,26 +64,6 @@ function mapError(error: unknown): EstadoEquipo {
   return { ok: false, mensaje: error instanceof Error ? error.message : "No se pudo completar." };
 }
 
-export async function crearHospitalAction(
-  _prev: EstadoEquipo,
-  formData: FormData,
-): Promise<EstadoEquipo> {
-  const auth = await requireManager();
-  if (!auth.ok) return { ok: false, mensaje: auth.mensaje };
-  try {
-    const h = await createHospitalUseCase().execute({
-      actor: { role: auth.role },
-      name: str(formData, "name") ?? "",
-      city: str(formData, "city"),
-      infoDeskPhone: str(formData, "infoDeskPhone"),
-    });
-    revalidatePath("/admin/equipo");
-    return { ok: true, mensaje: `Hospital "${h.name}" creado.` };
-  } catch (error) {
-    return mapError(error);
-  }
-}
-
 export async function invitarMiembroAction(
   _prev: EstadoEquipo,
   formData: FormData,
@@ -121,9 +100,11 @@ export async function setAccesoMiembroAction(
 
   const activeRaw = str(formData, "active");
   const roleRaw = str(formData, "role");
-  const changes: { role?: Role; active?: boolean } = {};
+  const changes: { role?: Role; active?: boolean; hospitalId?: string | null } = {};
   if (activeRaw !== null) changes.active = activeRaw === "true";
   if (roleRaw && isRole(roleRaw)) changes.role = roleRaw;
+  // Solo si el form incluye el campo hospital (moderador): vacío = null (global).
+  if (formData.has("hospitalId")) changes.hospitalId = str(formData, "hospitalId");
 
   try {
     await setTeamMemberAccessUseCase().execute({
