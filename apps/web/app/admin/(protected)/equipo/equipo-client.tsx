@@ -127,9 +127,10 @@ export function EquipoClient({
       <Card>
         <CardBody className="space-y-3">
           <CardTitle>Invitar miembro</CardTitle>
-          <form onSubmit={onSubmit(invitarMiembroAction)} className="grid gap-3 sm:grid-cols-3">
-            <Input name="email" type="email" placeholder="correo@dominio" required />
-            <select name="role" defaultValue="uploader" className={fieldClass}>
+          {/* Celu: apilado; pantallas grandes (lg): todo en una fila. */}
+          <form onSubmit={onSubmit(invitarMiembroAction)} className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <Input name="email" type="email" placeholder="correo@dominio" required className="lg:flex-1" />
+            <select name="role" defaultValue="uploader" className={cn(fieldClass, "h-[52px] lg:flex-1")}>
               {assignableRoles.map((r) => (
                 <option key={r} value={r}>
                   {ROLE_LABELS[r]}
@@ -137,7 +138,7 @@ export function EquipoClient({
               ))}
             </select>
             {isGlobal ? (
-              <select name="hospitalId" defaultValue="" className={fieldClass}>
+              <select name="hospitalId" defaultValue="" className={cn(fieldClass, "h-[52px] lg:flex-1")}>
                 <option value="">Hospital (no aplica a moderador)</option>
                 {hospitals.map((h) => (
                   <option key={h.id} value={h.id}>
@@ -146,15 +147,13 @@ export function EquipoClient({
                 ))}
               </select>
             ) : (
-              <div className="flex items-center text-sm text-text-3">
+              <div className="flex items-center text-sm text-text-3 lg:flex-1">
                 Se añadirá a {hospitalName ?? "tu hospital"}.
               </div>
             )}
-            <div className="sm:col-span-3">
-              <Button type="submit" disabled={busy}>
-                Invitar
-              </Button>
-            </div>
+            <Button type="submit" disabled={busy} className="w-full lg:w-auto">
+              Invitar
+            </Button>
           </form>
           <p className="text-xs text-text-3">
             Al invitar, el correo queda habilitado en la allow-list. La persona entra con su correo

@@ -315,7 +315,9 @@ export function CargarClient({
             <Badge variant="primary">{activeHospitalName ?? "Tu hospital"}</Badge>
           ) : (
             <select
-              className={cn(fieldClass, "h-[44px] w-auto py-0")}
+              // Celu: full width (baja bajo el título); desktop: auto acotado. Evita que un
+              // nombre de hospital largo estire el select y lo saque del box (w-auto ~= contenido).
+              className={cn(fieldClass, "h-[44px] w-full max-w-full py-0 sm:w-auto sm:max-w-xs")}
               value={activeHospitalId ?? ""}
               onChange={(ev) => {
                 const id = ev.target.value;
