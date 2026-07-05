@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { EmergencyBanner } from "@/components/emergency-banner";
+import { TermsGate } from "@/components/terms-gate";
 import "./globals.css";
 
 // Inter como familia única (specs/0003 §1); swap evita FOIT y mantiene la página liviana.
@@ -208,6 +209,7 @@ export default function RootLayout({
             </div>
           </div>
         </footer>
+        <TermsGate />
         <Analytics />
         <SpeedInsights />
       </body>
