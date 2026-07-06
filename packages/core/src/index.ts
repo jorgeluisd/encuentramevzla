@@ -76,4 +76,6 @@ export * from "./solidarity-services/application/use-cases/reject-service";
 export * from "./solidarity-services/application/use-cases/edit-service-by-token";
 export * from "./solidarity-services/application/use-cases/remove-service-by-token";
 export * from "./solidarity-services/application/use-cases/list-pending-services";
+export * from "./solidarity-services/application/use-cases/list-services-by-status";
 export * from "./solidarity-services/application/use-cases/list-published-services";
+export * from "./solidarity-services/application/use-cases/regenerate-manage-link";

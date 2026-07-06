@@ -61,6 +61,15 @@ export class DrizzleSolidarityServiceRepository implements SolidarityServiceRepo
     return { items: items.map(toRecord), total: totalRow?.n ?? 0 };
   }
 
+  async findById(id: string): Promise<SolidarityServiceRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(solidarityServices)
+      .where(eq(solidarityServices.id, id))
+      .limit(1);
+    return row ? toRecord(row) : null;
+  }
+
   async findByTokenHash(tokenHash: string): Promise<SolidarityServiceRecord | null> {
     const [row] = await this.db
       .select()

@@ -15,8 +15,10 @@ import {
   ListPendingServices,
   ListPublishedServices,
   ListReviewQueue,
+  ListServicesByStatus,
   ListTeamMembers,
   MergePatients,
+  RegenerateManageLink,
   RejectService,
   RemoveServiceByToken,
   ResolveReviewCase,
@@ -211,6 +213,19 @@ export function listPublishedServicesUseCase(): ListPublishedServices {
 
 export function listPendingServicesUseCase(): ListPendingServices {
   return new ListPendingServices(solidarityServiceRepo());
+}
+
+export function listServicesByStatusUseCase(): ListServicesByStatus {
+  return new ListServicesByStatus(solidarityServiceRepo());
+}
+
+export function regenerateManageLinkUseCase(): RegenerateManageLink {
+  return new RegenerateManageLink({
+    repo: solidarityServiceRepo(),
+    newToken: () => randomUUID(),
+    hashToken: hashEditToken,
+    now: () => new Date(),
+  });
 }
 
 export function approveServiceUseCase(): ApproveService {

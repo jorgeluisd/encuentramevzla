@@ -1,6 +1,6 @@
-import { canModerate } from "@evzla/core";
+import { canModerate, type SolidarityServiceRecord } from "@evzla/core";
 import { getCurrentMember } from "@/lib/auth/current-member";
-import { listPendingServicesUseCase } from "@/lib/composition";
+import { listServicesByStatusUseCase } from "@/lib/composition";
 import { ModerationList, type PendingServiceView } from "@/components/servicios/moderation-list";
 import { Card, CardBody } from "@/components/ui/card";
 
@@ -8,6 +8,18 @@ export const dynamic = "force-dynamic";
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString("es-VE", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function toView(s: SolidarityServiceRecord): PendingServiceView {
+  return {
+    id: s.id,
+    title: s.title,
+    category: s.category,
+    description: s.description,
+    contactPhone: s.contactPhone,
+    submitterEmail: s.submitterEmail,
+    createdAt: formatDate(s.createdAt),
+  };
 }
 
 export default async function AdminServiciosPage(): Promise<React.ReactElement> {
@@ -22,27 +34,37 @@ export default async function AdminServiciosPage(): Promise<React.ReactElement> 
     );
   }
 
-  const { items } = await listPendingServicesUseCase().execute({ page: 1, pageSize: 50 });
-  const views: PendingServiceView[] = items.map((s) => ({
-    id: s.id,
-    title: s.title,
-    category: s.category,
-    description: s.description,
-    contactPhone: s.contactPhone,
-    submitterEmail: s.submitterEmail,
-    createdAt: formatDate(s.createdAt),
-  }));
+  const [pending, approved] = await Promise.all([
+    listServicesByStatusUseCase().execute({ status: "pending", pageSize: 50 }),
+    listServicesByStatusUseCase().execute({ status: "approved", pageSize: 100 }),
+  ]);
 
   return (
-    <div className="space-y-5">
-      <div className="space-y-1">
-        <h1 className="text-xl font-semibold">Servicios solidarios — revisión</h1>
-        <p className="text-sm text-text-2">
-          Aprueba o rechaza las publicaciones pendientes. Solo lo aprobado aparece en el directorio
-          público.
-        </p>
-      </div>
-      <ModerationList items={views} />
+    <div className="space-y-8">
+      <section className="space-y-4">
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold">Servicios solidarios — pendientes de revisión</h1>
+          <p className="text-sm text-text-2">
+            Aprueba o rechaza. Solo lo aprobado aparece en el directorio público.
+          </p>
+        </div>
+        <ModerationList items={pending.items.map(toView)} />
+      </section>
+
+      <section className="space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold">Publicadas</h2>
+          <p className="text-sm text-text-2">
+            Si el autor pierde su enlace de gestión, puedes reenviárselo (se genera uno nuevo y el
+            anterior deja de funcionar).
+          </p>
+        </div>
+        <ModerationList
+          items={approved.items.map(toView)}
+          showModeration={false}
+          emptyLabel="Aún no hay publicaciones aprobadas."
+        />
+      </section>
     </div>
   );
 }

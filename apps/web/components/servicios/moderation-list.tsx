@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import {
   approveServiceAction,
   rejectServiceAction,
+  resendManageLinkAction,
   type EstadoModeracion,
 } from "@/lib/actions/servicios";
 import { Badge } from "@/components/ui/badge";
@@ -22,11 +23,21 @@ export interface PendingServiceView {
   createdAt: string;
 }
 
-function ModerationRow({ item }: { item: PendingServiceView }): React.ReactElement {
+// `showModeration` = fila pendiente (con Aprobar/Rechazar). Si es false, es una
+// publicación ya aprobada (solo se puede reenviar el enlace de gestión).
+function ModerationRow({
+  item,
+  showModeration,
+}: {
+  item: PendingServiceView;
+  showModeration: boolean;
+}): React.ReactElement {
   const [approveState, approveForm, approvePending] = useActionState(approveServiceAction, initial);
   const [rejectState, rejectForm, rejectPending] = useActionState(rejectServiceAction, initial);
-  const msg = approveState.mensaje ?? rejectState.mensaje;
-  const ok = approveState.ok || rejectState.ok;
+  const [resendState, resendForm, resendPending] = useActionState(resendManageLinkAction, initial);
+  const msg = approveState.mensaje ?? rejectState.mensaje ?? resendState.mensaje;
+  const ok = approveState.ok || rejectState.ok || resendState.ok;
+  const busy = approvePending || rejectPending || resendPending;
 
   return (
     <Card>
@@ -49,21 +60,31 @@ function ModerationRow({ item }: { item: PendingServiceView }): React.ReactEleme
         </dl>
 
         <div className="flex flex-wrap gap-3 pt-1">
-          <form action={approveForm}>
+          {showModeration && (
+            <>
+              <form action={approveForm}>
+                <input type="hidden" name="serviceId" value={item.id} />
+                <Button type="submit" disabled={busy}>
+                  {approvePending ? "Aprobando…" : "Aprobar"}
+                </Button>
+              </form>
+              <form action={rejectForm} className="flex flex-1 flex-wrap items-center gap-2">
+                <input type="hidden" name="serviceId" value={item.id} />
+                <input
+                  name="reason"
+                  placeholder="Motivo del rechazo (opcional)"
+                  className="h-[52px] min-w-[12rem] flex-1 rounded-[var(--radius-control)] border border-border bg-bg px-4 text-text placeholder:text-text-3 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none"
+                />
+                <Button type="submit" variant="outline" disabled={busy}>
+                  {rejectPending ? "Rechazando…" : "Rechazar"}
+                </Button>
+              </form>
+            </>
+          )}
+          <form action={resendForm}>
             <input type="hidden" name="serviceId" value={item.id} />
-            <Button type="submit" disabled={approvePending || rejectPending}>
-              {approvePending ? "Aprobando…" : "Aprobar"}
-            </Button>
-          </form>
-          <form action={rejectForm} className="flex flex-1 flex-wrap items-center gap-2">
-            <input type="hidden" name="serviceId" value={item.id} />
-            <input
-              name="reason"
-              placeholder="Motivo del rechazo (opcional)"
-              className="h-[52px] min-w-[12rem] flex-1 rounded-[var(--radius-control)] border border-border bg-bg px-4 text-text placeholder:text-text-3 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none"
-            />
-            <Button type="submit" variant="outline" disabled={approvePending || rejectPending}>
-              {rejectPending ? "Rechazando…" : "Rechazar"}
+            <Button type="submit" variant="outline" disabled={busy}>
+              {resendPending ? "Reenviando…" : "Reenviar enlace de gestión"}
             </Button>
           </form>
         </div>
@@ -81,20 +102,26 @@ function ModerationRow({ item }: { item: PendingServiceView }): React.ReactEleme
   );
 }
 
-export function ModerationList({ items }: { items: PendingServiceView[] }): React.ReactElement {
+export function ModerationList({
+  items,
+  showModeration = true,
+  emptyLabel = "No hay publicaciones pendientes de revisión.",
+}: {
+  items: PendingServiceView[];
+  showModeration?: boolean;
+  emptyLabel?: string;
+}): React.ReactElement {
   if (items.length === 0) {
     return (
       <Card>
-        <CardBody className="py-10 text-center text-text-2">
-          No hay publicaciones pendientes de revisión.
-        </CardBody>
+        <CardBody className="py-10 text-center text-text-2">{emptyLabel}</CardBody>
       </Card>
     );
   }
   return (
     <div className="space-y-4">
       {items.map((item) => (
-        <ModerationRow key={item.id} item={item} />
+        <ModerationRow key={item.id} item={item} showModeration={showModeration} />
       ))}
     </div>
   );

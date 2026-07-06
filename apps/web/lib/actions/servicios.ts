@@ -14,6 +14,7 @@ import {
 import {
   approveServiceUseCase,
   editServiceByTokenUseCase,
+  regenerateManageLinkUseCase,
   rejectServiceUseCase,
   removeServiceByTokenUseCase,
   resolveTeamMemberUseCase,
@@ -217,6 +218,32 @@ export async function rejectServiceAction(
     revalidatePath("/admin/servicios");
     return { ok: true, mensaje: "Publicación rechazada." };
   } catch (error) {
+    return mapModerationError(error);
+  }
+}
+
+// Reenvía al autor el enlace de gestión. Regenera el token (invalida el anterior,
+// como un "restablecer"): el enlace viejo deja de funcionar y se envía uno nuevo.
+export async function resendManageLinkAction(
+  _prev: EstadoModeracion,
+  formData: FormData,
+): Promise<EstadoModeracion> {
+  const auth = await requireModerator();
+  if (!auth.ok) return { ok: false, mensaje: auth.mensaje };
+  const serviceId = str(formData, "serviceId");
+  if (!serviceId) return { ok: false, mensaje: "Falta la publicación." };
+  try {
+    const { email, editToken } = await regenerateManageLinkUseCase().execute({
+      serviceId,
+      actorRole: auth.role,
+    });
+    await serviceConfirmationMailer().sendConfirmation({
+      email,
+      editUrl: `${SITE_URL}/servicios/editar/${editToken}`,
+    });
+    return { ok: true, mensaje: `Enlace de gestión reenviado a ${email}.` };
+  } catch (error) {
+    console.error("[service-mailer] reenvío fallido:", error);
     return mapModerationError(error);
   }
 }

@@ -31,6 +31,10 @@ export class InMemoryRepo implements SolidarityServiceRepository {
     return { items: all.slice(input.offset, input.offset + input.limit), total: all.length };
   }
 
+  async findById(id: string): Promise<SolidarityServiceRecord | null> {
+    return this.rows.get(id) ?? null;
+  }
+
   async findByTokenHash(tokenHash: string): Promise<SolidarityServiceRecord | null> {
     return [...this.rows.values()].find((r) => r.editTokenHash === tokenHash) ?? null;
   }

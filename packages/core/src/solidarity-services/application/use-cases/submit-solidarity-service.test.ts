@@ -22,6 +22,9 @@ class FakeRepo implements SolidarityServiceRepository {
   async listByStatus() {
     return { items: [] as SolidarityServiceRecord[], total: 0 };
   }
+  async findById(): Promise<SolidarityServiceRecord | null> {
+    return null;
+  }
   async findByTokenHash(): Promise<SolidarityServiceRecord | null> {
     return null;
   }

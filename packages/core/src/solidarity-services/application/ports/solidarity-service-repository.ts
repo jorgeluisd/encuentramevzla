@@ -46,6 +46,7 @@ export type ServiceChanges = Partial<
     | "description"
     | "contactPhone"
     | "status"
+    | "editTokenHash"
     | "rejectionReason"
     | "reviewedBy"
     | "reviewedAt"
@@ -59,6 +60,7 @@ export interface SolidarityServiceRepository {
   create(record: NewSolidarityServiceRecord): Promise<void>;
   countActiveByEmail(email: string): Promise<number>; // pending + approved
   listByStatus(input: ListByStatusInput): Promise<ServicesPage>;
+  findById(id: string): Promise<SolidarityServiceRecord | null>;
   findByTokenHash(tokenHash: string): Promise<SolidarityServiceRecord | null>;
   updateById(id: string, changes: ServiceChanges): Promise<void>;
 }
