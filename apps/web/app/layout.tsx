@@ -134,6 +134,9 @@ export default function RootLayout({
               <Link href="/" className="hover:text-primary">
                 Inicio
               </Link>
+              <Link href="/servicios" className="hover:text-primary">
+                Servicios
+              </Link>
               <Link href="/confianza" className="hover:text-primary">
                 Privacidad
               </Link>

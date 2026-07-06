@@ -62,6 +62,9 @@ export default async function ProtectedAdminLayout({
       ? [{ href: "/admin/review", label: "Revisión" }]
       : []),
     ...(canModerate(member.role)
+      ? [{ href: "/admin/servicios", label: "Servicios" }]
+      : []),
+    ...(canModerate(member.role)
       ? [{ href: "/admin/foreign-rows", label: "Filas ajenas" }]
       : []),
     ...(canModerate(member.role)
