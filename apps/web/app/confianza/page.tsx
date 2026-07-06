@@ -1,4 +1,9 @@
 import type { Metadata } from "next";
+import {
+  DATA_PROTECTION_CLAUSES,
+  DATA_PROTECTION_INTRO,
+} from "@/lib/legal/data-protection-clause";
+import { PUBLICATION_TERMS } from "@/lib/legal/publication-terms";
 import { Card, CardBody, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
@@ -54,6 +59,42 @@ export default function ConfianzaPage(): React.ReactElement {
           </Card>
         ))}
       </div>
+
+      <section id="clausula-datos" className="space-y-3 pt-4">
+        <h2 className="text-xl font-semibold sm:text-2xl">
+          Cláusula de protección y uso de datos personales
+        </h2>
+        <p className="text-text-2">{DATA_PROTECTION_INTRO}</p>
+        <Card>
+          <CardBody className="space-y-4">
+            {DATA_PROTECTION_CLAUSES.map((clause) => (
+              <div key={clause.title} className="space-y-1.5">
+                <h3 className="font-semibold text-text">{clause.title}</h3>
+                <p className="text-sm leading-relaxed text-text-2">{clause.body}</p>
+              </div>
+            ))}
+          </CardBody>
+        </Card>
+      </section>
+
+      <section id="terminos-servicios" className="space-y-3 pt-4">
+        <h2 className="text-xl font-semibold sm:text-2xl">
+          Términos de publicación — Servicios solidarios
+        </h2>
+        <p className="text-text-2">
+          Condiciones para quienes publican servicios gratuitos en el directorio solidario.
+        </p>
+        <Card>
+          <CardBody className="space-y-4">
+            {PUBLICATION_TERMS.map((term) => (
+              <div key={term.title} className="space-y-1.5">
+                <h3 className="font-semibold text-text">{term.title}</h3>
+                <p className="text-sm leading-relaxed text-text-2">{term.body}</p>
+              </div>
+            ))}
+          </CardBody>
+        </Card>
+      </section>
     </article>
   );
 }
