@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
-import Link from "next/link";
+import { useActionState, useState } from "react";
 import { SERVICE_CATEGORIES } from "@evzla/core";
 import { submitServiceAction, type SubmitServiceState } from "@/lib/actions/servicios";
+import { PUBLICATION_TERMS } from "@/lib/legal/publication-terms";
+import { LegalModal } from "@/components/legal/legal-modal";
 import { TurnstileField } from "@/components/servicios/turnstile-field";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardTitle } from "@/components/ui/card";
@@ -16,6 +17,8 @@ const fieldClass =
 
 export function SubmitServiceForm(): React.ReactElement {
   const [state, formAction, pending] = useActionState(submitServiceAction, initialState);
+  const [accepted, setAccepted] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
 
   return (
     <Card>
@@ -93,22 +96,39 @@ export function SubmitServiceForm(): React.ReactElement {
           </div>
 
           <label className="flex items-start gap-3 text-sm text-text-2">
-            <input type="checkbox" name="acceptedTerms" required className="mt-1 h-4 w-4 shrink-0" />
+            <input
+              type="checkbox"
+              name="acceptedTerms"
+              required
+              checked={accepted}
+              onChange={(e) => setAccepted(e.target.checked)}
+              className="mt-1 h-4 w-4 shrink-0"
+            />
             <span>
               Autorizo publicar de forma pública el servicio, la categoría, la descripción y mi
               número de contacto, y entiendo que cualquier persona podrá verlos y contactarme.
               Declaro que lo ofrezco de forma gratuita y que los datos son veraces. He leído y acepto
               los{" "}
-              <Link href="/servicios/terminos" className="text-primary hover:underline">
+              <button
+                type="button"
+                onClick={() => setTermsOpen(true)}
+                className="text-primary underline hover:no-underline"
+              >
                 Términos de publicación
-              </Link>
+              </button>
               .
             </span>
           </label>
 
           <TurnstileField resetSignal={state} />
 
-          <Button type="submit" size="lg" className="w-full" disabled={pending}>
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full"
+            disabled={pending || !accepted}
+            title={!accepted ? "Debes aceptar los términos de publicación" : undefined}
+          >
             {pending ? "Publicando…" : "Publicar servicio"}
           </Button>
 
@@ -129,6 +149,14 @@ export function SubmitServiceForm(): React.ReactElement {
           )}
         </form>
       </CardBody>
+
+      <LegalModal
+        open={termsOpen}
+        onClose={() => setTermsOpen(false)}
+        title="Términos de publicación"
+        intro="Servicios solidarios de EncuéntrameVzla."
+        items={PUBLICATION_TERMS}
+      />
     </Card>
   );
 }

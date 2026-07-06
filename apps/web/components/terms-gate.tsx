@@ -2,34 +2,14 @@
 
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import {
+  DATA_PROTECTION_CLAUSES,
+  DATA_PROTECTION_INTRO,
+} from "@/lib/legal/data-protection-clause";
 
 // Versión de los términos: si el texto cambia, sube la versión para re-pedir
 // aceptación a quienes ya habían aceptado la anterior.
 const STORAGE_KEY = "evzla:terms-accepted:v1";
-
-// Cláusula de protección y uso de datos personales. Cada punto: título + cuerpo.
-const CLAUSES = [
-  {
-    title: "Finalidad del tratamiento de datos",
-    body: "La información personal y los datos recabados a través de esta aplicación son tratados única y exclusivamente con el fin de facilitar la búsqueda y localización de familiares, amigos o conocidos, incluyendo niñas, niños, adolescentes y personas que se presumen desaparecidas.",
-  },
-  {
-    title: "Interés superior del niño",
-    body: "El tratamiento de la información de niñas, niños y adolescentes se realiza en estricto cumplimiento del principio del interés superior, conforme a la normativa venezolana vigente.",
-  },
-  {
-    title: "Reserva de derechos",
-    body: "Los desarrolladores de esta aplicación se reservan el derecho de ejercer las acciones legales correspondientes ante los organismos de seguridad competentes frente a cualquier uso inadecuado de la información aquí contenida, en virtud de que la misma tiene como finalidad exclusiva la ubicación de las personas señaladas.",
-  },
-  {
-    title: "Limitación de responsabilidad",
-    body: "La aplicación no se hace responsable por el uso, divulgación o manejo de la información compartida con fines distintos a los anteriormente señalados.",
-  },
-  {
-    title: "Advertencia de seguridad",
-    body: "Se recomienda al usuario actuar con extrema precaución, siendo consciente de que cualquier uso indebido de los datos personales, contrario a la presente iniciativa, puede generar responsabilidades penales, civiles o administrativas, pudiendo derivar en denuncias o acciones realizadas en nombre propio o en conjunto con familiares.",
-  },
-] as const;
 
 export function TermsGate(): React.ReactElement | null {
   // undefined = aún sin resolver (evita parpadeo/hydration mismatch en SSR).
@@ -111,13 +91,10 @@ export function TermsGate(): React.ReactElement | null {
           >
             Cláusula de protección y uso de datos personales
           </h2>
-          <p className="mt-2 text-sm text-text-2">
-            Al hacer uso de esta aplicación en situaciones de emergencia, usted
-            acepta y reconoce expresamente lo siguiente:
-          </p>
+          <p className="mt-2 text-sm text-text-2">{DATA_PROTECTION_INTRO}</p>
 
           <ul className="mt-4 space-y-4">
-            {CLAUSES.map((clause) => (
+            {DATA_PROTECTION_CLAUSES.map((clause) => (
               <li key={clause.title} className="text-sm leading-relaxed">
                 <p className="font-semibold text-text">{clause.title}</p>
                 <p className="mt-1 text-text-2">{clause.body}</p>
