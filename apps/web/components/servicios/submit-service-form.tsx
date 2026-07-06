@@ -15,21 +15,22 @@ const initialState: SubmitServiceState = { status: "idle" };
 const fieldClass =
   "w-full rounded-[var(--radius-control)] border border-border bg-bg px-4 py-3 text-text placeholder:text-text-3 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none";
 
-export function SubmitServiceForm(): React.ReactElement {
+// `bare` = sin el Card exterior ni el título (para renderizar dentro de un modal,
+// que ya aporta contenedor y encabezado).
+export function SubmitServiceForm({ bare = false }: { bare?: boolean }): React.ReactElement {
   const [state, formAction, pending] = useActionState(submitServiceAction, initialState);
   const [accepted, setAccepted] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
 
-  return (
-    <Card>
-      <CardBody className="space-y-5">
-        <CardTitle>Publicar un servicio gratuito</CardTitle>
-        <p className="text-sm text-text-2">
-          Ofrece tu ayuda sin costo. Un moderador revisará la publicación antes de mostrarla. Te
-          enviaremos un enlace por correo para editarla o darla de baja.
-        </p>
+  const body = (
+    <div className="space-y-5">
+      {!bare && <CardTitle>Publicar un servicio gratuito</CardTitle>}
+      <p className="text-sm text-text-2">
+        Ofrece tu ayuda sin costo. Un moderador revisará la publicación antes de mostrarla. Te
+        enviaremos un enlace por correo para editarla o darla de baja.
+      </p>
 
-        <form action={formAction} className="space-y-4">
+      <form action={formAction} className="space-y-4">
           <div className="space-y-1.5">
             <label htmlFor="title" className="text-sm font-medium text-text-2">
               Título del servicio
@@ -148,15 +149,32 @@ export function SubmitServiceForm(): React.ReactElement {
             </p>
           )}
         </form>
-      </CardBody>
+    </div>
+  );
 
-      <LegalModal
-        open={termsOpen}
-        onClose={() => setTermsOpen(false)}
-        title="Términos de publicación"
-        intro="Servicios solidarios de EncuéntrameVzla."
-        items={PUBLICATION_TERMS}
-      />
+  const legal = (
+    <LegalModal
+      open={termsOpen}
+      onClose={() => setTermsOpen(false)}
+      title="Términos de publicación"
+      intro="Servicios solidarios de EncuéntrameVzla."
+      items={PUBLICATION_TERMS}
+    />
+  );
+
+  if (bare) {
+    return (
+      <>
+        {body}
+        {legal}
+      </>
+    );
+  }
+
+  return (
+    <Card>
+      <CardBody>{body}</CardBody>
+      {legal}
     </Card>
   );
 }

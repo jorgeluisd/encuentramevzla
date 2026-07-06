@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import type { PublicService } from "@evzla/core";
 import { listPublishedServicesUseCase } from "@/lib/composition";
+import { PublishServiceModal } from "@/components/servicios/publish-service-modal";
 import { ServicesDirectory } from "@/components/servicios/services-directory";
-import { SubmitServiceForm } from "@/components/servicios/submit-service-form";
 
 export const dynamic = "force-dynamic";
 
@@ -32,14 +32,12 @@ export default async function ServiciosPage(): Promise<React.ReactElement> {
           Publica y encuentra servicios solidarios de personas que ofrecen su tiempo y conocimiento
           sin costo: inspección de edificios, atención médica, apoyo legal, alimentación y mucho más.
         </p>
+        <div className="flex justify-center py-6">
+          <PublishServiceModal />
+        </div>
       </section>
 
       <ServicesDirectory services={services} />
-
-      <section className="space-y-4">
-        <h2 className="text-center text-lg font-semibold">¿Ofreces ayuda?</h2>
-        <SubmitServiceForm />
-      </section>
     </div>
   );
 }

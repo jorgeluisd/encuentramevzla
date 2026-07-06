@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import type { PublicService } from "@evzla/core";
 import { ListPublishedServices } from "@evzla/core";
 import { createAnonClient } from "@/lib/supabase/anon";
 import { SupabaseSolidarityServiceDirectory } from "@/lib/infrastructure/solidarity-services/supabase-solidarity-service-directory";
 import { SearchPanel } from "@/components/search-panel";
+import { PublishServiceModal } from "@/components/servicios/publish-service-modal";
 import { ServicesDirectory } from "@/components/servicios/services-directory";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -171,10 +171,8 @@ export function HomeTabs({ lastUpdateLabel }: { lastUpdateLabel: string }): Reac
               Servicios solidarios de personas que ofrecen su tiempo y conocimiento sin costo:
               inspección de edificios, atención médica, apoyo legal, alimentación y mucho más.
             </p>
-            <div className="flex justify-center">
-              <Link href="/servicios">
-                <Button>Publicar un servicio gratuito</Button>
-              </Link>
+            <div className="flex justify-center py-6">
+              <PublishServiceModal />
             </div>
           </section>
 
