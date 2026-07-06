@@ -1,6 +1,6 @@
 # Spec 0023 — Directorio de servicios solidarios (profesionales voluntarios)
 
-Estado: **en implementación** (GATE 1 aprobado; código verde local, pendiente GATE 2) · Rama: `feat/0023-solidarity-services` (desde `develop`)
+Estado: **en revisión** (GATE 1 aprobado; verde local + E2E OK; PR #86 → `develop`; migración 0016 pendiente en prod) · Rama: `feat/0023-solidarity-services` (desde `develop`)
 Capacidad nueva: `solidarity-services` (`@evzla/core`). Independiente de `patient-registry`.
 Reutiliza: 0016 (Turnstile anti-abuso), 0009 (cola de revisión), 0007 (roles), Resend (0022/bienvenida).
 
