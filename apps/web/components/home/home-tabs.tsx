@@ -8,6 +8,7 @@ import { SupabaseSolidarityServiceDirectory } from "@/lib/infrastructure/solidar
 import { SearchPanel } from "@/components/search-panel";
 import { PublishServiceModal } from "@/components/servicios/publish-service-modal";
 import { ServicesDirectory } from "@/components/servicios/services-directory";
+import { ServicesDirectorySkeleton } from "@/components/servicios/services-directory-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardTitle } from "@/components/ui/card";
@@ -177,9 +178,7 @@ export function HomeTabs({ lastUpdateLabel }: { lastUpdateLabel: string }): Reac
           </section>
 
           {services === null ? (
-            <Card>
-              <CardBody className="py-10 text-center text-text-2">Cargando servicios…</CardBody>
-            </Card>
+            <ServicesDirectorySkeleton />
           ) : servicesError ? (
             <Card>
               <CardBody className="py-10 text-center text-text-2">
