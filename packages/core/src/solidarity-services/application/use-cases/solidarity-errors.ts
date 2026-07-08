@@ -1,8 +1,20 @@
 // Errores de dominio de la capacidad solidarity-services.
+
+// Campos del alta/edición que pueden fallar la validación de dominio.
+export type ServiceInputField =
+  | "title"
+  | "category"
+  | "description"
+  | "contactPhone"
+  | "submitterEmail";
+
 export class InvalidServiceInputError extends Error {
-  constructor(message = "invalid service input") {
-    super(message);
+  // Qué campos concretos fallaron (para dar un mensaje específico en la UI).
+  readonly fields: readonly ServiceInputField[];
+  constructor(fields: readonly ServiceInputField[] = []) {
+    super("invalid service input");
     this.name = "InvalidServiceInputError";
+    this.fields = fields;
   }
 }
 

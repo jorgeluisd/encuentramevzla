@@ -7,6 +7,7 @@ import {
   InvalidServiceInputError,
   ServiceModerationForbiddenError,
   ServiceNotFoundError,
+  type ServiceInputField,
   TermsNotAcceptedError,
   TooManyActiveServicesError,
   type Role,
@@ -45,6 +46,15 @@ export type SubmitServiceState =
   | { status: "invalid"; mensaje: string }
   | { status: "done" };
 
+// Mensaje concreto por campo (incluye el mínimo) para que el usuario sepa QUÉ corregir.
+const FIELD_MESSAGE: Record<ServiceInputField, string> = {
+  title: "El título debe tener al menos 3 caracteres.",
+  category: "Elige una categoría de la lista.",
+  description: "La descripción debe tener al menos 10 caracteres.",
+  contactPhone: "El teléfono debe incluir al menos 7 dígitos.",
+  submitterEmail: "Revisa tu correo electrónico.",
+};
+
 function mapSubmitError(error: unknown): SubmitServiceState {
   if (error instanceof TermsNotAcceptedError) {
     return { status: "invalid", mensaje: "Debes aceptar los términos de publicación." };
@@ -56,7 +66,11 @@ function mapSubmitError(error: unknown): SubmitServiceState {
     };
   }
   if (error instanceof InvalidServiceInputError) {
-    return { status: "invalid", mensaje: "Revisa los datos: título, categoría, descripción y teléfono." };
+    const detalle = error.fields.map((f) => FIELD_MESSAGE[f]).join(" ");
+    return {
+      status: "invalid",
+      mensaje: detalle || "Revisa los datos: título, categoría, descripción y teléfono.",
+    };
   }
   return {
     status: "invalid",

@@ -36,7 +36,14 @@ export function SubmitServiceForm({ bare = false }: { bare?: boolean }): React.R
             <label htmlFor="title" className="text-sm font-medium text-text-2">
               Título del servicio
             </label>
-            <Input id="title" name="title" required placeholder="Ej. Inspección estructural de edificios" />
+            <Input
+              id="title"
+              name="title"
+              required
+              minLength={3}
+              maxLength={120}
+              placeholder="Ej. Inspección estructural de edificios"
+            />
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -64,8 +71,11 @@ export function SubmitServiceForm({ bare = false }: { bare?: boolean }): React.R
                 name="contactPhone"
                 required
                 inputMode="tel"
+                pattern="[^0-9]*([0-9][^0-9]*){7,}"
+                title="Incluye al menos 7 dígitos (con el código de país si aplica)."
                 placeholder="Ej. +58 412 123 4567"
               />
+              <p className="text-xs text-text-3">Al menos 7 dígitos.</p>
             </div>
           </div>
 
@@ -77,10 +87,13 @@ export function SubmitServiceForm({ bare = false }: { bare?: boolean }): React.R
               id="description"
               name="description"
               required
+              minLength={10}
+              maxLength={1000}
               rows={3}
               className={fieldClass}
               placeholder="Describe el servicio y a quién ayudas…"
             />
+            <p className="text-xs text-text-3">Entre 10 y 1000 caracteres.</p>
           </div>
 
           <div className="space-y-1.5">
