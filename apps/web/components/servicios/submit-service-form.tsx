@@ -27,7 +27,8 @@ export function SubmitServiceForm({ bare = false }: { bare?: boolean }): React.R
       {!bare && <CardTitle>Publicar un servicio gratuito</CardTitle>}
       <p className="text-sm text-text-2">
         Ofrece tu ayuda sin costo. Un moderador revisará la publicación antes de mostrarla. Te
-        enviaremos un enlace por correo para editarla o darla de baja.
+        enviaremos un enlace por correo para editarla o darla de baja. La publicación tiene una
+        <strong> vigencia de 3 meses</strong> (puedes renovarla editándola).
       </p>
 
       <form action={formAction} className="space-y-4">

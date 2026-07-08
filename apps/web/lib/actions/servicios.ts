@@ -13,16 +13,25 @@ import {
 } from "@evzla/core";
 import {
   approveServiceUseCase,
+  dismissReportUseCase,
   editServiceByTokenUseCase,
   regenerateManageLinkUseCase,
   rejectServiceUseCase,
   removeServiceByTokenUseCase,
+  reportServiceUseCase,
   resolveTeamMemberUseCase,
   serviceConfirmationMailer,
   submitSolidarityServiceUseCase,
+  takeDownServiceUseCase,
 } from "@/lib/composition";
 import { getSessionEmail } from "@/lib/supabase/ssr-server";
 import { verifyHumanChallengeUseCase } from "@/lib/composition";
+import { allowAction, hashIp } from "@/lib/infrastructure/rate-limit";
+
+// Límites de tasa por IP hasheada para escrituras públicas (anti-abuso/DoS).
+const RATE_WINDOW_MS = 10 * 60 * 1000; // 10 minutos
+const SUBMIT_LIMIT = 5;
+const REPORT_LIMIT = 12;
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://encuentramevzla.com";
 
@@ -69,6 +78,14 @@ export async function submitServiceAction(
   if (!skipVerification) {
     const human = await verifyHumanChallengeUseCase().execute(token, ip);
     if (!human) return { status: "verification-failed" };
+  }
+
+  // Rate-limit por IP hasheada (además del captcha): frena abuso de altas.
+  if (!(await allowAction(hashIp(ip), "submit", SUBMIT_LIMIT, RATE_WINDOW_MS))) {
+    return {
+      status: "invalid",
+      mensaje: "Has enviado varias publicaciones seguidas. Espera unos minutos e intenta de nuevo.",
+    };
   }
 
   try {
@@ -151,6 +168,45 @@ export async function removeServiceAction(
   }
 }
 
+// --- Reporte público (sin sesión, anti-bot con Turnstile) ---
+
+export type ReportState =
+  | { status: "idle" }
+  | { status: "verification-failed" }
+  | { status: "done" }
+  | { status: "error" };
+
+export async function reportServiceAction(
+  _prev: ReportState,
+  formData: FormData,
+): Promise<ReportState> {
+  const serviceId = str(formData, "serviceId");
+  if (!serviceId) return { status: "error" };
+
+  const token = str(formData, "cf-turnstile-response");
+  const hdrs = await headers();
+  const ip = (hdrs.get("x-forwarded-for") ?? "").split(",")[0]?.trim() || "unknown";
+  const turnstileConfigured = Boolean(process.env.TURNSTILE_SECRET_KEY);
+  const skipVerification = process.env.NODE_ENV !== "production" && !turnstileConfigured;
+  if (!skipVerification) {
+    const human = await verifyHumanChallengeUseCase().execute(token, ip);
+    if (!human) return { status: "verification-failed" };
+  }
+
+  // Rate-limit por IP hasheada: frena spam de reportes.
+  if (!(await allowAction(hashIp(ip), "report", REPORT_LIMIT, RATE_WINDOW_MS))) {
+    return { status: "error" };
+  }
+
+  try {
+    await reportServiceUseCase().execute({ serviceId, reason: str(formData, "reason") });
+    revalidatePath("/admin/servicios");
+    return { status: "done" };
+  } catch {
+    return { status: "error" };
+  }
+}
+
 // --- Moderación (staff, rol moderator) ---
 
 export interface EstadoModeracion {
@@ -217,6 +273,43 @@ export async function rejectServiceAction(
     });
     revalidatePath("/admin/servicios");
     return { ok: true, mensaje: "Publicación rechazada." };
+  } catch (error) {
+    return mapModerationError(error);
+  }
+}
+
+// Baja administrativa (moderador): retira la publicación del directorio.
+export async function takeDownServiceAction(
+  _prev: EstadoModeracion,
+  formData: FormData,
+): Promise<EstadoModeracion> {
+  const auth = await requireModerator();
+  if (!auth.ok) return { ok: false, mensaje: auth.mensaje };
+  const serviceId = str(formData, "serviceId");
+  if (!serviceId) return { ok: false, mensaje: "Falta la publicación." };
+  try {
+    await takeDownServiceUseCase().execute({ serviceId, actorRole: auth.role });
+    revalidatePath("/admin/servicios");
+    revalidatePath("/servicios");
+    return { ok: true, mensaje: "Publicación dada de baja." };
+  } catch (error) {
+    return mapModerationError(error);
+  }
+}
+
+// Descartar el reporte de una publicación (moderador): la mantiene publicada.
+export async function dismissReportAction(
+  _prev: EstadoModeracion,
+  formData: FormData,
+): Promise<EstadoModeracion> {
+  const auth = await requireModerator();
+  if (!auth.ok) return { ok: false, mensaje: auth.mensaje };
+  const serviceId = str(formData, "serviceId");
+  if (!serviceId) return { ok: false, mensaje: "Falta la publicación." };
+  try {
+    await dismissReportUseCase().execute({ serviceId, actorRole: auth.role });
+    revalidatePath("/admin/servicios");
+    return { ok: true, mensaje: "Reporte descartado. La publicación se mantiene." };
   } catch (error) {
     return mapModerationError(error);
   }

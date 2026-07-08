@@ -129,6 +129,18 @@ export const searchLog = pgTable("search_log", {
 });
 
 /**
+ * action_rate_log — límite de tasa por IP hasheada para acciones públicas de escritura
+ * (alta y reporte de servicios). Solo se guarda el HASH de la IP, nunca la IP en claro.
+ * anon no tiene grants; lo lee/escribe service_role desde las Server Actions.
+ */
+export const actionRateLog = pgTable("action_rate_log", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  clientHash: text("client_hash").notNull(),
+  action: text("action").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * solidarity_services — directorio público de servicios solidarios (spec 0023).
  * Es el INVERSO de privacidad del buscador: aquí `contact_phone` es público POR DISEÑO
  * (con consentimiento explícito). En cambio `submitter_email` y `edit_token_hash` son
@@ -146,6 +158,10 @@ export const solidarityServices = pgTable("solidarity_services", {
   editTokenHash: text("edit_token_hash").notNull(), // solo el hash
   acceptedTermsAt: timestamp("accepted_terms_at", { withTimezone: true }).notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  // Reporte público: flag idempotente; no baja la publicación, la marca para revisión.
+  reported: boolean("reported").notNull().default(false),
+  reportedAt: timestamp("reported_at", { withTimezone: true }),
+  reportReason: text("report_reason"), // motivo breve del último reporte
   rejectionReason: text("rejection_reason"),
   reviewedBy: uuid("reviewed_by"),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),

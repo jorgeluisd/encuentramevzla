@@ -1,7 +1,10 @@
 import { canModerate, type SolidarityServiceRecord } from "@evzla/core";
 import { getCurrentMember } from "@/lib/auth/current-member";
-import { listServicesByStatusUseCase } from "@/lib/composition";
-import { ModerationList, type PendingServiceView } from "@/components/servicios/moderation-list";
+import { listAllServicesUseCase } from "@/lib/composition";
+import {
+  ServicesAdminBrowser,
+  type AdminServiceView,
+} from "@/components/servicios/services-admin-browser";
 import { Card, CardBody } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +13,7 @@ function formatDate(d: Date): string {
   return d.toLocaleDateString("es-VE", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function toView(s: SolidarityServiceRecord): PendingServiceView {
+function toAdminView(s: SolidarityServiceRecord): AdminServiceView {
   return {
     id: s.id,
     title: s.title,
@@ -18,8 +21,20 @@ function toView(s: SolidarityServiceRecord): PendingServiceView {
     description: s.description,
     contactPhone: s.contactPhone,
     submitterEmail: s.submitterEmail,
+    status: s.status,
+    reported: s.reported,
+    reportReason: s.reportReason,
     createdAt: formatDate(s.createdAt),
+    expiresAt: formatDate(s.expiresAt),
   };
+}
+
+// Orden de la cola: reportadas primero, luego pendientes de aprobar, luego el resto.
+// Dentro de cada grupo se conserva el orden de la consulta (más recientes primero).
+function reviewRank(s: SolidarityServiceRecord): number {
+  if (s.reported) return 0;
+  if (s.status === "pending") return 1;
+  return 2;
 }
 
 export default async function AdminServiciosPage(): Promise<React.ReactElement> {
@@ -34,37 +49,20 @@ export default async function AdminServiciosPage(): Promise<React.ReactElement> 
     );
   }
 
-  const [pending, approved] = await Promise.all([
-    listServicesByStatusUseCase().execute({ status: "pending", pageSize: 50 }),
-    listServicesByStatusUseCase().execute({ status: "approved", pageSize: 100 }),
-  ]);
+  const { items } = await listAllServicesUseCase().execute({ pageSize: 200 });
+  const ordered = [...items].sort((a, b) => reviewRank(a) - reviewRank(b));
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-4">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold">Servicios solidarios — pendientes de revisión</h1>
-          <p className="text-sm text-text-2">
-            Aprueba o rechaza. Solo lo aprobado aparece en el directorio público.
-          </p>
-        </div>
-        <ModerationList items={pending.items.map(toView)} />
-      </section>
-
-      <section className="space-y-4">
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold">Publicadas</h2>
-          <p className="text-sm text-text-2">
-            Si el autor pierde su enlace de gestión, puedes reenviárselo (se genera uno nuevo y el
-            anterior deja de funcionar).
-          </p>
-        </div>
-        <ModerationList
-          items={approved.items.map(toView)}
-          showModeration={false}
-          emptyLabel="Aún no hay publicaciones aprobadas."
-        />
-      </section>
+    <div className="space-y-4">
+      <div className="space-y-1">
+        <h1 className="text-xl font-semibold">Servicios solidarios</h1>
+        <p className="text-sm text-text-2">
+          Reportadas primero, luego pendientes de aprobar y después el resto. Busca o filtra por
+          estado. Si el autor pierde su enlace de gestión, puedes reenviárselo (se genera uno nuevo
+          y el anterior deja de funcionar). Vigencia: 3 meses.
+        </p>
+      </div>
+      <ServicesAdminBrowser items={ordered.map(toAdminView)} />
     </div>
   );
 }

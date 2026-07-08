@@ -32,6 +32,10 @@ export function renderServiceConfirmationEmail(input: ServiceConfirmationInput):
                   Con este enlace puedes <strong>editar</strong> o <strong>dar de baja</strong> tu
                   publicación en cualquier momento. No lo compartas: es tu acceso de gestión.
                 </p>
+                <p style="margin:0 0 12px; font-size:14px; line-height:1.6; color:#334155;">
+                  Tu publicación tiene una <strong>vigencia de 3 meses</strong>. Puedes renovarla
+                  en cualquier momento editándola desde ese mismo enlace.
+                </p>
                 <p style="margin:0 0 24px;">
                   <a href="${editUrl}" style="display:inline-block; background-color:#0033a0; color:#ffffff; font-size:14px; font-weight:600; text-decoration:none; padding:12px 24px; border-radius:6px;">Gestionar mi publicación</a>
                 </p>
