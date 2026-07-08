@@ -7,6 +7,7 @@ import { SubmitterEmail } from "../../domain/value-objects/submitter-email";
 import type { SolidarityServiceRepository } from "../ports/solidarity-service-repository";
 import {
   InvalidServiceInputError,
+  type ServiceInputField,
   TermsNotAcceptedError,
   TooManyActiveServicesError,
 } from "./solidarity-errors";
@@ -46,15 +47,13 @@ export class SubmitSolidarityService {
     const phone = NormalizedPhone.fromRaw(input.contactPhone);
     const email = SubmitterEmail.fromRaw(input.submitterEmail);
 
-    if (
-      !title.isValid ||
-      !category.isValid ||
-      !description.isValid ||
-      !phone.isValid ||
-      !email.isValid
-    ) {
-      throw new InvalidServiceInputError();
-    }
+    const invalidFields: ServiceInputField[] = [];
+    if (!title.isValid) invalidFields.push("title");
+    if (!category.isValid) invalidFields.push("category");
+    if (!description.isValid) invalidFields.push("description");
+    if (!phone.isValid) invalidFields.push("contactPhone");
+    if (!email.isValid) invalidFields.push("submitterEmail");
+    if (invalidFields.length > 0) throw new InvalidServiceInputError(invalidFields);
 
     if (!input.acceptedTerms) throw new TermsNotAcceptedError();
 

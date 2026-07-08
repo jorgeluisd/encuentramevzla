@@ -104,4 +104,16 @@ describe("SubmitSolidarityService", () => {
       makeUseCase(repo).execute({ ...validInput, title: "ab" }),
     ).rejects.toBeInstanceOf(InvalidServiceInputError);
   });
+
+  it("reports exactly which fields are invalid, in field order", async () => {
+    const repo = new FakeRepo();
+    // descripción demasiado corta (<10) y teléfono con menos de 7 dígitos.
+    const err = await makeUseCase(repo)
+      .execute({ ...validInput, description: "corto", contactPhone: "123" })
+      .then(() => null, (e: unknown) => e);
+
+    expect(err).toBeInstanceOf(InvalidServiceInputError);
+    expect((err as InvalidServiceInputError).fields).toEqual(["description", "contactPhone"]);
+    expect(repo.created).toHaveLength(0);
+  });
 });
