@@ -38,22 +38,22 @@ export class EditServiceByToken {
 
     if (input.changes.title !== undefined) {
       const title = ServiceTitle.fromRaw(input.changes.title);
-      if (!title.isValid) throw new InvalidServiceInputError();
+      if (!title.isValid) throw new InvalidServiceInputError(["title"]);
       changes.title = title.value;
     }
     if (input.changes.category !== undefined) {
       const category = ServiceCategory.fromRaw(input.changes.category);
-      if (!category.isValid) throw new InvalidServiceInputError();
+      if (!category.isValid) throw new InvalidServiceInputError(["category"]);
       changes.category = category.value;
     }
     if (input.changes.description !== undefined) {
       const description = ServiceDescription.fromRaw(input.changes.description);
-      if (!description.isValid) throw new InvalidServiceInputError();
+      if (!description.isValid) throw new InvalidServiceInputError(["description"]);
       changes.description = description.value;
     }
     if (input.changes.contactPhone !== undefined) {
       const phone = NormalizedPhone.fromRaw(input.changes.contactPhone);
-      if (!phone.isValid) throw new InvalidServiceInputError();
+      if (!phone.isValid) throw new InvalidServiceInputError(["contactPhone"]);
       changes.contactPhone = phone.raw.trim();
     }
 
