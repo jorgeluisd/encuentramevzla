@@ -1,0 +1,78 @@
+import type { ServiceStatus } from "../../domain/value-objects/service-status";
+
+// Registro completo tal como se persiste. `submitterEmail` y `editTokenHash` son PRIVADOS:
+// nunca salen por el directorio público (RPC).
+export interface SolidarityServiceRecord {
+  id: string;
+  title: string;
+  category: string;
+  description: string;
+  contactPhone: string; // público por diseño (con consentimiento)
+  submitterEmail: string; // privado
+  status: ServiceStatus;
+  editTokenHash: string; // solo el hash; el token en claro va en el enlace del email
+  acceptedTermsAt: Date;
+  expiresAt: Date;
+  reported: boolean; // reporte público (flag idempotente)
+  reportedAt: Date | null;
+  reportReason: string | null; // motivo breve del último reporte
+  rejectionReason: string | null;
+  reviewedBy: string | null;
+  reviewedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Alta: el use case construye el registro (con `now` inyectado) y el adapter lo inserta.
+export type NewSolidarityServiceRecord = Omit<
+  SolidarityServiceRecord,
+  "reported" | "reportedAt" | "reportReason" | "rejectionReason" | "reviewedBy" | "reviewedAt"
+>;
+
+export interface ListByStatusInput {
+  status: ServiceStatus;
+  limit: number;
+  offset: number;
+}
+
+export interface ServicesPage {
+  items: SolidarityServiceRecord[];
+  total: number;
+}
+
+// Campos mutables por moderación o por el dueño (vía enlace mágico).
+export type ServiceChanges = Partial<
+  Pick<
+    SolidarityServiceRecord,
+    | "title"
+    | "category"
+    | "description"
+    | "contactPhone"
+    | "status"
+    | "editTokenHash"
+    | "reported"
+    | "reportedAt"
+    | "reportReason"
+    | "rejectionReason"
+    | "reviewedBy"
+    | "reviewedAt"
+    | "expiresAt"
+    | "updatedAt"
+  >
+>;
+
+export interface ListAllInput {
+  limit: number;
+  offset: number;
+}
+
+// Port de ESCRITURA (service_role, salta RLS por diseño).
+export interface SolidarityServiceRepository {
+  create(record: NewSolidarityServiceRecord): Promise<void>;
+  countActiveByEmail(email: string): Promise<number>; // pending + approved
+  listByStatus(input: ListByStatusInput): Promise<ServicesPage>;
+  listAll(input: ListAllInput): Promise<ServicesPage>; // todas, cualquier estado
+  findById(id: string): Promise<SolidarityServiceRecord | null>;
+  findByTokenHash(tokenHash: string): Promise<SolidarityServiceRecord | null>;
+  updateById(id: string, changes: ServiceChanges): Promise<void>;
+}

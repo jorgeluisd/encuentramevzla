@@ -58,3 +58,28 @@ export * from "./patient-registry/application/use-cases/update-hospital";
 export * from "./patient-registry/application/use-cases/invite-team-member";
 export * from "./patient-registry/application/use-cases/set-team-member-access";
 export * from "./patient-registry/application/use-cases/list-team-members";
+
+// solidarity-services (directorio público de servicios solidarios)
+export * from "./solidarity-services/domain/value-objects/service-title";
+export * from "./solidarity-services/domain/value-objects/service-description";
+export * from "./solidarity-services/domain/value-objects/service-category";
+export * from "./solidarity-services/domain/value-objects/submitter-email";
+export * from "./solidarity-services/domain/value-objects/service-status";
+export * from "./solidarity-services/domain/service-expiry";
+export * from "./solidarity-services/application/ports/solidarity-service-repository";
+export * from "./solidarity-services/application/ports/solidarity-service-directory";
+export * from "./solidarity-services/application/ports/service-confirmation-mailer";
+export * from "./solidarity-services/application/use-cases/solidarity-errors";
+export * from "./solidarity-services/application/use-cases/submit-solidarity-service";
+export * from "./solidarity-services/application/use-cases/approve-service";
+export * from "./solidarity-services/application/use-cases/reject-service";
+export * from "./solidarity-services/application/use-cases/report-service";
+export * from "./solidarity-services/application/use-cases/dismiss-report";
+export * from "./solidarity-services/application/use-cases/take-down-service";
+export * from "./solidarity-services/application/use-cases/edit-service-by-token";
+export * from "./solidarity-services/application/use-cases/remove-service-by-token";
+export * from "./solidarity-services/application/use-cases/list-pending-services";
+export * from "./solidarity-services/application/use-cases/list-services-by-status";
+export * from "./solidarity-services/application/use-cases/list-all-services";
+export * from "./solidarity-services/application/use-cases/list-published-services";
+export * from "./solidarity-services/application/use-cases/regenerate-manage-link";
