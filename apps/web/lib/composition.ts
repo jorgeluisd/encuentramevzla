@@ -11,6 +11,7 @@ import {
   IngestPatientList,
   InviteTeamMember,
   ListAuditLog,
+  ListAllServices,
   ListHospitals,
   ListPendingServices,
   ListPublishedServices,
@@ -21,6 +22,9 @@ import {
   RegenerateManageLink,
   RejectService,
   RemoveServiceByToken,
+  ReportService,
+  DismissReport,
+  TakeDownService,
   ResolveReviewCase,
   ResolveTeamMember,
   SearchPatients,
@@ -219,6 +223,10 @@ export function listServicesByStatusUseCase(): ListServicesByStatus {
   return new ListServicesByStatus(solidarityServiceRepo());
 }
 
+export function listAllServicesUseCase(): ListAllServices {
+  return new ListAllServices(solidarityServiceRepo());
+}
+
 export function regenerateManageLinkUseCase(): RegenerateManageLink {
   return new RegenerateManageLink({
     repo: solidarityServiceRepo(),
@@ -234,6 +242,18 @@ export function approveServiceUseCase(): ApproveService {
 
 export function rejectServiceUseCase(): RejectService {
   return new RejectService({ repo: solidarityServiceRepo(), now: () => new Date() });
+}
+
+export function reportServiceUseCase(): ReportService {
+  return new ReportService({ repo: solidarityServiceRepo(), now: () => new Date() });
+}
+
+export function dismissReportUseCase(): DismissReport {
+  return new DismissReport({ repo: solidarityServiceRepo(), now: () => new Date() });
+}
+
+export function takeDownServiceUseCase(): TakeDownService {
+  return new TakeDownService({ repo: solidarityServiceRepo(), now: () => new Date() });
 }
 
 export function editServiceByTokenUseCase(): EditServiceByToken {
@@ -266,6 +286,7 @@ export interface ServiceForEdit {
   description: string;
   contactPhone: string;
   status: string;
+  expiresAt: Date;
 }
 
 // Carga (server-side) los campos editables por token para prefilar el formulario de
@@ -279,5 +300,6 @@ export async function findServiceForEdit(token: string): Promise<ServiceForEdit 
     description: record.description,
     contactPhone: record.contactPhone,
     status: record.status,
+    expiresAt: record.expiresAt,
   };
 }

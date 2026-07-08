@@ -37,11 +37,20 @@ export default async function EditarServicioPage({
     );
   }
 
+  const expira = current.expiresAt.toLocaleDateString("es-VE", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+
   return (
     <div className="space-y-6">
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold">Gestionar mi publicación</h1>
-        <p className="text-sm text-text-2">Edita los datos o da de baja tu servicio.</p>
+        <p className="text-sm text-text-2">
+          Edita los datos o da de baja tu servicio. Tu publicación caduca el{" "}
+          <strong>{expira}</strong> (al editarla se renueva por 3 meses más).
+        </p>
       </div>
       <ManageServiceForm
         current={{

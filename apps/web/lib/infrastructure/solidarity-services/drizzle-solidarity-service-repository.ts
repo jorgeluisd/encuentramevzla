@@ -61,6 +61,19 @@ export class DrizzleSolidarityServiceRepository implements SolidarityServiceRepo
     return { items: items.map(toRecord), total: totalRow?.n ?? 0 };
   }
 
+  async listAll(input: { limit: number; offset: number }): Promise<ServicesPage> {
+    const [items, [totalRow]] = await Promise.all([
+      this.db
+        .select()
+        .from(solidarityServices)
+        .orderBy(desc(solidarityServices.createdAt))
+        .limit(input.limit)
+        .offset(input.offset),
+      this.db.select({ n: count() }).from(solidarityServices),
+    ]);
+    return { items: items.map(toRecord), total: totalRow?.n ?? 0 };
+  }
+
   async findById(id: string): Promise<SolidarityServiceRecord | null> {
     const [row] = await this.db
       .select()
@@ -99,6 +112,9 @@ function toRecord(row: Row): SolidarityServiceRecord {
     editTokenHash: row.editTokenHash,
     acceptedTermsAt: row.acceptedTermsAt,
     expiresAt: row.expiresAt,
+    reported: row.reported,
+    reportedAt: row.reportedAt,
+    reportReason: row.reportReason,
     rejectionReason: row.rejectionReason,
     reviewedBy: row.reviewedBy,
     reviewedAt: row.reviewedAt,

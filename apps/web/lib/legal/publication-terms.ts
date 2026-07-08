@@ -27,8 +27,8 @@ export const PUBLICATION_TERMS: readonly LegalItem[] = [
     body: "Al publicar, autorizas la divulgación pública del contenido y del número de contacto que proporciones; cualquier persona podrá verlo y contactarte. Tu correo electrónico no se publica: se usa solo para enviarte un enlace de gestión de tu publicación.",
   },
   {
-    title: "6. Moderación y vigencia",
-    body: "EncuéntrameVzla puede revisar, aprobar, rechazar, editar o retirar cualquier publicación, en cualquier momento y sin previo aviso, especialmente si es falsa, abusiva, ilegal, comercial o ajena al fin humanitario. Las publicaciones tienen una vigencia de 3 meses, tras la cual dejan de mostrarse. Puedes editar o dar de baja tu publicación en cualquier momento mediante el enlace enviado a tu correo.",
+    title: "6. Moderación, retiro y vigencia",
+    body: "EncuéntrameVzla se reserva el derecho de revisar, aprobar, editar, rechazar o retirar (dar de baja) cualquier publicación, en cualquier momento, sin previo aviso y a su entera discreción, cuando la considere falsa, engañosa, abusiva, ilegal, comercial, duplicada o ajena al fin humanitario de la plataforma, o cuando reciba reportes de terceros. El retiro de una publicación no genera responsabilidad ni derecho a compensación alguna para quien la publicó. Cualquier persona puede reportar una publicación para su revisión. Las publicaciones tienen una vigencia de 3 meses; al vencer dejan de mostrarse y podrás renovarlas editándolas. Puedes editar o dar de baja tu publicación en cualquier momento mediante el enlace enviado a tu correo.",
   },
   {
     title: "7. Contenido prohibido",

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PublicService } from "@evzla/core";
 import { SERVICE_CATEGORIES } from "@evzla/core";
+import { ReportServiceButton } from "@/components/servicios/report-service-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
@@ -111,13 +112,16 @@ export function ServicesDirectory({
                   </Badge>
                   <h3 className="text-lg font-semibold text-text">{s.title}</h3>
                   <p className="flex-1 text-sm text-text-2">{s.description}</p>
-                  <a
-                    href={`tel:${s.contactPhone.replace(/\s+/g, "")}`}
-                    className="mt-1 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
-                  >
-                    <span aria-hidden="true">📞</span>
-                    {s.contactPhone}
-                  </a>
+                  <div className="mt-1 flex items-center justify-between gap-3">
+                    <a
+                      href={`tel:${s.contactPhone.replace(/\s+/g, "")}`}
+                      className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                    >
+                      <span aria-hidden="true">📞</span>
+                      {s.contactPhone}
+                    </a>
+                    <ReportServiceButton serviceId={s.id} />
+                  </div>
                 </CardBody>
               </Card>
             ))}

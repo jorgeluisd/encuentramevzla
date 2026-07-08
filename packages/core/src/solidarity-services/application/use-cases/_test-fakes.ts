@@ -17,7 +17,15 @@ export class InMemoryRepo implements SolidarityServiceRepository {
   }
 
   async create(record: NewSolidarityServiceRecord): Promise<void> {
-    this.rows.set(record.id, { rejectionReason: null, reviewedBy: null, reviewedAt: null, ...record });
+    this.rows.set(record.id, {
+      reported: false,
+      reportedAt: null,
+      reportReason: null,
+      rejectionReason: null,
+      reviewedBy: null,
+      reviewedAt: null,
+      ...record,
+    });
   }
 
   async countActiveByEmail(email: string): Promise<number> {
@@ -28,6 +36,11 @@ export class InMemoryRepo implements SolidarityServiceRepository {
 
   async listByStatus(input: ListByStatusInput): Promise<ServicesPage> {
     const all = [...this.rows.values()].filter((r) => r.status === input.status);
+    return { items: all.slice(input.offset, input.offset + input.limit), total: all.length };
+  }
+
+  async listAll(input: { limit: number; offset: number }): Promise<ServicesPage> {
+    const all = [...this.rows.values()];
     return { items: all.slice(input.offset, input.offset + input.limit), total: all.length };
   }
 
@@ -59,6 +72,9 @@ export function makeRecord(over: Partial<SolidarityServiceRecord> = {}): Solidar
     editTokenHash: "hash(tok-raw)",
     acceptedTermsAt: base,
     expiresAt: new Date("2026-10-03T00:00:00.000Z"),
+    reported: false,
+    reportedAt: null,
+    reportReason: null,
     rejectionReason: null,
     reviewedBy: null,
     reviewedAt: null,
