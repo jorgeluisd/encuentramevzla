@@ -107,6 +107,16 @@ export interface AuditLog {
   recordMany(entries: AuditEntry[]): Promise<void>;
 }
 
+// Procedencia (ADR-0009): liga cada paciente creado a un lote de ingesta. OPCIONAL —
+// la ingesta web no lo provee (undefined = no-op); la reconciliación sí, para taggear el import.
+export interface ProvenanceEntry {
+  patientId: string;
+  sourceRef: string | null; // p.ej. fingerprint de la fila cruda
+}
+export interface ProvenanceStore {
+  recordMany(entries: ProvenanceEntry[]): Promise<void>;
+}
+
 // Repos enlazados a una misma transacción (atomicidad por archivo).
 export interface IngestionRepositories {
   rawRows: RawRowStore;
@@ -115,6 +125,8 @@ export interface IngestionRepositories {
   admissions: AdmissionRepository;
   sensitive: SensitiveDataStore;
   audit: AuditLog;
+  // Opcional: si está presente, se registra procedencia de los pacientes creados.
+  provenance?: ProvenanceStore;
 }
 
 // Unidad de trabajo: ejecuta `work` con repos atados a una transacción y commitea

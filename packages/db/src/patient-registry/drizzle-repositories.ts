@@ -8,8 +8,8 @@ import {
   hospitals,
   patients,
   rawRows,
-} from "@evzla/db";
-import type { getDb } from "@evzla/db/client";
+} from "../schema/index";
+import type { getDb } from "../client";
 import {
   DocumentId,
   matchHospital,
@@ -31,6 +31,8 @@ import {
   type ParsedPatientRow,
   type PatientRepository,
   type PatientUpdateRow,
+  type ProvenanceEntry,
+  type ProvenanceStore,
   type RawRowStore,
   type SensitiveDataStore,
 } from "@evzla/core";
@@ -308,11 +310,41 @@ export class DrizzleAuditLog implements AuditLog {
   }
 }
 
+// Procedencia (ADR-0009): liga los pacientes creados a un lote. SQL crudo con gen_random_uuid()
+// (las tablas ingest_batch/patient_provenance viven en la migración 0020, no en el schema Drizzle).
+export class DrizzleProvenanceStore implements ProvenanceStore {
+  constructor(
+    private readonly db: DbOrTx,
+    private readonly batchId: string,
+  ) {}
+
+  async recordMany(entries: ProvenanceEntry[]): Promise<void> {
+    for (const part of chunk(entries, BATCH)) {
+      const values = sql.join(
+        part.map(
+          (e) =>
+            sql`(gen_random_uuid(), ${e.patientId}::uuid, ${this.batchId}::uuid, 'import', ${e.sourceRef}::text)`,
+        ),
+        sql`, `,
+      );
+      await this.db.execute(sql`
+        INSERT INTO public.patient_provenance (id, patient_id, ingest_batch_id, source_kind, source_ref)
+        VALUES ${values}
+        ON CONFLICT (patient_id, ingest_batch_id, source_kind) DO NOTHING
+      `);
+    }
+  }
+}
+
 // Unidad de trabajo: una transacción que envuelve toda la persistencia de un
 // archivo (raw_rows + pacientes + admisiones + sensibles + audit). Si algo
 // lanza, rollback completo y el archivo queda reprocesable (idempotencia).
+// `provenanceBatchId` (opcional): si se pasa, se taggea la procedencia de los pacientes creados.
 export class DrizzleIngestionUnitOfWork implements IngestionUnitOfWork {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    private readonly provenanceBatchId?: string,
+  ) {}
 
   async runAtomic<T>(work: (repos: IngestionRepositories) => Promise<T>): Promise<T> {
     return this.db.transaction(async (tx) => {
@@ -323,6 +355,9 @@ export class DrizzleIngestionUnitOfWork implements IngestionUnitOfWork {
         admissions: new DrizzleAdmissionRepository(tx),
         sensitive: new DrizzleSensitiveDataStore(tx),
         audit: new DrizzleAuditLog(tx),
+        ...(this.provenanceBatchId
+          ? { provenance: new DrizzleProvenanceStore(tx, this.provenanceBatchId) }
+          : {}),
       };
       return work(repos);
     });

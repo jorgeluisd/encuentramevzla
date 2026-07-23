@@ -18,6 +18,7 @@ import type {
   NewPatientRow,
   PatientUpdate,
   PatientUpdateRow,
+  ProvenanceEntry,
 } from "../ports/repositories";
 
 export interface IngestionSummary {
@@ -172,6 +173,7 @@ export class IngestPatientList {
       const admissionsToInsert: NewAdmissionRow[] = [];
       const contactsToInsert: NewContactRow[] = [];
       const notesToInsert: NewClinicalNoteRow[] = [];
+      const provenanceToInsert: ProvenanceEntry[] = [];
       const dedupEntries: AuditEntry[] = [];
       const admissionByKey = new Map<string, string>();
 
@@ -213,8 +215,9 @@ export class IngestPatientList {
         const document = r.documentNumber ? DocumentId.fromRaw(r.documentNumber) : null;
         // Teléfono: señal media-fuerte. Se compara en memoria (nunca se expone en `public`).
         const phone = r.phone ? NormalizedPhone.fromRaw(r.phone) : null;
-        // La condición de menor puede venir por edad o escrita en el nombre (flaggedMinor).
-        const isMinor = isMinorAge(r.age) || name.flaggedMinor;
+        // La condición de menor puede venir por edad, escrita en el nombre (flaggedMinor),
+        // o propagada explícitamente desde el staging (ADR-0009: centinela INFANTE/[Menor]).
+        const isMinor = isMinorAge(r.age) || name.flaggedMinor || r.isMinor === true;
         // El fallecimiento puede venir por el toggle explícito (D8), en observaciones o en el nombre.
         const deceased = r.deceased === true || looksDeceased(r.clinicalNotes) || name.flaggedDeceased;
         const status: PatientStatus = deceased ? "deceased" : "admitted";
@@ -244,6 +247,7 @@ export class IngestPatientList {
         } else {
           patientId = newId();
           patientsToInsert.push({ id: patientId, name, document, age: r.age, isMinor, status });
+          provenanceToInsert.push({ patientId, sourceRef: r.fingerprint });
           candidates.push({ id: patientId, name, document, phone, age: r.age, isMinor, status, hospitalIds: hospitalsOf(patientId) });
           if (decision.kind === "conflict") {
             summary.documentConflicts++;
@@ -320,6 +324,8 @@ export class IngestPatientList {
       if (admissionsToInsert.length > 0) await repos.admissions.createMany(admissionsToInsert);
       if (contactsToInsert.length > 0) await repos.sensitive.saveContacts(contactsToInsert);
       if (notesToInsert.length > 0) await repos.sensitive.saveClinicalNotes(notesToInsert);
+      // Procedencia (opcional): taggea los pacientes creados con el lote (ADR-0009).
+      if (provenanceToInsert.length > 0) await repos.provenance?.recordMany(provenanceToInsert);
 
       await repos.audit.recordMany([
         ...dedupEntries,

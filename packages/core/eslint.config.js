@@ -1,6 +1,7 @@
 import { base, onion } from "@evzla/config/eslint";
 
 const REGISTRY = "./src/patient-registry";
+const RECON = "./src/reconciliation";
 
 export default [
   ...base,
@@ -17,6 +18,12 @@ export default [
         target: `${REGISTRY}/domain`,
         from: `${REGISTRY}/infrastructure`,
         message: "Onion: el dominio no puede importar de infrastructure.",
+      },
+      {
+        target: `${RECON}/domain`,
+        from: `${RECON}/application`,
+        message:
+          "Onion: el dominio de reconciliation no puede importar de application.",
       },
     ],
     forbidImports: [
