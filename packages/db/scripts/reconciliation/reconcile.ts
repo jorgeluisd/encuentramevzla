@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import postgres from "postgres";
 import { getDb } from "../../src/client";
 import { DrizzleIngestionUnitOfWork } from "../../src/patient-registry/drizzle-repositories";
+import { ENRICH_APPLY_SQL, ENRICH_PREVIEW_SQL } from "../../src/reconciliation/reconciliation-enrich-sql";
 import { PostgresReconciliationImportSource } from "../../src/reconciliation/postgres-reconciliation-import-source";
 import { PostgresReconciliationStore } from "../../src/reconciliation/postgres-reconciliation-store";
 import { SheetjsConsolidatedSourceReader } from "../../src/reconciliation/sheetjs-consolidated-source-reader";
@@ -233,6 +234,46 @@ async function runApplyImport(sql: postgres.Sql, flags: Flags): Promise<void> {
   console.log(JSON.stringify(summary, null, 2));
 }
 
+// F2 — Enriquecer (fill-only) los MATCH_IDENTICAL desde el Excel. Dry-run por defecto.
+async function runEnrich(sql: postgres.Sql, flags: Flags): Promise<void> {
+  const runId = requireRunId(flags.runId);
+  const [prev] = (await sql.unsafe(ENRICH_PREVIEW_SQL, [runId])) as [
+    { fill_doc: number; fill_age: number; elevate_minor: number; affected: number },
+  ];
+  console.log("\n== ENRICH F2 (MATCH_IDENTICAL, fill-only) ==");
+  console.log(
+    `fillCédula=${prev.fill_doc} fillEdad=${prev.fill_age} elevarMenor=${prev.elevate_minor} pacientesAfectados=${prev.affected}`,
+  );
+
+  if (!flags.apply) {
+    console.log("DRY-RUN: nada escrito. Repetí con --apply (requiere --i-have-a-verified-dump en prod).");
+    return;
+  }
+
+  const [meta] = await sql.unsafe(
+    `SELECT source_file_name, source_file_hash FROM reconciliation.reconciliation_run WHERE run_id = $1`,
+    [runId],
+  );
+  const [batch] = await sql.unsafe(
+    `INSERT INTO public.ingest_batch (id, kind, source_file_name, source_file_hash, run_id, actor_id, notes)
+     VALUES (gen_random_uuid(), 'reconciliation_enrich', $1, $2, $3, $4, $5) RETURNING id`,
+    [
+      (meta?.["source_file_name"] as string) ?? null,
+      (meta?.["source_file_hash"] as string) ?? null,
+      runId,
+      flags.actor,
+      `enrich MATCH_IDENTICAL (fill-only) de la corrida ${runId}`,
+    ],
+  );
+  const batchId = batch!["id"] as string;
+  await sql.unsafe(ENRICH_APPLY_SQL, [runId, batchId]);
+  const [enriched] = (await sql.unsafe(
+    `SELECT count(*)::int AS n FROM public.patient_provenance WHERE ingest_batch_id = $1 AND source_kind = 'enrich'`,
+    [batchId],
+  )) as [{ n: number }];
+  console.log(`\nAPLICADO. ingest_batch = ${batchId} · pacientes enriquecidos = ${enriched.n}`);
+}
+
 async function main(): Promise<void> {
   const flags = parseFlags(process.argv);
   const { url, isLocal } = connectionFromEnv();
@@ -270,6 +311,11 @@ async function main(): Promise<void> {
       case "apply-import": {
         if (flags.apply) requireVerifiedDump(isLocal, flags.hasDump);
         await runApplyImport(sql, flags);
+        break;
+      }
+      case "enrich": {
+        if (flags.apply) requireVerifiedDump(isLocal, flags.hasDump);
+        await runEnrich(sql, flags);
         break;
       }
       case "all": {
