@@ -59,6 +59,18 @@ export * from "./patient-registry/application/use-cases/invite-team-member";
 export * from "./patient-registry/application/use-cases/set-team-member-access";
 export * from "./patient-registry/application/use-cases/list-team-members";
 
+// reconciliation (diagnóstico de reconciliación de fuente consolidada, ADR-0008)
+export * from "./reconciliation/domain/value-objects/registered-date";
+export * from "./reconciliation/domain/services/cedula-cell";
+export * from "./reconciliation/domain/services/uncertainty-marker";
+export * from "./reconciliation/domain/services/reconciliation-category";
+export * from "./reconciliation/application/ports/consolidated-source-reader";
+export * from "./reconciliation/application/ports/reconciliation-store";
+export * from "./reconciliation/application/ports/report-read-model";
+export * from "./reconciliation/application/services/reconciliation-report";
+export * from "./reconciliation/application/use-cases/ingest-consolidated-source";
+export * from "./reconciliation/application/use-cases/reconcile-against-production";
+
 // solidarity-services (directorio público de servicios solidarios)
 export * from "./solidarity-services/domain/value-objects/service-title";
 export * from "./solidarity-services/domain/value-objects/service-description";

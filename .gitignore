@@ -31,3 +31,4 @@ draft/
 
 # permisos locales de Claude Code (personal)
 .claude/settings.local.json
+*.dump
