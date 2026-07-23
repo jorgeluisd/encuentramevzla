@@ -67,9 +67,11 @@ export * from "./reconciliation/domain/services/reconciliation-category";
 export * from "./reconciliation/application/ports/consolidated-source-reader";
 export * from "./reconciliation/application/ports/reconciliation-store";
 export * from "./reconciliation/application/ports/report-read-model";
+export * from "./reconciliation/application/ports/reconciliation-import-source";
 export * from "./reconciliation/application/services/reconciliation-report";
 export * from "./reconciliation/application/use-cases/ingest-consolidated-source";
 export * from "./reconciliation/application/use-cases/reconcile-against-production";
+export * from "./reconciliation/application/use-cases/apply-reconciliation";
 
 // solidarity-services (directorio público de servicios solidarios)
 export * from "./solidarity-services/domain/value-objects/service-title";

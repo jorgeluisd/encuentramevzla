@@ -126,6 +126,16 @@ export const REPORT_PRODUCTION_INFO_SQL =
   `JOIN public.hospitals h ON h.id = a.hospital_id ` +
   `WHERE p.id = ANY($1::uuid[]) ORDER BY p.id, a.created_at DESC`;
 
+// Filas IMPORTABLES (ADR-0009 F1): ONLY_IN_SOURCE, excluyendo el lado duplicado de DUP_IN_SOURCE.
+export const LOAD_IMPORTABLE_SQL =
+  `SELECT s.id, s.sheet_name, s.raw, s.is_minor ` +
+  `FROM reconciliation.staging_patient_record s ` +
+  `JOIN reconciliation.reconciliation_match m ON m.staging_record_id = s.id AND m.category = 'ONLY_IN_SOURCE' ` +
+  `WHERE s.run_id = $1 ` +
+  `AND s.id NOT IN (` +
+  `SELECT dm.staging_record_id FROM reconciliation.reconciliation_match dm ` +
+  `WHERE dm.run_id = $1 AND dm.category = 'DUP_IN_SOURCE' AND dm.staging_record_id IS NOT NULL)`;
+
 export const REPORT_PRODUCTION_COUNT_SQL =
   `SELECT count(DISTINCT p.id)::int AS n ` +
   `FROM public.patients p ` +
@@ -150,6 +160,7 @@ export function allStatements(): { writes: string[]; reads: string[] } {
       REPORT_RUN_META_SQL,
       REPORT_PRODUCTION_INFO_SQL,
       REPORT_PRODUCTION_COUNT_SQL,
+      LOAD_IMPORTABLE_SQL,
     ],
   };
 }
