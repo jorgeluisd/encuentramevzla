@@ -9,17 +9,30 @@
 //
 // Sobre PROD, toda escritura exige el flag --i-have-a-verified-dump (ver RUNBOOK.md).
 import {
+  ApplyReconciliation,
   IngestConsolidatedSource,
+  IngestPatientList,
   ReconcileAgainstProduction,
   renderReconciliationReport,
+  type ParsedPatientList,
 } from "@evzla/core";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
+import { getDb } from "../../src/client";
+import { DrizzleIngestionUnitOfWork } from "../../src/patient-registry/drizzle-repositories";
+import { PostgresReconciliationImportSource } from "../../src/reconciliation/postgres-reconciliation-import-source";
 import { PostgresReconciliationStore } from "../../src/reconciliation/postgres-reconciliation-store";
 import { SheetjsConsolidatedSourceReader } from "../../src/reconciliation/sheetjs-consolidated-source-reader";
+
+// Parser stub: ApplyReconciliation llama ingestParsed (no parse); nunca se usa.
+const NO_PARSER = {
+  parse(): ParsedPatientList {
+    throw new Error("El import de reconciliación no parsea bytes (usa ingestParsed).");
+  },
+};
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const MIGRATION = join(ROOT, "supabase/migrations/0019_reconciliation_schema.sql");
@@ -30,6 +43,8 @@ interface Flags {
   file: string | null;
   runId: string | null;
   centerMap: string | null;
+  actor: string | null;
+  apply: boolean;
   force: boolean;
   hasDump: boolean;
 }
@@ -46,6 +61,8 @@ function parseFlags(argv: string[]): Flags {
     file: get("--file"),
     runId: get("--run-id"),
     centerMap: get("--center-map"),
+    actor: get("--actor"),
+    apply: rest.includes("--apply"),
     force: rest.includes("--force"),
     hasDump: rest.includes("--i-have-a-verified-dump"),
   };
@@ -166,6 +183,56 @@ async function runReport(store: PostgresReconciliationStore, runId: string): Pro
   );
 }
 
+// F1 — Importar ONLY_IN_SOURCE a prod vía IngestPatientList (dedup real). Dry-run por defecto.
+async function runApplyImport(sql: postgres.Sql, flags: Flags): Promise<void> {
+  const runId = requireRunId(flags.runId);
+  const source = new PostgresReconciliationImportSource(sql);
+  const rows = await source.loadImportable(runId);
+
+  const minors = rows.filter((r) => r.isMinor === true).length;
+  const withName = rows.filter((r) => r.fullName).length;
+  const withDoc = rows.filter((r) => (r.documentNumber ?? "").replace(/\D/g, "").length >= 6).length;
+  const centers = new Set(rows.map((r) => r.hospitalName ?? "")).size;
+  console.log("\n== IMPORT F1 (ONLY_IN_SOURCE) ==");
+  console.log(
+    `importables=${rows.length} conNombre=${withName} conCédula=${withDoc} menores=${minors} centros=${centers}`,
+  );
+
+  if (!flags.apply) {
+    console.log("DRY-RUN: nada escrito. Repetí con --apply (requiere --i-have-a-verified-dump en prod).");
+    return;
+  }
+
+  const [meta] = await sql.unsafe(
+    `SELECT source_file_name, source_file_hash FROM reconciliation.reconciliation_run WHERE run_id = $1`,
+    [runId],
+  );
+  const [batch] = await sql.unsafe(
+    `INSERT INTO public.ingest_batch (id, kind, source_file_name, source_file_hash, run_id, actor_id, notes)
+     VALUES (gen_random_uuid(), 'reconciliation_import', $1, $2, $3, $4, $5) RETURNING id`,
+    [
+      (meta?.["source_file_name"] as string) ?? null,
+      (meta?.["source_file_hash"] as string) ?? null,
+      runId,
+      flags.actor,
+      `import ONLY_IN_SOURCE de la corrida ${runId}`,
+    ],
+  );
+  const batchId = batch!["id"] as string;
+
+  const ingest = new IngestPatientList({
+    parser: NO_PARSER,
+    uow: new DrizzleIngestionUnitOfWork(getDb(), batchId),
+    newId: randomUUID,
+  });
+  const summary = await new ApplyReconciliation({ source, ingest }).execute({
+    runId,
+    actorId: flags.actor,
+  });
+  console.log(`\nAPLICADO. ingest_batch = ${batchId}`);
+  console.log(JSON.stringify(summary, null, 2));
+}
+
 async function main(): Promise<void> {
   const flags = parseFlags(process.argv);
   const { url, isLocal } = connectionFromEnv();
@@ -198,6 +265,11 @@ async function main(): Promise<void> {
       }
       case "report": {
         await runReport(store, requireRunId(flags.runId));
+        break;
+      }
+      case "apply-import": {
+        if (flags.apply) requireVerifiedDump(isLocal, flags.hasDump);
+        await runApplyImport(sql, flags);
         break;
       }
       case "all": {

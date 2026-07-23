@@ -39,10 +39,7 @@ import {
 import { getDb } from "@evzla/db/client";
 import { createAnonClient } from "@/lib/supabase/anon";
 import { SheetjsPatientListParser } from "@/lib/infrastructure/patient-registry/sheetjs-patient-list-parser";
-import {
-  DrizzleAuditLog,
-  DrizzleIngestionUnitOfWork,
-} from "@/lib/infrastructure/patient-registry/drizzle-repositories";
+import { DrizzleAuditLog, DrizzleIngestionUnitOfWork } from "@evzla/db/ingest";
 import { DrizzleHospitalPatientExportReader } from "@/lib/infrastructure/patient-registry/drizzle-hospital-patient-export-reader";
 import { OpenAiSpeechTranscriber } from "@/lib/infrastructure/patient-registry/openai-speech-transcriber";
 import { ClaudePatientRowExtractor } from "@/lib/infrastructure/patient-registry/claude-patient-row-extractor";
