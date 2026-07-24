@@ -1,5 +1,6 @@
 import {
   canModerate,
+  type AdminMetricsView,
   type MetricsGranularity,
   type MetricsRange,
   type PatientStatus,
@@ -14,6 +15,12 @@ import { SearchTrend } from "./_components/search-trend";
 import { MetricsFilters, type HospitalOption } from "./_components/metrics-filters";
 
 export const dynamic = "force-dynamic";
+// La función debe correr junto a la DB de Supabase (sa-east-1 / São Paulo). Si corre en
+// EE.UU. (iad1, default), cada una de las 6 queries cruza el continente y se pasa del
+// statement_timeout de Postgres → el server component tira. Ver ADR/memoria del bug.
+export const preferredRegion = "gru1";
+// Falla rápido en vez de colgar la función hasta el máximo (evita 504 de 5 min).
+export const maxDuration = 30;
 
 const fmt = (n: number): string => n.toLocaleString("es-VE");
 
@@ -73,7 +80,27 @@ export default async function MetricsPage({
   const rangePreset = sp.range && sp.range in RANGE_DAYS ? sp.range : "30d";
   const { range, granularity } = resolveRange(rangePreset);
 
-  const m = await getAdminMetricsUseCase().execute({ hospitalId, range, granularity });
+  let m: AdminMetricsView;
+  try {
+    m = await getAdminMetricsUseCase().execute({ hospitalId, range, granularity });
+  } catch {
+    // Degradación amable: nunca crashear/colgar la ruta si una query falla (p.ej. timeout).
+    return (
+      <div className="space-y-6">
+        <header className="space-y-1">
+          <h1 className="text-xl font-semibold sm:text-2xl">Métricas</h1>
+        </header>
+        <Card className="border-warning/30 bg-warning/5">
+          <CardBody className="space-y-2 text-sm text-warning">
+            <p className="font-medium">No se pudieron cargar las métricas en este momento.</p>
+            <p className="text-text-2">
+              Volvé a intentar en unos segundos. Si persiste, avisá al equipo técnico.
+            </p>
+          </CardBody>
+        </Card>
+      </div>
+    );
+  }
 
   const hospitalOptions: HospitalOption[] = [...m.hospitals.ranked, ...m.hospitals.withoutPatients]
     .map((h) => ({ id: h.hospitalId, name: h.name }))
