@@ -50,6 +50,9 @@ export default async function ProtectedAdminLayout({
   const navItems: AdminNavItem[] = [
     { href: "/admin/cargar", label: "Cargar" },
     ...(canModerate(member.role)
+      ? [{ href: "/admin/metricas", label: "Métricas" }]
+      : []),
+    ...(canModerate(member.role)
       ? [{ href: "/admin/ingesta", label: "Ingesta" }]
       : []),
     ...(canManageHospitalTeam(member.role)

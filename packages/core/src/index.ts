@@ -15,6 +15,7 @@ export * from "./patient-registry/domain/services/string-similarity";
 export * from "./patient-registry/domain/services/hospital-name";
 export * from "./patient-registry/domain/services/patient-matching";
 export * from "./patient-registry/domain/services/patient-merge";
+export * from "./patient-registry/domain/services/admin-metrics";
 
 // emergency-contacts (capacidad de presentación pública)
 export * from "./emergency-contacts/domain/phone";
@@ -28,6 +29,7 @@ export * from "./patient-registry/application/ports/team-member-repository";
 export * from "./patient-registry/application/ports/audit-log-reader";
 export * from "./patient-registry/application/ports/last-update-reader";
 export * from "./patient-registry/application/ports/review-queue-reader";
+export * from "./patient-registry/application/ports/metrics-reader";
 export * from "./patient-registry/application/ports/foreign-rows-reader";
 export * from "./patient-registry/application/ports/patient-merger";
 export * from "./patient-registry/application/ports/hospital-patient-export-reader";
@@ -45,6 +47,7 @@ export * from "./patient-registry/application/use-cases/ingestion-status";
 export * from "./patient-registry/application/use-cases/resolve-team-member";
 export * from "./patient-registry/application/use-cases/list-audit-log";
 export * from "./patient-registry/application/use-cases/list-review-queue";
+export * from "./patient-registry/application/use-cases/get-admin-metrics";
 export * from "./patient-registry/application/use-cases/resolve-review-case";
 export * from "./patient-registry/application/use-cases/merge-patients";
 export * from "./patient-registry/application/use-cases/get-last-update";
