@@ -35,9 +35,22 @@ export class DrizzleMetricsReader implements MetricsReader {
       : sql``;
   }
 
+  // Timeout por query: en serverless una conexión colgada dejaría la función esperando
+  // hasta maxDuration. Con esto un cuelgue se vuelve un error atrapable (card amable).
+  private exec(query: ReturnType<typeof sql>, label: string): Promise<Row[]> {
+    const TIMEOUT_MS = 8000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`metrics query timeout: ${label}`)), TIMEOUT_MS);
+    });
+    return Promise.race([this.db.execute(query) as unknown as Promise<Row[]>, timeout]).finally(
+      () => clearTimeout(timer),
+    );
+  }
+
   async patientCounts(hospitalId: string | null): Promise<PatientCountsRaw> {
     const scope = this.patientScope(hospitalId);
-    const rows = (await this.db.execute(sql`
+    const rows = await this.exec(sql`
       select
         count(*)::int as total,
         count(*) filter (where p.normalized_doc_number is not null)::int as with_document,
@@ -51,7 +64,7 @@ export class DrizzleMetricsReader implements MetricsReader {
         count(*) filter (where p.status = 'deceased')::int as st_deceased
       from public.patients p
       where true ${scope}
-    `)) as unknown as Row[];
+    `, "metrics");
     const r = rows[0] ?? {};
     return {
       total: num(r.total),
@@ -72,7 +85,7 @@ export class DrizzleMetricsReader implements MetricsReader {
   async hospitalBreakdown(): Promise<HospitalRowRaw[]> {
     // LEFT JOIN para incluir hospitales sin pacientes; distinct evita contar de más
     // cuando un paciente tiene varios ingresos en el mismo centro.
-    const rows = (await this.db.execute(sql`
+    const rows = await this.exec(sql`
       select
         h.id as hospital_id,
         h.name,
@@ -87,7 +100,7 @@ export class DrizzleMetricsReader implements MetricsReader {
       left join public.admissions a on a.hospital_id = h.id
       left join public.patients p on p.id = a.patient_id
       group by h.id, h.name, h.city, h.provisional, h.active, h.test
-    `)) as unknown as Row[];
+    `, "metrics");
     return rows.map((r) => ({
       hospitalId: String(r.hospital_id),
       name: String(r.name),
@@ -106,7 +119,7 @@ export class DrizzleMetricsReader implements MetricsReader {
     const scope = hospitalId
       ? sql`and exists (select 1 from public.admissions a where a.patient_id = al.entity_id and a.hospital_id = ${hospitalId})`
       : sql``;
-    const rows = (await this.db.execute(sql`
+    const rows = await this.exec(sql`
       select
         count(*) filter (where al.action = 'dedup_document_conflict')::int as document_conflict,
         count(*) filter (where al.action = 'dedup_pending_review')::int as pending_review
@@ -118,7 +131,7 @@ export class DrizzleMetricsReader implements MetricsReader {
           where action = 'review_resolved' and entity_id is not null
         )
         ${scope}
-    `)) as unknown as Row[];
+    `, "metrics");
     const r = rows[0] ?? {};
     return {
       documentConflict: num(r.document_conflict),
@@ -128,14 +141,14 @@ export class DrizzleMetricsReader implements MetricsReader {
 
   async coverage(hospitalId: string | null): Promise<CoverageRaw> {
     const scope = this.patientScope(hospitalId);
-    const rows = (await this.db.execute(sql`
+    const rows = await this.exec(sql`
       select
         count(*)::int as total,
         count(*) filter (where p.normalized_doc_number is null)::int as missing_document,
         count(*) filter (where p.age is null)::int as missing_age
       from public.patients p
       where true ${scope}
-    `)) as unknown as Row[];
+    `, "metrics");
     const r = rows[0] ?? {};
     return {
       total: num(r.total),
@@ -148,7 +161,7 @@ export class DrizzleMetricsReader implements MetricsReader {
     const scope = hospitalId
       ? sql`and exists (select 1 from public.admissions a where a.patient_id = pp.patient_id and a.hospital_id = ${hospitalId})`
       : sql``;
-    const rows = (await this.db.execute(sql`
+    const rows = await this.exec(sql`
       select
         ib.id as ingest_batch_id,
         ib.kind,
@@ -159,7 +172,7 @@ export class DrizzleMetricsReader implements MetricsReader {
       where true ${scope}
       group by ib.id, ib.kind, pp.source_kind, ib.created_at
       order by ib.created_at asc
-    `)) as unknown as Row[];
+    `, "metrics");
     return {
       batches: rows.map((r) => ({
         ingestBatchId: String(r.ingest_batch_id),
@@ -182,12 +195,12 @@ export class DrizzleMetricsReader implements MetricsReader {
     // Ventana [from, to] inclusiva por día.
     const window = sql`created_at >= ${range.from}::date and created_at < (${range.to}::date + 1)`;
 
-    const byTypeRows = (await this.db.execute(sql`
+    const byTypeRows = await this.exec(sql`
       select result_type, count(*)::int as n
       from public.search_log
       where ${window}
       group by result_type
-    `)) as unknown as Row[];
+    `, "metrics");
 
     const byResultType: Record<SearchResultType, number> = {
       matches: 0,
@@ -201,13 +214,13 @@ export class DrizzleMetricsReader implements MetricsReader {
       if (key in byResultType) byResultType[key] = num(r.n);
     }
 
-    const seriesRows = (await this.db.execute(sql`
+    const seriesRows = await this.exec(sql`
       select to_char(${trunc}, 'YYYY-MM-DD') as date, count(*)::int as count
       from public.search_log
       where ${window}
       group by 1
       order by 1 asc
-    `)) as unknown as Row[];
+    `, "metrics");
 
     return {
       byResultType,
