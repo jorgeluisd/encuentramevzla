@@ -1,11 +1,13 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 export interface HospitalOption {
   id: string;
   name: string;
 }
+
+const BASE = "/admin/metricas";
 
 const RANGES = [
   { value: "7d", label: "Últimos 7 días" },
@@ -16,7 +18,11 @@ const RANGES = [
 const selectClass =
   "rounded-[var(--radius-control)] border border-border bg-bg px-3 py-2 text-sm text-text";
 
-/** Filtros reutilizables del dashboard: hospital (centro canónico) + rango temporal. */
+/**
+ * Filtros reutilizables del dashboard: hospital (centro canónico) + rango temporal.
+ * Los valores actuales llegan por props desde el server; se navega con `useRouter`
+ * (sin `useSearchParams`, que en prod requiere Suspense — patrón del resto del admin).
+ */
 export function MetricsFilters({
   hospitals,
   hospitalId,
@@ -27,14 +33,14 @@ export function MetricsFilters({
   range: string;
 }): React.ReactElement {
   const router = useRouter();
-  const pathname = usePathname();
-  const params = useSearchParams();
 
-  const setParam = (key: string, value: string | null): void => {
-    const next = new URLSearchParams(params.toString());
-    if (!value) next.delete(key);
-    else next.set(key, value);
-    router.push(`${pathname}?${next.toString()}`);
+  // Reconstruye la URL desde los props actuales + el valor que cambió (preserva ambos filtros).
+  const navigate = (nextHospital: string | null, nextRange: string): void => {
+    const params = new URLSearchParams();
+    if (nextHospital) params.set("hospital", nextHospital);
+    if (nextRange) params.set("range", nextRange);
+    const qs = params.toString();
+    router.push(qs ? `${BASE}?${qs}` : BASE);
   };
 
   return (
@@ -44,7 +50,7 @@ export function MetricsFilters({
         <select
           className={selectClass}
           value={hospitalId ?? ""}
-          onChange={(e) => setParam("hospital", e.target.value || null)}
+          onChange={(e) => navigate(e.target.value || null, range)}
         >
           <option value="">Todos</option>
           {hospitals.map((h) => (
@@ -60,7 +66,7 @@ export function MetricsFilters({
         <select
           className={selectClass}
           value={range}
-          onChange={(e) => setParam("range", e.target.value)}
+          onChange={(e) => navigate(hospitalId, e.target.value)}
         >
           {RANGES.map((r) => (
             <option key={r.value} value={r.value}>
