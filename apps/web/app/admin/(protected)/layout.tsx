@@ -9,6 +9,9 @@ import { AdminNav, type AdminNavItem } from "./admin-nav";
 
 // Rutas del portal: render por request (usan sesión + DB); nunca estáticas.
 export const dynamic = "force-dynamic";
+// Co-ubicar las funciones del portal con la DB + Auth de Supabase (sa-east-1 / São Paulo).
+// Evita el ida y vuelta EE.UU.↔Brasil que disparaba statement_timeout en /admin/metricas.
+export const preferredRegion = "gru1";
 
 /**
  * Guard del portal del equipo. Server-side:
