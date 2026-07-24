@@ -25,14 +25,15 @@ export class GetAdminMetrics {
 
   async execute(input: GetAdminMetricsInput): Promise<AdminMetricsView> {
     const hospitalId = input.hospitalId ?? null;
-    const [patients, hospitalRows, review, coverage, provenance, search] = await Promise.all([
-      this.reader.patientCounts(hospitalId),
-      this.reader.hospitalBreakdown(),
-      this.reader.reviewCounts(hospitalId),
-      this.reader.coverage(hospitalId),
-      this.reader.provenance(hospitalId),
-      this.reader.searchStats(input.range, input.granularity),
-    ]);
+    // En SERIE, no en paralelo: 6 queries concurrentes saturaban el pooler de Supabase
+    // en serverless (statement_timeout / cuelgue de la función). Co-ubicadas con la DB
+    // el costo secuencial es mínimo. Ver memoria del bug de /admin/metricas en prod.
+    const patients = await this.reader.patientCounts(hospitalId);
+    const hospitalRows = await this.reader.hospitalBreakdown();
+    const review = await this.reader.reviewCounts(hospitalId);
+    const coverage = await this.reader.coverage(hospitalId);
+    const provenance = await this.reader.provenance(hospitalId);
+    const search = await this.reader.searchStats(input.range, input.granularity);
 
     return {
       filter: { hospitalId },
