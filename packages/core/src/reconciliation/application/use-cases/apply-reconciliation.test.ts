@@ -20,7 +20,7 @@ function row(name: string, isMinor: boolean): ParsedPatientRow {
 describe("ApplyReconciliation", () => {
   it("loads importable rows and delegates to the ingestor as one list, propagating the actor", async () => {
     const rows = [row("PEREZ JUAN", false), row("INFANTE X", true)];
-    const source = { loadImportable: async (_runId: string) => rows };
+    const source = { loadImportable: async () => rows };
 
     let capturedList: ParsedPatientList | null = null;
     let capturedOpts: { uploadedBy: string | null } | null = null;
