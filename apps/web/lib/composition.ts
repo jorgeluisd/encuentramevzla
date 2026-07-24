@@ -7,6 +7,7 @@ import {
   EditPatient,
   EditServiceByToken,
   ExportHospitalPatients,
+  GetAdminMetrics,
   GetLastUpdate,
   IngestPatientList,
   InviteTeamMember,
@@ -53,6 +54,7 @@ import { DrizzleTeamMemberRepository } from "@/lib/infrastructure/patient-regist
 import { DrizzleAuditLogReader } from "@/lib/infrastructure/patient-registry/drizzle-audit-log-reader";
 import { DrizzleLastUpdateReader } from "@/lib/infrastructure/patient-registry/drizzle-last-update-reader";
 import { DrizzleReviewQueueReader } from "@/lib/infrastructure/patient-registry/drizzle-review-queue-reader";
+import { DrizzleMetricsReader } from "@/lib/infrastructure/patient-registry/drizzle-metrics-reader";
 import { DrizzleForeignRowsReader } from "@/lib/infrastructure/patient-registry/drizzle-foreign-rows-reader";
 import { DrizzlePatientMerger } from "@/lib/infrastructure/patient-registry/drizzle-patient-merger";
 import { SupabasePatientSearchGateway } from "@/lib/infrastructure/patient-registry/supabase-patient-search-gateway";
@@ -104,6 +106,10 @@ export function foreignRowsReader(): DrizzleForeignRowsReader {
 
 export function listReviewQueueUseCase(): ListReviewQueue {
   return new ListReviewQueue(reviewQueueReader());
+}
+
+export function getAdminMetricsUseCase(): GetAdminMetrics {
+  return new GetAdminMetrics(new DrizzleMetricsReader(getDb()));
 }
 
 export function resolveReviewCaseUseCase(): ResolveReviewCase {
