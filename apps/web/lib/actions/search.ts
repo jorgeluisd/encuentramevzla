@@ -1,9 +1,10 @@
 "use server";
 
-import { createHash } from "node:crypto";
 import { headers } from "next/headers";
 import { buildSearchTerm, type MediatedSearchResult } from "@evzla/core";
 import { searchPatientsUseCase, verifyHumanChallengeUseCase } from "@/lib/composition";
+import { appSecret } from "@/lib/infrastructure/app-secrets";
+import { hashIp } from "@/lib/infrastructure/rate-limit";
 
 /**
  * Server Action del buscador público. Es el ÚNICO camino a la búsqueda:
@@ -16,12 +17,6 @@ export type SearchState =
   | { status: "idle" }
   | { status: "verification-failed" }
   | { status: "done"; term: string; result: MediatedSearchResult };
-
-// Hash no reversible de la IP: nunca se guarda ni se mueve la IP en claro.
-function hashIp(ip: string): string {
-  const salt = process.env.RATE_LIMIT_IP_SALT ?? "";
-  return createHash("sha256").update(`${ip}${salt}`).digest("hex");
-}
 
 export async function searchAction(
   _prev: SearchState,
@@ -39,14 +34,14 @@ export async function searchAction(
 
   // Verificación humana. En dev sin secreto configurado se omite (Cloudflare da
   // claves de prueba para local); en prod, sin secreto, falla cerrado.
-  const turnstileConfigured = Boolean(process.env.TURNSTILE_SECRET_KEY);
+  const turnstileConfigured = Boolean(await appSecret("TURNSTILE_SECRET_KEY"));
   const skipVerification =
     process.env.NODE_ENV !== "production" && !turnstileConfigured;
   if (!skipVerification) {
-    const human = await verifyHumanChallengeUseCase().execute(token, ip);
+    const human = await (await verifyHumanChallengeUseCase()).execute(token, ip);
     if (!human) return { status: "verification-failed" };
   }
 
-  const result = await searchPatientsUseCase().execute(term, hashIp(ip));
+  const result = await searchPatientsUseCase().execute(term, await hashIp(ip));
   return { status: "done", term, result };
 }

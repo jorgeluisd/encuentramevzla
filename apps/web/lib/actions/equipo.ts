@@ -17,7 +17,8 @@ import {
   setTeamMemberAccessUseCase,
   welcomeMailer,
 } from "@/lib/composition";
-import { getSessionEmail } from "@/lib/supabase/ssr-server";
+import { getSessionEmail } from "@/lib/auth/session";
+import { safeErrorTag } from "@/lib/infrastructure/safe-error";
 
 export interface EstadoEquipo {
   ok: boolean;
@@ -77,7 +78,7 @@ async function sendWelcome(m: {
     const hospitalName = m.hospitalId
       ? ((await hospitalDirectory().listActive()).find((h) => h.id === m.hospitalId)?.name ?? null)
       : null;
-    await welcomeMailer().sendWelcome({
+    await (await welcomeMailer()).sendWelcome({
       email: m.email,
       hospitalName,
       role: m.role,
@@ -85,8 +86,7 @@ async function sendWelcome(m: {
       manualUrl: process.env.NEXT_PUBLIC_MANUAL_URL ?? null,
     });
   } catch (error) {
-    // Sin volcar PII: solo el error del proveedor.
-    console.error("[welcome-mailer] envío fallido:", error);
+    console.error("[welcome-mailer] envío fallido:", safeErrorTag(error));
   }
 }
 
@@ -109,7 +109,7 @@ export async function invitarMiembroAction(
     revalidatePath("/admin/equipo");
     return {
       ok: true,
-      mensaje: `${m.email} habilitado. Pídele que inicie sesión con su correo (magic-link).`,
+      mensaje: `${m.email} habilitado. Pídele que inicie sesión con su correo (código de acceso).`,
     };
   } catch (error) {
     return mapError(error);

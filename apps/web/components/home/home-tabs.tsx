@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { PublicService } from "@evzla/core";
-import { ListPublishedServices } from "@evzla/core";
-import { createAnonClient } from "@/lib/supabase/anon";
-import { SupabaseSolidarityServiceDirectory } from "@/lib/infrastructure/solidarity-services/supabase-solidarity-service-directory";
+import { listPublishedServicesAction } from "@/lib/actions/servicios";
 import { SearchPanel } from "@/components/search-panel";
 import { PublishServiceModal } from "@/components/servicios/publish-service-modal";
 import { ServicesDirectory } from "@/components/servicios/services-directory";
@@ -67,9 +65,7 @@ export function HomeTabs({ lastUpdateLabel }: { lastUpdateLabel: string }): Reac
   useEffect(() => {
     if (tab !== "servicios" || services !== null) return;
     let cancelled = false;
-    const directory = new SupabaseSolidarityServiceDirectory(createAnonClient());
-    new ListPublishedServices(directory)
-      .execute()
+    listPublishedServicesAction()
       .then((rows) => {
         if (!cancelled) setServices(rows);
       })

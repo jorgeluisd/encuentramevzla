@@ -38,7 +38,6 @@ import {
   type WelcomeMailer,
 } from "@evzla/core";
 import { getDb } from "@evzla/db/client";
-import { createAnonClient } from "@/lib/supabase/anon";
 import { SheetjsPatientListParser } from "@/lib/infrastructure/patient-registry/sheetjs-patient-list-parser";
 import { DrizzleAuditLog, DrizzleIngestionUnitOfWork } from "@evzla/db/ingest";
 import { DrizzleHospitalPatientExportReader } from "@/lib/infrastructure/patient-registry/drizzle-hospital-patient-export-reader";
@@ -57,51 +56,56 @@ import { DrizzleReviewQueueReader } from "@/lib/infrastructure/patient-registry/
 import { DrizzleMetricsReader } from "@/lib/infrastructure/patient-registry/drizzle-metrics-reader";
 import { DrizzleForeignRowsReader } from "@/lib/infrastructure/patient-registry/drizzle-foreign-rows-reader";
 import { DrizzlePatientMerger } from "@/lib/infrastructure/patient-registry/drizzle-patient-merger";
-import { SupabasePatientSearchGateway } from "@/lib/infrastructure/patient-registry/supabase-patient-search-gateway";
+import { DrizzlePatientSearchGateway } from "@/lib/infrastructure/patient-registry/drizzle-patient-search-gateway";
 import { CloudflareTurnstileVerifier } from "@/lib/infrastructure/patient-registry/cloudflare-turnstile-verifier";
 import { DrizzleSolidarityServiceRepository } from "@/lib/infrastructure/solidarity-services/drizzle-solidarity-service-repository";
-import { SupabaseSolidarityServiceDirectory } from "@/lib/infrastructure/solidarity-services/supabase-solidarity-service-directory";
+import { DrizzleSolidarityServiceDirectory } from "@/lib/infrastructure/solidarity-services/drizzle-solidarity-service-directory";
 import { ResendServiceConfirmationMailer } from "@/lib/infrastructure/solidarity-services/resend-service-confirmation-mailer";
+import { CognitoTeamIdentityProvisioner } from "@/lib/infrastructure/auth/cognito-team-identity-provisioner";
+import { cognitoClient, requiredAuthEnv } from "@/lib/auth/cognito";
+import { appSecret } from "@/lib/infrastructure/app-secrets";
+import { S3Client } from "@aws-sdk/client-s3";
+import { S3UploadStore } from "@/lib/infrastructure/uploads/s3-upload-store";
 
 // Composition root: inyecta los adapters en los casos de uso (solo servidor).
 
 export function ingestPatientListUseCase(): IngestPatientList {
   return new IngestPatientList({
     parser: new SheetjsPatientListParser(),
-    uow: new DrizzleIngestionUnitOfWork(getDb()),
+    uow: new DrizzleIngestionUnitOfWork(getDb("admin")),
     newId: () => crypto.randomUUID(),
   });
 }
 
 export function searchPatientsUseCase(): SearchPatients {
-  return new SearchPatients(new SupabasePatientSearchGateway(createAnonClient()));
+  return new SearchPatients(new DrizzlePatientSearchGateway(getDb("public")));
 }
 
-export function verifyHumanChallengeUseCase(): VerifyHumanChallenge {
+export async function verifyHumanChallengeUseCase(): Promise<VerifyHumanChallenge> {
   // Sin secreto, el verifier falla cerrado (verify -> false): es deliberado.
   return new VerifyHumanChallenge(
-    new CloudflareTurnstileVerifier(process.env.TURNSTILE_SECRET_KEY ?? ""),
+    new CloudflareTurnstileVerifier(await appSecret("TURNSTILE_SECRET_KEY")),
   );
 }
 
 export function resolveTeamMemberUseCase(): ResolveTeamMember {
-  return new ResolveTeamMember(new DrizzleTeamMemberRepository(getDb()));
+  return new ResolveTeamMember(new DrizzleTeamMemberRepository(getDb("admin")));
 }
 
 export function listAuditLogUseCase(): ListAuditLog {
-  return new ListAuditLog(new DrizzleAuditLogReader(getDb()));
+  return new ListAuditLog(new DrizzleAuditLogReader(getDb("admin")));
 }
 
 export function getLastUpdateUseCase(): GetLastUpdate {
-  return new GetLastUpdate(new DrizzleLastUpdateReader(getDb()));
+  return new GetLastUpdate(new DrizzleLastUpdateReader(getDb("admin")));
 }
 
 export function reviewQueueReader(): DrizzleReviewQueueReader {
-  return new DrizzleReviewQueueReader(getDb());
+  return new DrizzleReviewQueueReader(getDb("admin"));
 }
 
 export function foreignRowsReader(): DrizzleForeignRowsReader {
-  return new DrizzleForeignRowsReader(getDb());
+  return new DrizzleForeignRowsReader(getDb("admin"));
 }
 
 export function listReviewQueueUseCase(): ListReviewQueue {
@@ -109,46 +113,46 @@ export function listReviewQueueUseCase(): ListReviewQueue {
 }
 
 export function getAdminMetricsUseCase(): GetAdminMetrics {
-  return new GetAdminMetrics(new DrizzleMetricsReader(getDb()));
+  return new GetAdminMetrics(new DrizzleMetricsReader(getDb("admin")));
 }
 
 export function resolveReviewCaseUseCase(): ResolveReviewCase {
-  return new ResolveReviewCase(new DrizzleAuditLog(getDb()));
+  return new ResolveReviewCase(new DrizzleAuditLog(getDb("admin")));
 }
 
 export function mergePatientsUseCase(): MergePatients {
-  return new MergePatients(new DrizzlePatientMerger(getDb()));
+  return new MergePatients(new DrizzlePatientMerger(getDb("admin")));
 }
 
 export function exportHospitalPatientsUseCase(): ExportHospitalPatients {
-  return new ExportHospitalPatients(new DrizzleHospitalPatientExportReader(getDb()));
+  return new ExportHospitalPatients(new DrizzleHospitalPatientExportReader(getDb("admin")));
 }
 
 // Escritor de auditoría (server-side) para acciones fuera del flujo de ingesta (p.ej. descargas).
 export function auditLogWriter(): DrizzleAuditLog {
-  return new DrizzleAuditLog(getDb());
+  return new DrizzleAuditLog(getDb("admin"));
 }
 
 export function editPatientUseCase(): EditPatient {
-  return new EditPatient(new DrizzlePatientEditor(getDb()));
+  return new EditPatient(new DrizzlePatientEditor(getDb("admin")));
 }
 
 export function hospitalPatientListReader(): DrizzleHospitalPatientListReader {
-  return new DrizzleHospitalPatientListReader(getDb());
+  return new DrizzleHospitalPatientListReader(getDb("admin"));
 }
 
 export function hospitalDirectory(): DrizzleHospitalDirectory {
-  return new DrizzleHospitalDirectory(getDb());
+  return new DrizzleHospitalDirectory(getDb("admin"));
 }
 
 // El admin de equipo se comparte entre las acciones (lista + invitar + acceso).
 export function teamMemberAdmin(): DrizzleTeamMemberAdmin {
-  return new DrizzleTeamMemberAdmin(getDb());
+  return new DrizzleTeamMemberAdmin(getDb("admin"));
 }
 
 // El admin de hospitales se comparte entre crear/listar/actualizar.
 export function hospitalAdmin(): DrizzleHospitalAdmin {
-  return new DrizzleHospitalAdmin(getDb());
+  return new DrizzleHospitalAdmin(getDb("admin"));
 }
 
 export function createHospitalUseCase(): CreateHospital {
@@ -164,14 +168,17 @@ export function updateHospitalUseCase(): UpdateHospital {
 }
 
 export function inviteTeamMemberUseCase(): InviteTeamMember {
-  return new InviteTeamMember(teamMemberAdmin());
+  return new InviteTeamMember(
+    teamMemberAdmin(),
+    new CognitoTeamIdentityProvisioner(cognitoClient(), requiredAuthEnv("COGNITO_USER_POOL_ID")),
+  );
 }
 
 // Correo transaccional de bienvenida. Sin RESEND_API_KEY, el adapter hace no-op
 // (falla cerrado): el alta no depende del correo.
-export function welcomeMailer(): WelcomeMailer {
+export async function welcomeMailer(): Promise<WelcomeMailer> {
   return new ResendWelcomeMailer(
-    process.env.RESEND_API_KEY ?? "",
+    await appSecret("RESEND_API_KEY"),
     process.env.MAIL_FROM ?? "EncuéntrameVzla <no-reply@encuentramevzla.com>",
   );
 }
@@ -184,19 +191,18 @@ export function setTeamMemberAccessUseCase(): SetTeamMemberAccess {
   return new SetTeamMemberAccess(teamMemberAdmin());
 }
 
-export function transcribePatientDictationUseCase(): TranscribePatientDictation {
-  // Los SDK externos (STT + extracción) viven en infraestructura; las claves, en el entorno.
+export async function transcribePatientDictationUseCase(): Promise<TranscribePatientDictation> {
   return new TranscribePatientDictation({
-    transcriber: new OpenAiSpeechTranscriber(process.env.OPENAI_API_KEY ?? ""),
-    extractor: new ClaudePatientRowExtractor(process.env.ANTHROPIC_API_KEY ?? ""),
+    transcriber: new OpenAiSpeechTranscriber(await appSecret("OPENAI_API_KEY")),
+    extractor: new ClaudePatientRowExtractor(await appSecret("ANTHROPIC_API_KEY")),
   });
 }
 
 // --- solidarity-services (directorio de servicios solidarios, spec 0023) ---
 
-// Escritura por service_role (Drizzle); se comparte entre los use cases de gestión.
+// Escritura con el rol admin (Drizzle); se comparte entre los use cases de gestión.
 export function solidarityServiceRepo(): DrizzleSolidarityServiceRepository {
-  return new DrizzleSolidarityServiceRepository(getDb());
+  return new DrizzleSolidarityServiceRepository(getDb("admin"));
 }
 
 // Hash del token de edición: solo se persiste el hash (el token en claro va en el enlace).
@@ -215,7 +221,7 @@ export function submitSolidarityServiceUseCase(): SubmitSolidarityService {
 }
 
 export function listPublishedServicesUseCase(): ListPublishedServices {
-  return new ListPublishedServices(new SupabaseSolidarityServiceDirectory(createAnonClient()));
+  return new ListPublishedServices(new DrizzleSolidarityServiceDirectory(getDb("public")));
 }
 
 export function listPendingServicesUseCase(): ListPendingServices {
@@ -276,9 +282,9 @@ export function removeServiceByTokenUseCase(): RemoveServiceByToken {
 }
 
 // Correo de confirmación best-effort (mismo patrón que welcomeMailer).
-export function serviceConfirmationMailer(): ServiceConfirmationMailer {
+export async function serviceConfirmationMailer(): Promise<ServiceConfirmationMailer> {
   return new ResendServiceConfirmationMailer(
-    process.env.RESEND_API_KEY ?? "",
+    await appSecret("RESEND_API_KEY"),
     process.env.MAIL_FROM ?? "EncuéntrameVzla <no-reply@encuentramevzla.com>",
   );
 }
@@ -305,4 +311,13 @@ export async function findServiceForEdit(token: string): Promise<ServiceForEdit 
     status: record.status,
     expiresAt: record.expiresAt,
   };
+}
+
+// Bucket de subidas (AWS). Sin EVZLA_UPLOADS_BUCKET (dev local) el Excel viaja en la Server Action.
+let _s3: S3Client | null = null;
+export function uploadStore(): S3UploadStore | null {
+  const bucket = process.env.EVZLA_UPLOADS_BUCKET;
+  if (!bucket) return null;
+  _s3 ??= new S3Client({});
+  return new S3UploadStore(_s3, bucket);
 }

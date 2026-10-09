@@ -223,7 +223,7 @@ async function runApplyImport(sql: postgres.Sql, flags: Flags): Promise<void> {
 
   const ingest = new IngestPatientList({
     parser: NO_PARSER,
-    uow: new DrizzleIngestionUnitOfWork(getDb(), batchId),
+    uow: new DrizzleIngestionUnitOfWork(getDb("admin"), batchId),
     newId: randomUUID,
   });
   const summary = await new ApplyReconciliation({ source, ingest }).execute({

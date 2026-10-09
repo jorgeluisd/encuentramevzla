@@ -1,15 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { createSsrBrowserClient } from "@/lib/supabase/ssr-browser";
+import { requestLoginCodeAction, verifyLoginCodeAction } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardBody } from "@/components/ui/card";
 
 /**
- * `/admin/login` — Acceso del equipo (magic-link). Pide el enlace al correo
- * institucional; quién entra de verdad lo decide el guard (allow-list). Sin
- * contraseñas.
+ * `/admin/login` — Acceso del equipo con código de un solo uso por correo (Cognito EMAIL_OTP).
+ * Quién entra de verdad lo decide el guard (allow-list). Sin contraseñas.
  */
 export default function LoginPage(): React.ReactElement {
   const [email, setEmail] = useState("");
@@ -17,15 +16,10 @@ export default function LoginPage(): React.ReactElement {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "verifying">("idle");
   const [error, setError] = useState<string | null>(null);
 
-  // Pide el acceso: envía el correo con código de 6 dígitos + enlace de respaldo.
   async function requestAccess(): Promise<boolean> {
-    const supabase = createSsrBrowserClient();
-    const { error: otpError } = await supabase.auth.signInWithOtp({
-      email: email.trim().toLowerCase(),
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-    });
-    if (otpError) {
-      setError("No pudimos enviar el código. Verifica el correo e intenta de nuevo.");
+    const result = await requestLoginCodeAction(email);
+    if (!result.ok) {
+      setError(result.error ?? "No pudimos enviar el código. Intenta de nuevo.");
       return false;
     }
     return true;
@@ -39,20 +33,13 @@ export default function LoginPage(): React.ReactElement {
     setStatus(ok ? "sent" : "idle");
   }
 
-  // Verifica el código de 6 dígitos. Se valida server-side contra email+token, sin depender
-  // de la cookie del navegador → funciona aunque el correo se haya abierto en otro dispositivo.
   async function onVerify(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setStatus("verifying");
     setError(null);
-    const supabase = createSsrBrowserClient();
-    const { error: verifyError } = await supabase.auth.verifyOtp({
-      email: email.trim().toLowerCase(),
-      token: code.trim(),
-      type: "email",
-    });
-    if (verifyError) {
-      setError("Código inválido o vencido. Pide uno nuevo.");
+    const result = await verifyLoginCodeAction(code);
+    if (!result.ok) {
+      setError(result.error ?? "Código inválido o vencido. Pide uno nuevo.");
       setStatus("sent");
       return;
     }
@@ -84,8 +71,9 @@ export default function LoginPage(): React.ReactElement {
               <div role="status" aria-live="polite" className="space-y-1">
                 <p className="font-semibold text-text">Revisa tu correo</p>
                 <p className="text-sm text-text-2">
-                  Enviamos un código a <span className="font-medium">{email}</span>. Escríbelo
-                  aquí. Caduca en 15 minutos.
+                  Si el correo pertenece al equipo, enviamos un código a{" "}
+                  <span className="font-medium">{email}</span>. Escríbelo aquí. Caduca en pocos
+                  minutos.
                 </p>
               </div>
               <form onSubmit={onVerify} className="space-y-4">
@@ -163,7 +151,7 @@ export default function LoginPage(): React.ReactElement {
                 </p>
               )}
               <Button type="submit" disabled={status === "sending"} className="w-full">
-                {status === "sending" ? "Enviando…" : "Enviar enlace de acceso"}
+                {status === "sending" ? "Enviando…" : "Enviar código de acceso"}
               </Button>
             </form>
           )}

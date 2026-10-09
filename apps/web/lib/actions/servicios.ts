@@ -10,12 +10,14 @@ import {
   type ServiceInputField,
   TermsNotAcceptedError,
   TooManyActiveServicesError,
+  type PublicService,
   type Role,
 } from "@evzla/core";
 import {
   approveServiceUseCase,
   dismissReportUseCase,
   editServiceByTokenUseCase,
+  listPublishedServicesUseCase,
   regenerateManageLinkUseCase,
   rejectServiceUseCase,
   removeServiceByTokenUseCase,
@@ -25,9 +27,11 @@ import {
   submitSolidarityServiceUseCase,
   takeDownServiceUseCase,
 } from "@/lib/composition";
-import { getSessionEmail } from "@/lib/supabase/ssr-server";
+import { getSessionEmail } from "@/lib/auth/session";
 import { verifyHumanChallengeUseCase } from "@/lib/composition";
 import { allowAction, hashIp } from "@/lib/infrastructure/rate-limit";
+import { appSecret } from "@/lib/infrastructure/app-secrets";
+import { safeErrorTag } from "@/lib/infrastructure/safe-error";
 
 // Límites de tasa por IP hasheada para escrituras públicas (anti-abuso/DoS).
 const RATE_WINDOW_MS = 10 * 60 * 1000; // 10 minutos
@@ -87,15 +91,15 @@ export async function submitServiceAction(
   const ip = (hdrs.get("x-forwarded-for") ?? "").split(",")[0]?.trim() || "unknown";
 
   // Verificación humana anti-spam (mismo criterio que el buscador: dev sin secreto se omite).
-  const turnstileConfigured = Boolean(process.env.TURNSTILE_SECRET_KEY);
+  const turnstileConfigured = Boolean(await appSecret("TURNSTILE_SECRET_KEY"));
   const skipVerification = process.env.NODE_ENV !== "production" && !turnstileConfigured;
   if (!skipVerification) {
-    const human = await verifyHumanChallengeUseCase().execute(token, ip);
+    const human = await (await verifyHumanChallengeUseCase()).execute(token, ip);
     if (!human) return { status: "verification-failed" };
   }
 
   // Rate-limit por IP hasheada (además del captcha): frena abuso de altas.
-  if (!(await allowAction(hashIp(ip), "submit", SUBMIT_LIMIT, RATE_WINDOW_MS))) {
+  if (!(await allowAction(await hashIp(ip), "submit", SUBMIT_LIMIT, RATE_WINDOW_MS))) {
     return {
       status: "invalid",
       mensaje: "Has enviado varias publicaciones seguidas. Espera unos minutos e intenta de nuevo.",
@@ -114,12 +118,12 @@ export async function submitServiceAction(
 
     // Confirmación best-effort con el enlace mágico de gestión (no revierte el alta si falla).
     try {
-      await serviceConfirmationMailer().sendConfirmation({
+      await (await serviceConfirmationMailer()).sendConfirmation({
         email: str(formData, "submitterEmail"),
         editUrl: `${SITE_URL}/servicios/editar/${result.editToken}`,
       });
     } catch (error) {
-      console.error("[service-mailer] envío fallido:", error);
+      console.error("[service-mailer] envío fallido:", safeErrorTag(error));
     }
 
     revalidatePath("/servicios");
@@ -200,15 +204,15 @@ export async function reportServiceAction(
   const token = str(formData, "cf-turnstile-response");
   const hdrs = await headers();
   const ip = (hdrs.get("x-forwarded-for") ?? "").split(",")[0]?.trim() || "unknown";
-  const turnstileConfigured = Boolean(process.env.TURNSTILE_SECRET_KEY);
+  const turnstileConfigured = Boolean(await appSecret("TURNSTILE_SECRET_KEY"));
   const skipVerification = process.env.NODE_ENV !== "production" && !turnstileConfigured;
   if (!skipVerification) {
-    const human = await verifyHumanChallengeUseCase().execute(token, ip);
+    const human = await (await verifyHumanChallengeUseCase()).execute(token, ip);
     if (!human) return { status: "verification-failed" };
   }
 
   // Rate-limit por IP hasheada: frena spam de reportes.
-  if (!(await allowAction(hashIp(ip), "report", REPORT_LIMIT, RATE_WINDOW_MS))) {
+  if (!(await allowAction(await hashIp(ip), "report", REPORT_LIMIT, RATE_WINDOW_MS))) {
     return { status: "error" };
   }
 
@@ -344,13 +348,18 @@ export async function resendManageLinkAction(
       serviceId,
       actorRole: auth.role,
     });
-    await serviceConfirmationMailer().sendConfirmation({
+    await (await serviceConfirmationMailer()).sendConfirmation({
       email,
       editUrl: `${SITE_URL}/servicios/editar/${editToken}`,
     });
     return { ok: true, mensaje: `Enlace de gestión reenviado a ${email}.` };
   } catch (error) {
-    console.error("[service-mailer] reenvío fallido:", error);
+    console.error("[service-mailer] reenvío fallido:", safeErrorTag(error));
     return mapModerationError(error);
   }
+}
+
+// Pestaña "Servicios" del home: lectura pública mediada por el RPC con el rol `public`.
+export async function listPublishedServicesAction(): Promise<PublicService[]> {
+  return listPublishedServicesUseCase().execute();
 }

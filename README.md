@@ -20,11 +20,12 @@ TikTok [@encuentrame.vzla](https://www.tiktok.com/@encuentrame.vzla)
 
 ```bash
 pnpm install        # instala todo el workspace (usar SIEMPRE pnpm, nunca npm)
-cp .env.example .env # completa tus claves de Supabase / Postgres
+cp .env.example .env # completa DATABASE_URL (Postgres local) y las claves de dev
 pnpm dev            # arranca apps en modo desarrollo (turbo)
 ```
 
 Scripts raíz (turbo): `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`.
+Bundle para AWS Lambda (OpenNext): `pnpm --filter @evzla/web build:aws` → `apps/web/.open-next/`.
 
 ## Arquitectura y estructura
 
@@ -37,19 +38,19 @@ Scripts raíz (turbo): `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 ├── apps/
 │   └── web/        @evzla/web — Next.js (App Router, React 19, Tailwind 4):
 │                   presentación + composition root + infraestructura
-│                   (adapters Drizzle/SheetJS/Supabase en lib/infrastructure)
+│                   (adapters Drizzle/SheetJS/Cognito/S3 en lib/infrastructure)
 ├── packages/
 │   ├── core/       @evzla/core — dominio + aplicación, PURO (sin I/O):
 │   │               value objects, matching/dedup, ports y casos de uso
 │   │               (IngestPatientList, SearchPatients)
-│   ├── db/         @evzla/db — esquema Drizzle (schemas public / sensitive) + cliente Postgres
+│   ├── db/         @evzla/db — esquema Drizzle (schemas public / sensitive) + cliente Postgres por rol
 │   └── config/     @evzla/config — tsconfig base + preset ESLint
 ├── assets/
 │   └── brand/      Logos definitivos (SVG master + PNG) — ver assets/brand/README.md
 ├── specs/          SDD — arquitectura, convenciones, dedup, design-system (0003), UI concept (0004)
 └── supabase/
-    ├── migrations/ SQL de Postgres 16 (extensiones, tablas, RLS, RPC search_patient)
-    └── functions/  Edge Functions (Deno) — `dedup` (worker fase 2, stub)
+    ├── migrations/ SQL canónico de Postgres (extensiones, tablas, grants, RPC search_patient)
+    └── functions/  `dedup` (worker fase 2, stub; heredado)
 ```
 
 > **Nota:** `draw/` está gitignored (contiene el Excel real de pacientes y el prototipo de UI/UX
@@ -67,10 +68,26 @@ se amplía a desktop. Identidad y guía de UX:
   login magic-link / ingesta): `specs/0004-ui-concept.md`, destilado del prototipo de UI/UX.
 - **Marca**: `assets/brand/` (logo SVG master + PNG).
 
-> **Arquitectura: todo Supabase.** No hay backend propio. El frontend (Next.js) habla
-> directo con Supabase: el público solo invoca el RPC mediado `search_patient`, y la
-> ingesta usa Server Actions con la service role. El worker pesado de dedup/OCR de la
-> fase 2 será una **Supabase Edge Function (Deno)** — ver `supabase/functions/dedup`.
+> **Arquitectura: AWS (sa-east-1).** No hay backend propio aparte de Next.js:
+>
+> - **Cómputo:** Next.js empaquetado con **OpenNext** y servido desde **AWS Lambda**
+>   (`build:aws`). `proxy.ts` (runtime Node) rechaza con 403 lo que no trae el header
+>   `x-origin-verify` de CloudFront (`ORIGIN_VERIFY_SECRET`) y refresca la sesión del portal.
+> - **Base de datos:** **RDS PostgreSQL** privada, TLS verify-full contra el CA del runtime de Lambda
+>   (`NODE_EXTRA_CA_CERTS`). Un cliente por rol (`getDb('admin' | 'public' | 'job')`), una
+>   conexión por Lambda, credenciales en **Secrets Manager** (`EVZLA_DB_SECRET_<ROL>`).
+>   El público usa el rol `evzla_public`, que **solo** puede ejecutar los RPC mediados
+>   `search_patient` y `list_solidarity_services`.
+> - **Auth del portal `/admin`:** **Cognito** (user pool Essentials, sin contraseña, `EMAIL_OTP`
+>   por el flujo `USER_AUTH`). Login en Server Actions; id/refresh token en cookies
+>   httpOnly + secure, id token verificado con `aws-jwt-verify`. La autorización sigue siendo la
+>   allow-list `team_members`. Invitar a un miembro lo da de alta en Cognito (`AdminCreateUser`,
+>   sin mensaje de Cognito; la bienvenida va por Resend).
+> - **Subida de Excel:** el navegador sube directo a **S3** (`EVZLA_UPLOADS_BUCKET`) con URL
+>   prefirmada (Lambda no acepta cuerpos > ~6 MB); la Server Action lee el objeto y lo borra.
+> - **Secretos de la app** (Turnstile, salt, revalidate, OpenAI, Anthropic, Resend): del secreto
+>   `EVZLA_APP_SECRET` en AWS; en dev local, de `process.env`.
+> - **Logs:** sin PII. Los errores se loggean solo como `nombre:código` (`safeErrorTag`).
 
 ## NOTA de privacidad — los datos se tratan de forma segura
 
@@ -106,7 +123,7 @@ producción. Calidad: typecheck 4/4 · **77 tests** · build OK. Specs `0001`–
   "abierta", consentida por la residente); menores/fallecidos → contacto humano. RPC `search_patient`.
 - **Diseño**: tokens oficiales (azul `#1565C0`, Inter), shadcn-style, banner de emergencia sticky,
   contacto real de la Cruz Roja.
-- **Portal `/admin`**: auth **magic-link** (Supabase) + roles (`uploader`/`moderator`) por allow-list
+- **Portal `/admin`**: auth **sin contraseña** (Cognito EMAIL_OTP) + roles (`uploader`/`moderator`) por allow-list
   `team_members`; guard server-side; **audit log** (vista de moderador).
 - **Cola de revisión humana** (`/admin/review`, moderador): triage de los 7 casos dudosos +
   **ejecución de la fusión** de pacientes (transaccional, hard delete del duplicado).

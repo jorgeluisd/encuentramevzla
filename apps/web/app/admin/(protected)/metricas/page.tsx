@@ -15,10 +15,6 @@ import { SearchTrend } from "./_components/search-trend";
 import { MetricsFilters, type HospitalOption } from "./_components/metrics-filters";
 
 export const dynamic = "force-dynamic";
-// La función debe correr junto a la DB de Supabase (sa-east-1 / São Paulo). Si corre en
-// EE.UU. (iad1, default), cada una de las 6 queries cruza el continente y se pasa del
-// statement_timeout de Postgres → el server component tira. Ver ADR/memoria del bug.
-export const preferredRegion = "gru1";
 // Falla rápido en vez de colgar la función hasta el máximo (evita 504 de 5 min).
 export const maxDuration = 30;
 

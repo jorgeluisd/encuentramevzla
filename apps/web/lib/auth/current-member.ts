@@ -6,7 +6,7 @@ import {
   canResolveReview,
   type TeamMember,
 } from "@evzla/core";
-import { getSessionEmail } from "@/lib/supabase/ssr-server";
+import { getSessionEmail } from "@/lib/auth/session";
 import { resolveTeamMemberUseCase } from "@/lib/composition";
 
 export type CurrentMember =
