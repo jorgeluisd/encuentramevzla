@@ -12,7 +12,9 @@ export const CONTRACT = {
     dbJob: "evzla/db/job",
     app: "evzla/app",
   },
+  originVerifySecret: "evzla/origin",
   userPoolName: "evzla-admin",
+  mailSender: { email: "no-reply@encuentramevzla.com", name: "EncuéntrameVzla" },
   apexDomain: "encuentramevzla.com",
   costTag: { key: "project", value: "encuentramevzla" },
 } as const;
