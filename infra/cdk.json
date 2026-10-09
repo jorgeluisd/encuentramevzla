@@ -1,0 +1,13 @@
+{
+  "app": "pnpm exec tsx bin/evzla.ts",
+  "watch": { "include": ["bin/**", "lib/**", "jobs/**"] },
+  "context": {
+    "account": "934106163170",
+    "rdsClientSgId": "sg-0572bad681b9d656f",
+    "openNextPath": "../apps/web/.open-next",
+    "customDomain": false,
+    "mailFrom": "EncuéntrameVzla <no-reply@encuentramevzla.com>",
+    "budgetEmail": "diazjorgeluis10@gmail.com",
+    "@aws-cdk/core:target-partitions": ["aws"]
+  }
+}

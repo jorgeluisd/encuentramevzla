@@ -1,0 +1,8 @@
+{
+  "extends": "@evzla/config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["bin/**/*.ts", "lib/**/*.ts", "jobs/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
+}
