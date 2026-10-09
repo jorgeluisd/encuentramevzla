@@ -23,6 +23,7 @@ export type OpenNextSiteProps = {
   securityGroup: ec2.ISecurityGroup;
   environment: Record<string, string>;
   logRetention: logs.RetentionDays;
+  originVerifyValue: string;
   certificate?: acm.ICertificate;
   domainNames?: string[];
 };
@@ -149,7 +150,9 @@ export class OpenNextSite extends Construct {
     });
     const imageUrl = imageFunction.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });
 
-    const serverOrigin = new origins.FunctionUrlOrigin(serverUrl);
+    const serverOrigin = new origins.FunctionUrlOrigin(serverUrl, {
+      customHeaders: { "x-origin-verify": props.originVerifyValue },
+    });
     const imageOrigin = new origins.FunctionUrlOrigin(imageUrl);
     const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(this.assetsBucket, {
       originPath: `/${ASSETS_PREFIX}`,

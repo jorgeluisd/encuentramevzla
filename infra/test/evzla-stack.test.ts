@@ -221,6 +221,64 @@ describe("EvzlaStack", () => {
   });
 });
 
+describe("SES email", () => {
+  it("creates the encuentramevzla.com identity with Easy DKIM in its own stack", () => {
+    const { email } = synth();
+    expect(email.region).toBe("sa-east-1");
+    const t = Template.fromStack(email);
+    t.hasResourceProperties("AWS::SES::EmailIdentity", {
+      EmailIdentity: "encuentramevzla.com",
+      DkimAttributes: { SigningEnabled: true },
+      MailFromAttributes: Match.absent(),
+    });
+    for (const i of [1, 2, 3]) {
+      t.hasOutput(`DkimRecord${i}Name`, {});
+      t.hasOutput(`DkimRecord${i}Value`, {});
+    }
+  });
+
+  it("sends Cognito mail through SES in sa-east-1 from no-reply@encuentramevzla.com", () => {
+    template.hasResourceProperties("AWS::Cognito::UserPool", {
+      EmailConfiguration: {
+        EmailSendingAccount: "DEVELOPER",
+        // RFC 2047: el nombre con tilde va codificado en el header From.
+        From: `=?UTF-8?B?${Buffer.from("EncuéntrameVzla").toString("base64")}?= <no-reply@encuentramevzla.com>`,
+        SourceArn: {
+          "Fn::Join": ["", Match.arrayWith([":ses:sa-east-1:111111111111:identity/encuentramevzla.com"])],
+        },
+      },
+    });
+  });
+
+  it("deploys after the email stack", () => {
+    const { evzla, email } = synth();
+    expect(evzla.dependencies).toContain(email);
+  });
+});
+
+describe("origin verify header", () => {
+  it("stores a generated secret as evzla/origin", () => {
+    template.hasResourceProperties("AWS::SecretsManager::Secret", {
+      Name: "evzla/origin",
+      GenerateSecretString: Match.objectLike({ ExcludePunctuation: true }),
+    });
+  });
+
+  it("sends x-origin-verify only to the server origin and exposes it as ORIGIN_VERIFY_SECRET", () => {
+    const dist = Object.values(resources).find((r) => r.Type === "AWS::CloudFront::Distribution");
+    const origins = (dist?.Properties.DistributionConfig as { Origins: Record<string, unknown>[] }).Origins;
+    const withHeader = origins.filter((o) =>
+      JSON.stringify(o.OriginCustomHeaders ?? []).includes("x-origin-verify"),
+    );
+    expect(withHeader).toHaveLength(1);
+    expect(JSON.stringify(withHeader[0])).toContain("ServerFunction");
+    expect(JSON.stringify(withHeader[0])).toContain("{{resolve:secretsmanager:");
+
+    const env = (serverFunction().Properties.Environment as { Variables: Record<string, unknown> }).Variables;
+    expect(JSON.stringify(env.ORIGIN_VERIFY_SECRET)).toMatch(/resolve:secretsmanager:/);
+  });
+});
+
 describe("customDomain flag", () => {
   it("adds a us-east-1 certificate stack and aliases only when enabled", () => {
     const { evzla, certificate } = synth({ customDomain: "true" });

@@ -2,10 +2,15 @@ import path from "node:path";
 import { App } from "aws-cdk-lib";
 import { CertificateStack } from "./certificate-stack.js";
 import { CONTRACT } from "./contract.js";
+import { EmailStack } from "./email-stack.js";
 import { EvzlaStack } from "./evzla-stack.js";
 import { readOpenNextOutput } from "./open-next-output.js";
 
-export function buildApp(app: App, baseDir: string): { evzla: EvzlaStack; certificate?: CertificateStack } {
+export function buildApp(app: App, baseDir: string): {
+  evzla: EvzlaStack;
+  email: EmailStack;
+  certificate?: CertificateStack;
+} {
   const ctx = (key: string): string => {
     const value: unknown = app.node.tryGetContext(key);
     if (value === undefined || value === null || value === "") throw new Error(`Falta el context "${key}"`);
@@ -21,6 +26,8 @@ export function buildApp(app: App, baseDir: string): { evzla: EvzlaStack; certif
       })
     : undefined;
 
+  const email = new EmailStack(app, "EvzlaEmailStack", { env: { account, region: CONTRACT.region } });
+
   const evzla = new EvzlaStack(app, "EvzlaStack", {
     env: { account, region: CONTRACT.region },
     crossRegionReferences: customDomain,
@@ -30,5 +37,7 @@ export function buildApp(app: App, baseDir: string): { evzla: EvzlaStack; certif
     budgetEmail: ctx("budgetEmail"),
     certificate: certificate?.certificate,
   });
-  return { evzla, certificate };
+  // El user pool exige la identidad SES ya creada.
+  evzla.addStackDependency(email);
+  return { evzla, email, certificate };
 }

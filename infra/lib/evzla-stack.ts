@@ -61,6 +61,13 @@ export class EvzlaStack extends Stack {
       autoVerify: { email: true },
       // Cognito exige PASSWORD en la lista; los usuarios se crean sin contraseña y entran por EMAIL_OTP.
       signInPolicy: { allowedFirstAuthFactors: { password: true, emailOtp: true } },
+      // EMAIL_OTP exige envío DEVELOPER por SES en la región del pool.
+      email: cognito.UserPoolEmail.withSES({
+        fromEmail: CONTRACT.mailSender.email,
+        fromName: CONTRACT.mailSender.name,
+        sesRegion: CONTRACT.region,
+        sesVerifiedDomain: CONTRACT.apexDomain,
+      }),
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       deletionProtection: true,
       removalPolicy: RemovalPolicy.RETAIN,
@@ -72,6 +79,13 @@ export class EvzlaStack extends Stack {
       preventUserExistenceErrors: true,
     });
 
+    // El server rechaza requests sin este header: evita que se salten CloudFront llamando a la Function URL.
+    const originVerifySecret = new secretsmanager.Secret(this, "OriginVerifySecret", {
+      secretName: CONTRACT.originVerifySecret,
+      generateSecretString: { excludePunctuation: true, passwordLength: 48 },
+    });
+    const originVerifyValue = originVerifySecret.secretValue.unsafeUnwrap();
+
     // Nombre literal (no token) para no crear un ciclo bucket(CORS)→CloudFront→server→bucket.
     const uploadsBucketName = `evzla-uploads-${Aws.ACCOUNT_ID}`;
 
@@ -81,6 +95,7 @@ export class EvzlaStack extends Stack {
       vpcSubnets,
       securityGroup: rdsClientSg,
       logRetention: LOG_RETENTION,
+      originVerifyValue,
       certificate: props.certificate,
       domainNames: props.certificate ? [CONTRACT.apexDomain, `www.${CONTRACT.apexDomain}`] : undefined,
       environment: {
@@ -93,6 +108,7 @@ export class EvzlaStack extends Stack {
         COGNITO_REGION: Aws.REGION,
         EVZLA_UPLOADS_BUCKET: uploadsBucketName,
         MAIL_FROM: props.mailFrom,
+        ORIGIN_VERIFY_SECRET: originVerifyValue,
       },
     });
     const server = site.serverFunction;
