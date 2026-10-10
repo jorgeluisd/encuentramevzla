@@ -5,7 +5,7 @@
     "account": "934106163170",
     "rdsClientSgId": "sg-0572bad681b9d656f",
     "openNextPath": "../apps/web/.open-next",
-    "customDomain": false,
+    "customDomain": true,
     "mailFrom": "EncuéntrameVzla <no-reply@encuentramevzla.com>",
     "budgetEmail": "diazjorgeluis10@gmail.com",
     "@aws-cdk/core:target-partitions": ["aws"]
