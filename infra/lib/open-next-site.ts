@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { CustomResource, Duration, RemovalPolicy, Stack } from "aws-cdk-lib";
+import { CustomResource, Duration, RemovalPolicy, Stack, SymlinkFollowMode } from "aws-cdk-lib";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
@@ -82,7 +82,9 @@ export class OpenNextSite extends Construct {
       new lambda.Function(this, name, {
         runtime: lambda.Runtime.NODEJS_22_X,
         architecture: lambda.Architecture.ARM_64,
-        code: lambda.Code.fromAsset(bundle.dir),
+        // OpenNext deja dependencias (p. ej. postgres) como symlinks en .next/node_modules; el default
+        // de CDK (EXTERNAL) conserva los que apuntan dentro del bundle y Lambda no los resuelve.
+        code: lambda.Code.fromAsset(bundle.dir, { followSymlinks: SymlinkFollowMode.ALWAYS }),
         handler: bundle.handler,
         logGroup: logGroup(name),
         ...extra,
