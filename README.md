@@ -82,7 +82,8 @@ se amplía a desktop. Identidad y guía de UX:
 >   por el flujo `USER_AUTH`). Login en Server Actions; id/refresh token en cookies
 >   httpOnly + secure, id token verificado con `aws-jwt-verify`. La autorización sigue siendo la
 >   allow-list `team_members`. Invitar a un miembro lo da de alta en Cognito (`AdminCreateUser`,
->   sin mensaje de Cognito; la bienvenida va por Resend).
+>   sin mensaje de Cognito; la bienvenida va por Resend) y lo confirma con `AdminSetUserPassword`
+>   (contraseña aleatoria permanente que no se guarda ni se usa).
 > - **Subida de Excel:** el navegador sube directo a **S3** (`EVZLA_UPLOADS_BUCKET`) con URL
 >   prefirmada (Lambda no acepta cuerpos > ~6 MB); la Server Action lee el objeto y lo borra.
 > - **Secretos de la app** (Turnstile, salt, revalidate, OpenAI, Anthropic, Resend): del secreto
