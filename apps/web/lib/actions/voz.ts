@@ -17,7 +17,7 @@ import {
   resolveTeamMemberUseCase,
   transcribePatientDictationUseCase,
 } from "@/lib/composition";
-import { getSessionEmail } from "@/lib/supabase/ssr-server";
+import { getSessionEmail } from "@/lib/auth/session";
 import { rowFingerprint } from "@/lib/infrastructure/patient-registry/excel-parsing";
 
 // Borrador editable que la UI muestra tras dictar (humano en el loop, nunca auto). D7.
@@ -84,7 +84,7 @@ export async function dictarPacienteAction(formData: FormData): Promise<EstadoDi
 
   try {
     const bytes = new Uint8Array(await audio.arrayBuffer());
-    const { transcript, rows } = await transcribePatientDictationUseCase().execute({
+    const { transcript, rows } = await (await transcribePatientDictationUseCase()).execute({
       audio: bytes,
       opts: { language: "es", mimeType: audio.type || "audio/webm" },
     });

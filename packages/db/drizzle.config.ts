@@ -1,6 +1,6 @@
 import type { Config } from "drizzle-kit";
 
-// Drizzle Kit apunta al Postgres 16 de Supabase mediante DATABASE_URL.
+// Drizzle Kit apunta al Postgres mediante DATABASE_URL.
 // NOTA: las migraciones "de verdad" del producto viven como SQL versionado en
 // `supabase/migrations/` (extensiones, schema `sensitive`, RLS y el RPC SECURITY DEFINER
 // no se expresan bien desde el generador de Drizzle). Este config sirve para

@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
+import { appSecret } from "@/lib/infrastructure/app-secrets";
 
 export const runtime = "nodejs";
 
@@ -13,7 +14,7 @@ export const runtime = "nodejs";
  * No expone datos: solo dispara la regeneración.
  */
 export async function POST(request: Request): Promise<NextResponse> {
-  const token = process.env.REVALIDATE_TOKEN;
+  const token = await appSecret("REVALIDATE_TOKEN");
   if (!token) {
     return NextResponse.json({ ok: false, error: "not_configured" }, { status: 503 });
   }

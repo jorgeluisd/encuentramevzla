@@ -35,3 +35,6 @@ draft/
 
 # cdk
 cdk.out/
+
+# OpenNext (build:aws)
+.open-next/

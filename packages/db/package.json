@@ -21,6 +21,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-secrets-manager": "3.1146.0",
     "@evzla/core": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.5",

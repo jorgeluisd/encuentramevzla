@@ -4,10 +4,12 @@ import { createHash } from "node:crypto";
 import { and, count, eq, gt } from "drizzle-orm";
 import { actionRateLog } from "@evzla/db";
 import { getDb } from "@evzla/db/client";
+import { appSecret } from "./app-secrets";
+import { safeErrorTag } from "./safe-error";
 
 // Hash no reversible de la IP: nunca se guarda ni se mueve la IP en claro.
-export function hashIp(ip: string): string {
-  const salt = process.env.RATE_LIMIT_IP_SALT ?? "";
+export async function hashIp(ip: string): Promise<string> {
+  const salt = await appSecret("RATE_LIMIT_IP_SALT");
   return createHash("sha256").update(`${ip}${salt}`).digest("hex");
 }
 
@@ -21,7 +23,7 @@ export async function allowAction(
   windowMs: number,
 ): Promise<boolean> {
   try {
-    const db = getDb();
+    const db = getDb("admin");
     const since = new Date(Date.now() - windowMs);
     const [row] = await db
       .select({ n: count() })
@@ -37,7 +39,7 @@ export async function allowAction(
     await db.insert(actionRateLog).values({ clientHash, action });
     return true;
   } catch (error) {
-    console.error("[rate-limit] fallo, se permite (fail-open):", error);
+    console.error("[rate-limit] fallo, se permite (fail-open):", safeErrorTag(error));
     return true;
   }
 }

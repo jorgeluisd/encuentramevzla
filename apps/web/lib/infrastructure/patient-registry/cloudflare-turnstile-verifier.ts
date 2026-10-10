@@ -1,3 +1,4 @@
+import { safeErrorTag } from "../safe-error";
 import type { HumanVerificationGateway } from "@evzla/core";
 
 const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
@@ -20,7 +21,7 @@ export class CloudflareTurnstileVerifier implements HumanVerificationGateway {
       return data.success === true;
     } catch (error) {
       // Falla cerrada: si no se puede verificar, no se considera humano.
-      console.error("[turnstile] verify error:", error);
+      console.error("[turnstile] verify error:", safeErrorTag(error));
       return false;
     }
   }

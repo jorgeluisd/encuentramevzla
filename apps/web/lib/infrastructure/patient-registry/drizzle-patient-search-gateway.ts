@@ -1,5 +1,9 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { sql } from "drizzle-orm";
 import type { MediatedMatch, MediatedSearchResult, PatientSearchGateway } from "@evzla/core";
+import type { RpcExecutor } from "../rpc-executor";
+import { safeErrorTag } from "../safe-error";
+
+export type { RpcExecutor };
 
 interface RpcRow {
   result: {
@@ -12,21 +16,22 @@ interface RpcRow {
   };
 }
 
-// Adapter de la búsqueda mediada: invoca el RPC SECURITY DEFINER con la anon key.
-export class SupabasePatientSearchGateway implements PatientSearchGateway {
-  constructor(private readonly client: SupabaseClient) {}
+// Búsqueda mediada: el rol `public` solo puede ejecutar el RPC SECURITY DEFINER.
+export class DrizzlePatientSearchGateway implements PatientSearchGateway {
+  constructor(private readonly db: RpcExecutor) {}
 
   // clientId: hash de la IP (anti-abuso); viaja al RPC como client_hash para el rate-limit.
   async search(term: string, clientId?: string): Promise<MediatedSearchResult> {
-    const { data, error } = await this.client.rpc("search_patient", {
-      term,
-      client_hash: clientId ?? null,
-    });
-    if (error) {
-      console.error("[search] RPC error:", error.message);
+    let rows: RpcRow[];
+    try {
+      rows = (await this.db.execute(
+        sql`select result from public.search_patient(${term}, ${clientId ?? null})`,
+      )) as unknown as RpcRow[];
+    } catch (error) {
+      console.error("[search] RPC error:", safeErrorTag(error));
       return { kind: "no-results" };
     }
-    const results = ((data as RpcRow[] | null) ?? []).map((r) => r.result);
+    const results = rows.map((r) => r.result);
     if (results.some((r) => r?.invalid_term)) return { kind: "invalid-term" };
     if (results.some((r) => r?.rate_limited)) return { kind: "rate-limited" };
 
