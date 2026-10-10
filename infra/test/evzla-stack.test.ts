@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -316,30 +317,33 @@ describe("server bundle symlinks", () => {
   let workDir: string;
 
   beforeAll(() => {
-    // Reproduce OpenNext: .next/node_modules/postgres apunta a node_modules/.pnpm dentro del bundle,
-    // y node_modules/postgres apunta fuera de él.
+    // Reproduce el layout pnpm de OpenNext: next es un symlink a node_modules/.pnpm y solo encuentra
+    // @swc/helpers como hermano dentro de .pnpm; postgres queda como symlink en .next/node_modules.
     workDir = mkdtempSync(path.join(tmpdir(), "evzla-open-next-"));
     const web = path.join(workDir, "web");
     cpSync(path.join(infraDir, "test/fixtures/web"), web, { recursive: true });
-    const store = path.join(workDir, "store/postgres");
-    mkdirSync(store, { recursive: true });
-    writeFileSync(path.join(store, "package.json"), JSON.stringify({ name: "postgres" }));
-    const modules = path.join(web, ".open-next/server-functions/default/node_modules");
-    mkdirSync(modules, { recursive: true });
-    symlinkSync(store, path.join(modules, "postgres"), "dir");
-
     const bundle = path.join(web, ".open-next/server-functions/default");
+    const store = path.join(bundle, "node_modules/.pnpm/next@1.0.0/node_modules");
+    mkdirSync(path.join(store, "next"), { recursive: true });
+    writeFileSync(path.join(store, "next/index.js"), 'module.exports = require("@swc/helpers");');
+    mkdirSync(path.join(store, "@swc/helpers"), { recursive: true });
+    writeFileSync(path.join(store, "@swc/helpers/index.js"), 'module.exports = "swc-ok";');
+    const appModules = path.join(bundle, "apps/web/node_modules");
+    mkdirSync(appModules, { recursive: true });
+    symlinkSync(path.relative(appModules, path.join(store, "next")), path.join(appModules, "next"), "dir");
+
     const pnpmPostgres = path.join(bundle, "node_modules/.pnpm/postgres@3.4.9/node_modules/postgres");
     mkdirSync(pnpmPostgres, { recursive: true });
-    writeFileSync(path.join(pnpmPostgres, "package.json"), JSON.stringify({ name: "postgres" }));
+    writeFileSync(path.join(pnpmPostgres, "package.json"), JSON.stringify({ name: "postgres", main: "index.js" }));
+    writeFileSync(path.join(pnpmPostgres, "index.js"), 'module.exports = "postgres-ok";');
     const nextModules = path.join(bundle, "apps/web/.next/node_modules");
     mkdirSync(nextModules, { recursive: true });
-    symlinkSync(path.relative(nextModules, pnpmPostgres), path.join(nextModules, "postgres"), "dir");
+    symlinkSync(path.relative(nextModules, pnpmPostgres), path.join(nextModules, "postgres-635d2c4bff0272e6"), "dir");
   });
 
   afterAll(() => rmSync(workDir, { recursive: true, force: true }));
 
-  it("materializes symlinked dependencies inside the server asset", () => {
+  it("ships the server as a zip that keeps pnpm symlinks resolvable", () => {
     const { evzla } = synth({ openNextPath: path.join(workDir, "web/.open-next") });
     const json = Template.fromStack(evzla).toJSON() as { Resources: Record<string, Resource> };
     const server = Object.values(json.Resources).find(
@@ -349,14 +353,21 @@ describe("server bundle symlinks", () => {
     );
     const s3Key = (server?.Properties.Code as { S3Key?: string } | undefined)?.S3Key;
     if (!s3Key) throw new Error("server asset key missing");
-    const outdir = (evzla.node.root as App).outdir;
-    const assetDir = path.join(outdir, `asset.${s3Key.replace(/\.zip$/, "")}`);
+    const zip = path.join((evzla.node.root as App).outdir, `asset.${s3Key}`);
+    expect(existsSync(zip)).toBe(true);
 
-    for (const rel of ["node_modules/postgres", "apps/web/.next/node_modules/postgres"]) {
-      const dir = path.join(assetDir, rel);
-      expect(lstatSync(dir).isSymbolicLink(), rel).toBe(false);
-      expect(existsSync(path.join(dir, "package.json")), rel).toBe(true);
-    }
+    const extracted = path.join(workDir, "extracted");
+    execFileSync("unzip", ["-q", zip, "-d", extracted]);
+    const nextLink = path.join(extracted, "apps/web/node_modules/next");
+    expect(lstatSync(nextLink).isSymbolicLink()).toBe(true);
+
+    const load = (rel: string) =>
+      execFileSync(process.execPath, ["-e", `process.stdout.write(require(${JSON.stringify(rel)}))`], {
+        cwd: extracted,
+        encoding: "utf8",
+      });
+    expect(load("./apps/web/node_modules/next")).toBe("swc-ok");
+    expect(load("./apps/web/.next/node_modules/postgres-635d2c4bff0272e6")).toBe("postgres-ok");
   });
 });
 

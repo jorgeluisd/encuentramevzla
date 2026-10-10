@@ -38,3 +38,4 @@ cdk.out/
 
 # OpenNext (build:aws)
 .open-next/
+cdk-outputs.json
