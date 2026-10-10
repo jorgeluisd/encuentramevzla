@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Link from "next/link";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import { EmergencyBanner } from "@/components/emergency-banner";
 import { TermsGate } from "@/components/terms-gate";
 import "./globals.css";
@@ -210,8 +208,6 @@ export default function RootLayout({
           </div>
         </footer>
         <TermsGate />
-        <Analytics />
-        <SpeedInsights />
       </body>
     </html>
   );
