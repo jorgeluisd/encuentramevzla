@@ -17,8 +17,8 @@ Closes #
 > Ante la duda: ¿esto puede filtrar un dato sensible? Si no es un "no" rotundo, detente.
 
 - [ ] No expone el schema `sensitive` (teléfonos, direcciones, observaciones clínicas) al cliente.
-- [ ] El público consulta solo vía el RPC `public.search_patient` (`SECURITY DEFINER`), no tablas directas.
-- [ ] No devuelve datos de menores ni fallecidos (marcador `requires_human_contact` donde aplique).
+- [ ] El público consulta solo vía los RPC mediados (`search_patient`, `list_solidarity_services`) con el rol `evzla_public`; no se agregan grants sobre tablas.
+- [ ] Menores y fallecidos: el buscador devuelve solo la ubicación mediada, igual que al resto (ADR-0003); nada del schema `sensitive`.
 - [ ] No loggea el término de búsqueda en claro (en `search_log` solo va el hash).
 - [ ] No hay secretos/credenciales en el código ni en el historial.
 

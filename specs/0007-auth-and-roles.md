@@ -1,5 +1,7 @@
 # 0007 — Auth magic-link + roles del equipo
 
+> Estado (2026-10-09): la auth pasó a Amazon Cognito con EMAIL_OTP — ver ADR-0010. Ya no hay `@supabase/ssr`, `auth.users`, anon/authenticated ni RLS como acceso del cliente: `team_members` se lee server-side con el rol `evzla_admin`; la allow-list y los roles de esta spec siguen vigentes.
+
 Estado: **en progreso** · Rama: `feat/auth-magic-link` (desde `develop`).
 Capas: domain (Role) · application (port + use case) · infrastructure (Drizzle + Supabase SSR) ·
 presentation (`/admin/*`, `/auth/callback`). Privacidad: ver `.claude/skills/privacy-and-security.md`.

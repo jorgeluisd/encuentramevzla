@@ -4,6 +4,11 @@ Pipeline de **diagnóstico** (no ejecuta reemplazo ni fusión). Cruza un `.xlsx`
 producción y produce un reporte cuantificado en `docs/reports/`. Todo vive en el esquema aislado
 `reconciliation` y se revierte por completo con `DROP SCHEMA reconciliation CASCADE`.
 
+> **Estado en AWS (desde el 9 de octubre de 2026):** el esquema `reconciliation` **no** está en la base
+> viva (`encuentramevzla` en RDS). Quedó archivado como dump aparte en el bucket de backups
+> (`evzla-backups-<account-id>`). Para volver a usar este pipeline, restaurá ese dump en una base de
+> trabajo (local o temporal) y apuntá `DATABASE_URL` ahí; no lo recrees en producción sin una decisión nueva.
+
 ## Restricciones duras
 - **Cero mutación** de tablas preexistentes (`public` / `sensitive`). El pipeline es solo lectura sobre ellas.
 - El staging vive en `reconciliation` (esquema nuevo, aislado, droppable).
@@ -28,11 +33,11 @@ Sobre local (`127.0.0.1`) no hace falta.
 ## Paso 1 — Correr el diagnóstico
 
 ```bash
-# Desarrollo/ensayo contra Supabase local (docker):
-DATABASE_URL=postgres://...127.0.0.1:54322/postgres \
+# Desarrollo/ensayo contra un Postgres local (con el dump de reconciliation restaurado):
+DATABASE_URL=postgres://...127.0.0.1:5432/encuentramevzla \
   pnpm --filter @evzla/db reconcile all --file "/ruta/al/01-Lista digitalizada ....xlsx"
 
-# Contra PROD (tras el pg_dump verificado):
+# Contra PROD (RDS por el túnel SSM, con evzla_owner; tras el pg_dump verificado):
 DATABASE_URL="$PROD_URL" \
   pnpm --filter @evzla/db reconcile all --file "/ruta/....xlsx" --i-have-a-verified-dump
 ```

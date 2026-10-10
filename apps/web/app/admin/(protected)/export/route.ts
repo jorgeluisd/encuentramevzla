@@ -7,7 +7,7 @@ import { SheetjsWorkbookWriter } from "@/lib/infrastructure/patient-registry/she
 // re-verifica sesión + rol + scope server-side (no confía en la UI). Audita la descarga.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 120; // defensivo (Vercel Pro): construir el .xlsx no debe colgar.
+export const maxDuration = 120; // En Lambda manda el timeout de la función (infra).
 
 export async function GET(request: Request): Promise<Response> {
   // 1. Autorización: sesión + membresía activa + rol que puede descargar.

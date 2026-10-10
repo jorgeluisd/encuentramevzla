@@ -11,26 +11,25 @@ qué piezas hay, cómo se comunican, qué es público y qué no, y un glosario d
 
 ## 1. ¿Tenemos una API? ¿Es pública? ¿Cómo nos comunicamos?
 
-**No tenemos un backend ni una API REST propia.** No hay un servidor "nuestro" con endpoints tipo
-`/api/buscar`. En su lugar:
+**No tenemos una API REST propia** tipo `/api/buscar`. Todo el servidor es la app Next.js, que corre
+en **AWS Lambda** (empaquetada con OpenNext) detrás de **CloudFront**. Desde el 9 de octubre de 2026
+todo vive en AWS (`sa-east-1`); ver [ADR-0010](../adr/0010-migracion-supabase-vercel-a-aws.md).
 
-- **Toda la base de datos es Supabase** (Postgres). No escribimos un backend; usamos las piezas que
-  Supabase ya ofrece.
-- La **única "puerta" pública a los datos** es **una función** de la base de datos: el **RPC**
-  `search_patient`. No hay acceso directo a tablas desde el navegador.
-- El **navegador del público nunca habla directo con la base de datos**. Desde el cambio anti-abuso,
-  habla con una **Server Action** (código de servidor de Next.js que corre en Vercel), y esa Server
-  Action es la que llama al RPC.
+- La base es **RDS PostgreSQL 18** (base `encuentramevzla`, privada). El navegador **nunca** habla con ella.
+- La **única "puerta" pública a los datos** es **una función** de la base: el **RPC** `search_patient`
+  (más `list_solidarity_services` para el directorio de servicios). No hay acceso directo a tablas.
+- El navegador del público habla con una **Server Action** (código de servidor de Next.js en Lambda), y esa
+  Server Action llama al RPC con el rol de base **`evzla_public`**, que **solo** puede ejecutar esos RPC.
 
 Hay **dos caminos de comunicación** muy distintos según quién use el sistema:
 
 | | **Público (familias)** | **Equipo (admin / ingesta)** |
 |---|---|---|
 | Entra por | La home `/` | `/admin/*` (requiere login) |
-| Se autentica | No (anónimo) | Sí (magic link de Supabase Auth) |
-| Cómo llega a los datos | Server Action → **RPC `search_patient`** (con la *anon key*) | Conexión **directa a Postgres** (Drizzle) con credenciales de servidor |
-| Qué puede ver | Solo el resultado mediado (hospital + teléfono) | Lo que su rol permita (cola de revisión, auditoría, etc.) |
-| Puede tocar tablas | **No** (RLS lo prohíbe) | Sí, desde el servidor |
+| Se autentica | No (anónimo) | Sí (código de un solo uso por correo, **Amazon Cognito** EMAIL_OTP) |
+| Cómo llega a los datos | Server Action → **RPC `search_patient`** con el rol `evzla_public` | Server Actions / páginas → **Drizzle** con el rol `evzla_admin` |
+| Qué puede ver | Solo el resultado mediado (hospital + teléfono de la mesa + nombre) | Lo que su rol de equipo permita (cola de revisión, auditoría, etc.) |
+| Puede tocar tablas | **No** (el rol `evzla_public` no tiene grants sobre tablas) | Sí, desde el servidor |
 
 En resumen: **la "API pública" es una sola función de base de datos, mediada y blindada**, y se
 accede a ella a través de nuestro propio código de servidor.
@@ -51,38 +50,42 @@ flowchart TB
         turnstile["Turnstile<br/>(verificación humana)"]
     end
 
-    subgraph vercel["▲ Vercel — Next.js (nuestro código de servidor)"]
-        home["Home estática /<br/>+ formulario de búsqueda"]
-        action["Server Action de búsqueda<br/>(verifica Turnstile + hash de IP)"]
-        admin["Páginas /admin<br/>(auth, ingesta, revisión)"]
-    end
-
-    subgraph supabase["🟢 Supabase"]
-        auth["Supabase Auth<br/>(magic link)"]
-        rpc["RPC search_patient<br/>(SECURITY DEFINER, mediado)"]
-        pg[("🐘 Postgres 16<br/>schema public + sensitive")]
+    subgraph aws["🟧 AWS sa-east-1"]
+        cdn["CloudFront<br/>(+ header x-origin-verify)"]
+        lambda["Lambda — Next.js vía OpenNext<br/>(home, Server Actions, /admin, proxy.ts)"]
+        cognito["Cognito<br/>(EMAIL_OTP)"]
+        s3["S3<br/>(subidas de Excel)"]
+        secrets["Secrets Manager<br/>(evzla/db/*, evzla/app)"]
+        sched["EventBridge Scheduler<br/>→ Lambda de purga"]
+        subgraph rds["RDS PostgreSQL 18 (blockealo-prod-db)"]
+            rpc["RPC search_patient<br/>(SECURITY DEFINER, mediado)"]
+            pg[("🐘 base encuentramevzla<br/>schema public + sensitive")]
+        end
     end
 
     familia -->|"resuelve dominio"| dns
     familia -->|"resuelve reto"| turnstile
-    familia -->|"envía búsqueda (POST)"| action
-    action -->|"valida token"| turnstile
-    action -->|"llama con anon key (HTTPS)"| rpc
+    familia --> cdn
+    equipo --> cdn
+    cdn --> lambda
+    lambda -->|"valida token"| turnstile
+    lambda -->|"rol evzla_public"| rpc
     rpc --> pg
-
-    equipo -->|"login"| auth
-    equipo --> admin
-    admin -->|"conexión directa (Drizzle)"| pg
+    lambda -->|"rol evzla_admin (Drizzle)"| pg
+    lambda -->|"login / refresh"| cognito
+    lambda -->|"URL prefirmada / lectura"| s3
+    lambda -->|"credenciales"| secrets
+    sched -->|"rol evzla_job: purge_search_log()"| pg
 
     classDef pub fill:#fee2e2,stroke:#b91c1c;
     classDef srv fill:#dbeafe,stroke:#1d4ed8;
     classDef db fill:#dcfce7,stroke:#15803d;
     class familia,equipo pub;
-    class home,action,admin srv;
-    class auth,rpc,pg db;
+    class cdn,lambda,cognito,s3,secrets,sched srv;
+    class rpc,pg db;
 ```
 
-**Cómo leerlo:** rojo = público/no confiable, azul = nuestro código de servidor, verde = Supabase.
+**Cómo leerlo:** rojo = público/no confiable, azul = nuestra infraestructura AWS, verde = base de datos.
 El público (rojo) **nunca** toca el verde directamente: siempre pasa por el azul.
 
 ---
@@ -96,8 +99,8 @@ sequenceDiagram
     autonumber
     participant U as 👩 Navegador (familia)
     participant T as ☁️ Turnstile (Cloudflare)
-    participant A as ▲ Server Action (Vercel)
-    participant R as 🟢 RPC search_patient (Supabase)
+    participant A as λ Server Action (Lambda)
+    participant R as 🟢 RPC search_patient (RDS)
     participant DB as 🐘 Postgres
 
     U->>U: Llena Nombre / Apellido / Cédula
@@ -111,7 +114,7 @@ sequenceDiagram
     alt token inválido
         A-->>U: "No pudimos verificar la solicitud"
     else token válido
-        A->>R: search_patient(term, client_hash) [anon key, HTTPS]
+        A->>R: search_patient(term, client_hash) [rol evzla_public, TLS]
         Note over R: Rate-limit: ¿este client_hash<br/>hizo +300 búsquedas en 10 min?
         alt excede el límite
             R->>DB: registra hash + 'rate_limited'
@@ -159,22 +162,29 @@ flowchart TD
 
 ## 5. Flujo: ingesta de listas (equipo / admin)
 
-Cómo el equipo sube las listas de hospitales. Este camino **sí** escribe en la base, con
-credenciales de servidor y autorización por rol.
+Cómo el equipo sube las listas de hospitales. Este camino **sí** escribe en la base, con el rol
+`evzla_admin` y autorización por rol de equipo.
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant M as 🧑‍💼 Moderador (navegador)
-    participant Auth as 🟢 Supabase Auth
-    participant N as ▲ Next.js (servidor)
-    participant DB as 🐘 Postgres (Drizzle, conexión directa)
+    participant C as 🟧 Cognito
+    participant N as λ Next.js (Lambda)
+    participant S3 as 🟧 S3 (subidas)
+    participant DB as 🐘 Postgres (Drizzle, rol evzla_admin)
 
-    M->>Auth: Pide acceso (magic link a su correo)
-    Auth-->>M: Enlace de un solo uso
-    M->>N: Entra con la sesión válida
+    M->>N: Pide acceso con su correo [Server Action]
+    N->>C: InitiateAuth (USER_AUTH, EMAIL_OTP)
+    C-->>M: Código de un solo uso por correo
+    M->>N: Envía el código
+    N->>C: RespondToAuthChallenge → id token + refresh token (cookies httpOnly)
     N->>DB: Verifica membresía + rol (team_members)
-    M->>N: Sube Excel (.xlsx) [Server Action]
+    M->>N: Pide URL de subida [Server Action]
+    N-->>M: URL prefirmada de S3 (tamaño y tipo firmados)
+    M->>S3: Sube el .xlsx directo (PUT)
+    M->>N: Procesar el objeto subido [Server Action]
+    N->>S3: Lee el objeto (y lo borra al terminar)
     N->>N: Parsea (SheetJS), deduplica y arma el grafo en memoria (IDs propios)
     N->>DB: Persiste en LOTE dentro de UNA transacción (public + sensitive)
     Note over N,DB: Atómico por archivo: si algo falla, rollback total → reprocesable
@@ -202,7 +212,7 @@ flowchart TD
     end
     subgraph I["🔌 Infraestructura — adapters"]
         direction TB
-        ad["TurnstileVerifier · SupabaseGateway · Drizzle repos · SheetJS"]
+        ad["TurnstileVerifier · DrizzlePatientSearchGateway · Drizzle repos · Cognito · S3 · SheetJS"]
     end
     subgraph A["⚙️ Aplicación — casos de uso + ports"]
         direction TB
@@ -223,7 +233,7 @@ flowchart TD
 - **Aplicación**: los *casos de uso* (ej. `SearchPatients`) y los *ports* (interfaces que dicen
   "necesito algo que verifique humanos", sin saber que es Turnstile).
 - **Infraestructura**: los *adapters* que cumplen esos ports usando tecnología real (Turnstile,
-  Supabase, Drizzle, SheetJS).
+  Drizzle, Cognito, S3, SheetJS).
 - **Presentación**: Next.js (lo que el usuario ve) + el *composition root* que enchufa todo.
 
 > Ventaja práctica: el día de mañana se puede cambiar Turnstile por otro proveedor tocando **solo**
@@ -246,29 +256,30 @@ flowchart LR
         notes["clinical_notes<br/>(notas clínicas)"]
     end
 
-    anon["👩 Público (anon key)"] -->|"solo EXECUTE del RPC"| rpc2["search_patient"]
+    anon["👩 Público (rol evzla_public)"] -->|"solo EXECUTE del RPC"| rpc2["search_patient"]
     rpc2 -->|"lee"| pub
     rpc2 -.->|"❌ NUNCA"| sens
-    server["▲ Servidor (Drizzle)"] -->|"lee/escribe"| pub
+    server["λ Servidor (Drizzle, rol evzla_admin)"] -->|"lee/escribe"| pub
     server -->|"lee/escribe"| sens
 
     classDef forbidden fill:#fee2e2,stroke:#b91c1c;
     class sens forbidden;
 ```
 
-- El rol **anónimo** (`anon`) **no tiene permisos** sobre ninguna tabla; lo único que puede hacer es
-  **ejecutar el RPC**. Por eso aunque la *anon key* sea pública, no sirve para sacar datos.
-- El schema **`sensitive`** solo es accesible desde el **servidor** (conexión directa). Jamás se
+- El rol **`evzla_public`** **no tiene permisos** sobre ninguna tabla; lo único que puede hacer es
+  **ejecutar los RPC mediados**. Aunque un bug dejara pasar SQL por ese camino, no sirve para sacar datos.
+- El schema **`sensitive`** solo es accesible desde el **servidor** con el rol `evzla_admin`. Jamás se
   expone al navegador.
+- `evzla_job` solo puede ejecutar `purge_search_log()` (borra `search_log` de más de 90 días).
 
 ---
 
 ## 8. Modelo de datos (tablas y campos)
 
-La base es **Postgres 16** en Supabase, partida en **dos schemas** por diseño de privacidad:
+La base es **RDS PostgreSQL 18** (base `encuentramevzla` en la instancia `blockealo-prod-db`), partida en **dos schemas** por diseño de privacidad:
 `public` (mostrable / no sensible) y `sensitive` (PII y clínico, aislado). El esquema lo define
 Drizzle en `packages/db/src/schema/` y se materializa con las migraciones SQL de
-`supabase/migrations/`.
+`supabase/migrations/` (nombre heredado del proveedor anterior), aplicadas con el rol `evzla_owner`.
 
 ### 8.1 Relaciones (diagrama entidad-relación)
 
@@ -359,7 +370,7 @@ erDiagram
 | Campo | Tipo | Qué es |
 |---|---|---|
 | `id` | uuid (PK) | Identificador. |
-| `email` | text · **NOT NULL · UNIQUE** | Correo (minúsculas); se une con la sesión de Supabase Auth. |
+| `email` | text · **NOT NULL · UNIQUE** | Correo (minúsculas); se une con el claim `email` del id token de Cognito. |
 | `role` | team_role · **NOT NULL** | `uploader` o `moderator`. |
 | `hospital_id` | uuid · null · FK→hospitals | Hospital asignado (null = moderador global). |
 | `active` | boolean · default `true` | Si la membresía está activa. |
@@ -435,7 +446,8 @@ toca. El RPC `search_patient` **jamás** lee de este schema.
 | Término | Qué es (en cristiano) |
 |---|---|
 | **Next.js** | El framework con el que está hecha la web (páginas, navegación, y también código de servidor). |
-| **Vercel** | La plataforma donde está desplegada/alojada la web (hosting). |
+| **AWS Lambda + OpenNext** | Donde corre la web: OpenNext empaqueta Next.js para que corra en funciones Lambda (`build:aws`). |
+| **CloudFront** | La CDN de AWS delante de la Lambda y de los archivos estáticos. Le agrega a cada pedido el header `x-origin-verify` para que nadie llame a la Lambda por fuera. |
 | **App Router** | La forma moderna de Next.js de organizar páginas por carpetas. |
 | **Server Component (RSC)** | Componente que se ejecuta **en el servidor** y manda HTML ya listo. No corre en el navegador. |
 | **Client Component** | Componente que corre **en el navegador** (necesita interactividad: clicks, estados…). |
@@ -443,19 +455,17 @@ toca. El RPC `search_patient` **jamás** lee de este schema.
 | **Estática / `force-static` / ISR** | La home se genera una vez y se sirve desde la CDN (rapidísimo, sin gastar servidor). Se regenera sola cuando se sube una lista nueva (`revalidatePath('/')`). |
 | **CDN** | Red de servidores repartidos por el mundo que sirven contenido estático muy rápido y cerca del usuario. |
 
-### Base de datos y Supabase
+### Base de datos
 
 | Término | Qué es |
 |---|---|
-| **Supabase** | El "backend como servicio": nos da Postgres, autenticación y APIs sin programar un servidor. |
-| **Postgres** | La base de datos (donde viven hospitales, pacientes, ingresos…). |
-| **PostgREST** | La capa de Supabase que convierte la base de datos en una API HTTP. Es lo que permite llamar al RPC por internet. |
+| **RDS PostgreSQL** | La base de datos administrada por AWS (donde viven hospitales, pacientes, ingresos…). Es privada: solo la alcanzan nuestras Lambdas y, para operar, un túnel SSM. |
 | **RPC** ⭐ | *Remote Procedure Call*. Aquí significa **llamar a una función guardada dentro de la base de datos** (`search_patient`) como si fuera un endpoint. Es la única puerta pública a los datos. |
 | **`search_patient`** | Nuestra función RPC: recibe el término, aplica rate-limit, busca de forma mediada y devuelve solo hospital + teléfono. |
-| **RLS (Row Level Security)** | Reglas de Postgres que deciden quién puede ver/tocar qué filas. Aquí: el público no puede tocar ninguna tabla. |
+| **Roles `evzla_*`** ⭐ | Usuarios de base con permisos mínimos: `evzla_public` (solo ejecuta los RPC públicos), `evzla_admin` (la app de `/admin`), `evzla_job` (solo la purga) y `evzla_owner` (migraciones). |
 | **SECURITY DEFINER** ⭐ | Hace que la función se ejecute con los **permisos de su dueño**, no los de quien la llama. Así el público (sin permisos) puede ejecutar la función, y la función —por dentro— sí puede leer las tablas necesarias, de forma controlada. |
-| **anon key (clave anónima)** | Clave **pública** del proyecto Supabase. Identifica al "visitante anónimo". Por RLS, con ella **solo** se puede ejecutar el RPC, nada más. |
-| **service role** | Clave **secreta** de máximos permisos. Solo en el servidor (ingesta/admin). Jamás en el navegador. |
+| **Secrets Manager** | Donde viven las credenciales de cada rol (`evzla/db/*`) y las claves de la app (`evzla/app`). Nunca en el repo. |
+| **EventBridge Scheduler** | El "cron" de AWS: todos los días a las 03:00 UTC dispara la Lambda que purga `search_log`. |
 | **Drizzle** | El ORM (traductor entre TypeScript y SQL) con el que el servidor habla directo con Postgres. |
 | **schema `public` / `sensitive`** | Dos "cajones" separados de la base: `public` = datos mostrables; `sensitive` = PII y datos clínicos, aislados. |
 | **`search_log`** | Bitácora anti-abuso: guarda **solo hashes** (del término y de la IP) + el tipo de resultado. Nunca texto en claro. |
@@ -474,25 +484,26 @@ toca. El RPC `search_patient` **jamás** lee de este schema.
 | **Hash / SHA-256** ⭐ | Una "huella digital" irreversible de un dato. Del hash no se puede volver al original. Lo usamos para term y para la IP. |
 | **Sal (salt)** | Una cadena secreta que se mezcla con la IP antes de hashearla, para que el hash no se pueda adivinar por fuerza bruta. |
 | **NAT / IP compartida** | Varias personas tras el mismo WiFi salen a internet con **una sola IP pública**. Por eso el límite por IP se puso generoso (300): para no bloquear a familias que comparten red. |
-| **x-forwarded-for** | La cabecera HTTP donde Vercel nos dice la IP real del visitante. |
+| **x-forwarded-for** | La cabecera HTTP donde CloudFront nos dice la IP real del visitante. |
 
 ### Autenticación y dominio
 
 | Término | Qué es |
 |---|---|
-| **Supabase Auth / Magic link** | Login sin contraseña: el equipo recibe un **enlace de un solo uso** en su correo para entrar. |
+| **Cognito / EMAIL_OTP** | Login sin contraseña: el equipo recibe un **código de un solo uso** en su correo (enviado por SES) y lo escribe en `/admin/login`. |
 | **team_members** | La tabla con los correos del equipo y su rol (quién puede subir listas, revisar, etc.). |
-| **DNS / Cloudflare** | El dominio `encuentramevzla.com` se registra en AWS pero su DNS lo gestiona **Cloudflare**, que apunta a Vercel. |
+| **DNS / Cloudflare** | El DNS de `encuentramevzla.com` lo gestiona **Cloudflare**, que apunta a CloudFront. |
 
 ---
 
 ## 10. Reglas innegociables (recordatorio)
 
 1. El schema **`sensitive` jamás** llega al cliente.
-2. El público **solo** accede vía el RPC `search_patient`.
+2. El público **solo** accede vía el RPC `search_patient`, con el rol `evzla_public` (sin grants sobre tablas).
 3. `search_log` guarda **solo hashes**, nunca el término en claro.
 4. Anti-abuso: **Turnstile** (humanidad) + **rate-limit 300/10min** (frecuencia).
-5. Nada de `npm` (siempre `pnpm`); código en inglés, comentarios cortos en español.
+5. Los logs (CloudWatch) no llevan PII: errores como `nombre:código`.
+6. Nada de `npm` (siempre `pnpm`); código en inglés, comentarios cortos en español.
 
 > Nota: existe una excepción documentada (ADR-0003) — el buscador hoy **sí** muestra la ubicación de
 > menores y fallecidos, por decisión humana explícita del dueño del dato.

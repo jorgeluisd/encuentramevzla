@@ -2,6 +2,8 @@
 
 Fecha: 2026-07-23 · Estado: **borrador (pendiente de "acepto")** · Extiende: [[ADR-0008]] (diagnóstico), [[ADR-0004]] (matching conservador), [[ADR-0007]] (remediación reversible), spec 0009 (cola de revisión), spec 0010 (fusión).
 
+Partially superseded by [ADR-0010](./0010-migracion-supabase-vercel-a-aws.md).
+
 > ADR-0008 **diagnosticó**; este ADR **ejecuta**: lleva el valor del Excel consolidado a producción
 > **sin perder prod** y sin filtrar datos sensibles. Lee del esquema `reconciliation` ya poblado
 > (`run_id dedc32e8…`). Toda escritura es **auditada, reversible y con `pg_dump` previo**.

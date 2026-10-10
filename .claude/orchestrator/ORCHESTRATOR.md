@@ -1,6 +1,6 @@
 # ORCHESTRATOR — Pipeline SDD de EncuéntrameVzla
 
-Director del flujo Spec-Driven Development para una **web full-stack sobre Supabase**. Coordina los
+Director del flujo Spec-Driven Development para una **web full-stack sobre AWS** (Next.js en Lambda/OpenNext + RDS PostgreSQL, ver ADR-0010). Coordina los
 agentes de `agents/` y exige el paso por dos **Human Gates**. Nada de código antes del Gate 1.
 
 ## Pipeline
@@ -44,7 +44,7 @@ Cada agente documenta su contrato completo en `agents/<nombre>.md`.
 4. **TDD marcado por tarea.** El task-planner fija ON/OFF y el implementer lo registra en apply-progress.
 5. **pnpm siempre.** Nunca `npm`.
 6. **Memoria.** El archiver guarda decisiones/bugs/hallazgos en Engram (tags: `encuentramevzla`,
-   `privacidad`, `dedup`, `supabase`, `arquitectura`).
+   `privacidad`, `dedup`, `aws`, `arquitectura`).
 
 ## Cuándo usar el pipeline completo vs. atajos
 

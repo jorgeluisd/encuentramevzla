@@ -30,16 +30,18 @@ funciona ("no romper lo verde") y explícito con las decisiones de privacidad.
 | Monorepo | **pnpm 9.15** + **Turborepo**, Node **≥22** |
 | Lenguaje | **TypeScript 5.7** estricto (`strict`, `noUncheckedIndexedAccess`, `noImplicitOverride`, `noUnusedLocals/Parameters`, `noFallthroughCasesInSwitch`) |
 | Frontend | **Next.js 16** (App Router) · **React 19** · **Tailwind 4** (`@tailwindcss/postcss`) · **shadcn/ui** |
-| Backend | **No hay backend propio → todo Supabase**: Postgres 16, RLS, RPC `SECURITY DEFINER`, Edge Functions (Deno), Auth magic-link (previsto) |
+| Infra | **100% AWS, `sa-east-1`** (desde 2026-10-09, ver ADR-0010): Next.js en **Lambda vía OpenNext** detrás de **CloudFront** · **RDS PostgreSQL 18** (base `encuentramevzla` en `blockealo-prod-db`) · **Cognito** (EMAIL_OTP) · **S3** (subidas) · **Secrets Manager** · **EventBridge Scheduler** (purga) · CDK en `infra/` · DNS en **Cloudflare** |
+| Base de datos | Roles `evzla_owner` / `evzla_admin` / `evzla_public` / `evzla_job`; RPC `SECURITY DEFINER` como único acceso público. Sin PostgREST |
 | ORM | **Drizzle** (`drizzle-orm`, `drizzle-kit`) |
 | Tests | **Vitest 4** (`vitest run`) |
 | Excel | **SheetJS** (`xlsx`) |
 
 **Paquetes del workspace:**
 - `@evzla/core` — dominio + aplicación, **PURO** (sin I/O): value objects, matching/dedup, ports, casos de uso.
-- `@evzla/db` — esquema Drizzle (schemas `public` / `sensitive`) + cliente Postgres.
+- `@evzla/db` — esquema Drizzle (schemas `public` / `sensitive`) + `getDb('admin' | 'public' | 'job')` (un cliente por rol).
 - `@evzla/config` — tsconfig base + preset ESLint.
 - `@evzla/web` (`apps/web`) — presentación (Next.js) + composition root + infraestructura (adapters).
+- `@evzla/infra` (`infra/`) — AWS CDK (stacks, job de purga). Deploy con `cdk` desde `infra/`.
 
 **Regla global del usuario: usar SIEMPRE `pnpm`, nunca `npm`.** (instalar, scripts, audit, etc.)
 
@@ -56,7 +58,7 @@ funciona ("no romper lo verde") y explícito con las decisiones de privacidad.
 Capas:
 - **domain** — entidades, value objects, servicios de dominio. Puro, sin I/O ni libs externas.
 - **application** — casos de uso + **ports** (interfaces). Orquesta el dominio.
-- **infrastructure** — **adapters** que implementan los ports (Drizzle/Postgres, Supabase, SheetJS).
+- **infrastructure** — **adapters** que implementan los ports (Drizzle/Postgres, Cognito, S3, SheetJS).
 - **presentation** — `apps/web` + composition root (`apps/web/lib/composition.ts`).
 
 Detalle completo en `skills/architecture.md`.
@@ -95,9 +97,14 @@ Detalle completo en `skills/architecture.md`.
 ## 7. Prohibiciones (antipatrones de este proyecto)
 
 - ❌ Exponer el schema **`sensitive`** al cliente (teléfonos, direcciones, observaciones clínicas).
-- ❌ Que el público consulte tablas directamente: **todo va por el RPC `public.search_patient`** (`SECURITY DEFINER`).
-- ❌ Devolver datos de **menores de edad** o **fallecidos** por el buscador → marcador `{ requires_human_contact: true }`.
+- ❌ Que el público consulte tablas directamente: **todo va por el RPC `public.search_patient`** (`SECURITY DEFINER`)
+  con el rol `evzla_public`, que **solo** tiene EXECUTE sobre los RPC mediados. Nunca darle más grants.
+- ❌ Devolver por el buscador algo más que hospital, teléfono de la mesa, nombre y confianza. Para **menores**
+  y **fallecidos** también se informa la ubicación (ADR-0003; el marcador `requires_human_contact` fue retirado).
 - ❌ Loggear el término de búsqueda en claro: en `search_log` solo va el **hash**.
+- ❌ Loggear PII (términos, nombres, cédulas, teléfonos, filas) en CloudWatch: los errores se loggean como
+  `nombre:código` (`safeErrorTag`); el mensaje de Drizzle incluye los parámetros de la query.
+- ❌ Escribir secretos en el repo: van en **Secrets Manager** (`evzla/db/*`, `evzla/app`, `evzla/origin`).
 - ❌ Usar **`npm`**: siempre `pnpm`.
 - ❌ Violar la **regla de dependencia onion**: `domain` jamás importa hacia `application`/`infrastructure`/`presentation`.
   **Vigilado por ESLint** (`pnpm lint`): regla `import/no-restricted-paths` en `packages/core` y `apps/web`
@@ -113,7 +120,8 @@ Detalle completo en `skills/architecture.md`.
 - **Orchestrator SDD** → `orchestrator/ORCHESTRATOR.md`.
 - **Strict TDD** → `orchestrator/agents/strict-tdd.md`.
 - **Memoria Engram** → `engram/seeds.md` + protocolo de guardado proactivo (decisiones, bugs, hallazgos,
-  convenciones). Guarda con tags como `encuentramevzla`, `privacidad`, `dedup`, `supabase`, `arquitectura`.
+  convenciones). Guarda con tags como `encuentramevzla`, `privacidad`, `dedup`, `aws`, `arquitectura`.
 - **Specs vigentes** → `specs/0001-architecture-and-conventions.md`, `specs/0002-patient-deduplication.md`.
+- **ADRs** → `adr/` (infra vigente: `adr/0010-migracion-supabase-vercel-a-aws.md`).
 - **Arquitectura del sistema** → `docs/ARCHITECTURE.md` (versionado: flujos, glosario, diagramas).
-- **Assets locales (NO versionar)** → `draw/` (gitignored: Excel real de pacientes, PDF, diseño UI/UX).
+- **Assets locales (NO versionar)** → `draft/` (gitignored: Excel real de pacientes, PDF, diseño UI/UX, runbooks de la migración).

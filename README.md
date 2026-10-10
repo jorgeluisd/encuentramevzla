@@ -48,13 +48,14 @@ Bundle para AWS Lambda (OpenNext): `pnpm --filter @evzla/web build:aws` → `app
 ├── assets/
 │   └── brand/      Logos definitivos (SVG master + PNG) — ver assets/brand/README.md
 ├── specs/          SDD — arquitectura, convenciones, dedup, design-system (0003), UI concept (0004)
+├── infra/          @evzla/infra — AWS CDK (Lambda/OpenNext, CloudFront, Cognito, S3, SES, purga)
 └── supabase/
     ├── migrations/ SQL canónico de Postgres (extensiones, tablas, grants, RPC search_patient)
     └── functions/  `dedup` (worker fase 2, stub; heredado)
 ```
 
-> **Nota:** `draw/` está gitignored (contiene el Excel real de pacientes y el prototipo de UI/UX
-> `draw/design/concept-mvp1.html`). Por eso los logos viven en `assets/brand/` y el diseño se documenta
+> **Nota:** `draft/` está gitignored (contiene el Excel real de pacientes, el prototipo de UI/UX
+> `draft/design/concept-mvp1.html` y los runbooks de la migración a AWS). Por eso los logos viven en `assets/brand/` y el diseño se documenta
 > en `specs/` (ambos versionados). La documentación de arquitectura versionada vive en
 > `docs/ARCHITECTURE.md` (flujos, glosario y diagramas del sistema).
 
@@ -65,7 +66,7 @@ se amplía a desktop. Identidad y guía de UX:
 
 - **Tokens** (paleta + tipografía Inter + principios mobile-first): `specs/0003-design-system.md`.
 - **Concepto de pantallas y flujos** (público: buscador / coincidencia / sin resultados — privado:
-  login magic-link / ingesta): `specs/0004-ui-concept.md`, destilado del prototipo de UI/UX.
+  login con código por correo / ingesta): `specs/0004-ui-concept.md`, destilado del prototipo de UI/UX.
 - **Marca**: `assets/brand/` (logo SVG master + PNG).
 
 > **Arquitectura: AWS (sa-east-1).** No hay backend propio aparte de Next.js:
@@ -96,17 +97,18 @@ La privacidad de los pacientes es un **requisito innegociable** del diseño:
 
 - **Separación física público / sensible.** Hay dos *schemas* de Postgres:
   `public` (no sensible) y `sensitive` (teléfonos, direcciones, observaciones clínicas).
-  El rol anónimo **no tiene grants** sobre las tablas de datos; el schema `sensitive`
-  jamás es accesible desde el cliente.
+  El rol público `evzla_public` **solo** puede ejecutar los RPC mediados; no tiene grants sobre
+  tablas ni sobre `sensitive`, que jamás es accesible desde el cliente.
 - **Búsqueda controlada.** El público nunca consulta tablas directamente. Solo existe la
-  función `public.search_patient(term)` (`SECURITY DEFINER`), que valida el término,
-  hace el *matching* **por nombre o cédula** y, para **adultos vivos**, devuelve
-  `{ hospital_name, info_desk_phone, patient_name, confidence }` (nombres agrupados
-  por hospital — ver `[ADR-0002]`).
-  Si el match es un **menor de edad** o una persona **fallecida**, **nunca** se devuelve el
-  nombre: se entrega un marcador `{ requires_human_contact: true }` para derivar a atención humana.
-- **Anti-enumeración.** Se registra solo el **hash** del término buscado (`search_log`),
-  nunca el texto en claro. (Rate-limit previsto, ver TODO en el RPC.)
+  función `public.search_patient(term, client_hash)` (`SECURITY DEFINER`), que valida el término,
+  hace el *matching* **por nombre o cédula** y devuelve
+  `{ hospital_name, info_desk_phone, patient_name, confidence }` agrupado por hospital (ver
+  [ADR-0002](adr/0002-apertura-de-nombres-adultos.md)). Para **menores** y **fallecidos** también se
+  informa la ubicación ([ADR-0003](adr/0003-mostrar-ubicacion-todos-los-casos.md)); nunca teléfonos,
+  direcciones, cédula ni notas.
+- **Anti-enumeración.** Se registra solo el **hash** del término buscado (`search_log`, purgado a los
+  90 días), nunca el texto en claro. Rate-limit por hash de IP en el RPC + Cloudflare Turnstile.
+- **Logs sin PII.** Los errores se loggean como `nombre:código`; nunca términos, nombres ni filas.
 - **Derecho al olvido.** El dato crudo se preserva en `raw_rows` para trazabilidad, y el
   modelo permite la baja/anonimización de una persona y sus contactos sensibles.
 
@@ -114,25 +116,27 @@ La privacidad de los pacientes es un **requisito innegociable** del diseño:
 
 ## Estado y pendientes
 
-**MVP funcional desplegado en Vercel** (rama `main`). Arquitectura Onion + Screaming completa
-(`@evzla/core` puro · `@evzla/db` · infra + composition en `@evzla/web`). 319 pacientes en
-producción. Calidad: typecheck 4/4 · **77 tests** · build OK. Specs `0001`–`0010`; migraciones
-`0001`–`0004`.
+**En producción en AWS** (`sa-east-1`) desde el **9 de octubre de 2026**, desplegado desde `main`;
+Supabase y Vercel quedaron dados de baja ese día (ver [ADR-0010](adr/0010-migracion-supabase-vercel-a-aws.md)).
+Calidad: typecheck 5/5 paquetes · **395 tests** (core 286 · db 20 · web 61 · infra 28) · `build` y
+`build:aws` OK. Specs `0001`–`0025` · migraciones SQL `0001`–`0020` · ADRs `0001`–`0010`.
 
 **Implementado:**
-- **Buscador público** mobile-first: nombres de adultos vivos agrupados por hospital (opción
-  "abierta", consentida por la residente); menores/fallecidos → contacto humano. RPC `search_patient`.
-- **Diseño**: tokens oficiales (azul `#1565C0`, Inter), shadcn-style, banner de emergencia sticky,
-  contacto real de la Cruz Roja.
-- **Portal `/admin`**: auth **sin contraseña** (Cognito EMAIL_OTP) + roles (`uploader`/`moderator`) por allow-list
-  `team_members`; guard server-side; **audit log** (vista de moderador).
-- **Cola de revisión humana** (`/admin/review`, moderador): triage de los 7 casos dudosos +
-  **ejecución de la fusión** de pacientes (transaccional, hard delete del duplicado).
+- **Buscador público** mobile-first: nombres agrupados por hospital (opción "abierta", consentida por la
+  residente), también para menores/fallecidos (ADR-0003). Búsqueda multi-token y por trigramas, rate-limit
+  + Turnstile. RPC `search_patient`.
+- **Páginas públicas**: números de emergencia, directorio de **servicios solidarios** (publicación con
+  moderación y enlace de gestión por token), sello "última actualización".
+- **Diseño**: tokens oficiales (azul `#1565C0`, Inter), shadcn-style, banner de emergencia sticky.
+- **Portal `/admin`**: auth **sin contraseña** (Cognito EMAIL_OTP) + roles (`uploader` / `hospital_admin` /
+  `moderator`) por allow-list `team_members`; guard server-side; **audit log**; gestión de hospitales y
+  equipo; métricas.
+- **Ingesta**: Excel grande (subida directa a S3), dictado por voz, descarga de Excel por hospital,
+  matching conservador y catálogo canónico de hospitales (ADR-0004/0005/0006).
+- **Cola de revisión humana** (`/admin/review`) + **ejecución de la fusión** de pacientes.
 
 **Pendiente:**
-- **Operativo (para que el equipo pruebe):** alta de los emails del equipo en `team_members` ·
-  Redirect URLs del dominio de Vercel en Supabase · SMTP propio (el email por defecto tiene límite bajo).
-- **Producto:** apartado público con todos los **números de emergencia** (Caracas y La Guaira).
-- **Launch:** Cloudflare **Turnstile** + rate-limit del RPC · dominio `encuentramevzla.com` → Vercel.
-- **Opcional:** Service Worker PWA · variantes de logo/Open Graph · extraer `@evzla/infrastructure` ·
-  undo de fusión · CSV en ingesta · "Cargas recientes" persistida.
+- **Base de datos:** versionar en el repo los roles `evzla_*`, sus grants y `purge_search_log()` (hoy
+  solo en los scripts de la migración, `draft/aws-migration/`).
+- **Opcional:** Service Worker PWA · extraer `@evzla/infrastructure` · undo de fusión · CSV en ingesta ·
+  "Cargas recientes" persistida.

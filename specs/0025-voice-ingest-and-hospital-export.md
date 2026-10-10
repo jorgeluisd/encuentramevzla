@@ -1,4 +1,8 @@
-# Spec 0018 — Carga por voz + descarga de Excel por hospital (captura acotada)
+# Spec 0025 — Carga por voz + descarga de Excel por hospital (captura acotada)
+
+> Renumerada desde 0018 (número duplicado con 0018-search-trigram-index-usage).
+>
+> Estado (2026-10-09): Supabase y Vercel dados de baja; la app corre en AWS — ver ADR-0010. Hosting (D0) hoy: Lambda vía OpenNext + RDS; login (D3) hoy: Cognito EMAIL_OTP; las escrituras van con el rol `evzla_admin` (antes `service_role`).
 
 Estado: **propuesto** (pendiente Gate 1) · Capacidad: `patient-registry`
 Relacionado: spec 0007 (auth y roles), spec 0008 (ingesta + dedup), spec 0017 (ingesta robusta),
@@ -158,7 +162,7 @@ resultado público. También fuera: offline/PWA (Fase 1b), Telegram (Fase 2), se
   sismo las familias necesitan saber **en qué hospital** está la persona. Lo que se mantiene protegido: el
   buscador **jamás** devuelve datos del esquema `sensitive` (teléfono/dirección/notas del paciente), solo el
   `info_desk_phone` del hospital; y el nombre se muestra **limpio de marcadores** ("menor"/"fallecido", PRs
-  #53/#58). 0018 solo **captura** `is_minor` y el estado/`¿falleció?`; **no** cambia lo que ve el buscador.
+  #53/#58). 0025 solo **captura** `is_minor` y el estado/`¿falleció?`; **no** cambia lo que ve el buscador.
   (El efecto del *estado* en el buscador —localizado/de alta salen, trasladado actualiza— es otro mini-spec.)
 - **Voz a terceros:** el STT ve PII → adapter con **cláusula no-train**, **procesador documentado**, **aviso
   visible** al personal. **Audio descartado** tras transcribir (no se persiste blob).

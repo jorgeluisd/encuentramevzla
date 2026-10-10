@@ -1,5 +1,7 @@
 # Spec 0016 — Anti-abuso del buscador: rate-limit + Cloudflare Turnstile
 
+> Estado (2026-10-09): el gateway hoy es `DrizzlePatientSearchGateway` (rol `evzla_public`) y los secretos viven en Secrets Manager — ver ADR-0010.
+
 Estado: **propuesto** (pendiente Gate 1) · Capacidad: `patient-search` · Ver `privacy-and-security.md` (regla 4, anti-enumeración).
 Relacionado: spec 0015 / ADR-0003 (al exponer la ubicación en todos los casos, el anti-abuso pasa de "recomendado" a **requisito**).
 
@@ -76,14 +78,14 @@ Se añaden **dos defensas complementarias**:
 |---|---|---|
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare → Turnstile (nuevo widget) | clave pública del widget |
 | `TURNSTILE_SECRET_KEY` | idem (servidor) | clave secreta de verificación |
-| `RATE_LIMIT_IP_SALT` | secreto propio (Vercel env) | sal para hashear la IP (no reversible) |
+| `RATE_LIMIT_IP_SALT` | secreto propio (Secrets Manager `evzla/app`) | sal para hashear la IP (no reversible) |
 
 Constantes tunables (umbral/ventana) en el RPC: `30` / `10 min`. Documentadas para ajuste posterior.
 
 ## 5. Privacidad (qué se mantiene / refuerza)
 
 - `search_log` sigue guardando **solo hashes** (término + ahora IP). Ninguna IP en claro.
-- El público sigue accediendo solo vía `search_patient` (`SECURITY DEFINER`); ningún grant nuevo a `anon`.
+- El público sigue accediendo solo vía `search_patient` (`SECURITY DEFINER`); ningún grant nuevo al rol público (hoy `evzla_public`, antes `anon`).
 - Separación `public`/`sensitive` intacta. El anti-abuso **refuerza** la regla 4 (anti-enumeración).
 
 ## 6. Plan TDD / verificación

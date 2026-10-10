@@ -30,7 +30,7 @@ function toMember(row: {
   return { id: row.id, email: row.email, role: row.role, hospitalId: row.hospitalId, active: row.active };
 }
 
-// Gestión de la allow-list del equipo (P4). Conexión directa (service_role); solo servidor.
+// Gestión de la allow-list del equipo (P4). Rol evzla_admin; solo servidor.
 export class DrizzleTeamMemberAdmin implements TeamMemberAdmin {
   constructor(private readonly db: Db) {}
 

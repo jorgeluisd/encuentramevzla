@@ -21,7 +21,7 @@ function docNeedle(term: string): string {
 
 /**
  * Lista paginada (con IDs) de lo cargado por un hospital, para la vista Cargar.
- * Filtra por hospitalId (service_role) + búsqueda opcional por nombre/cédula, con LIMIT/OFFSET
+ * Filtra por hospitalId (rol evzla_admin) + búsqueda opcional por nombre/cédula, con LIMIT/OFFSET
  * para no traer miles de filas. Incluye sensibles SOLO de la página para prefilling del panel;
  * evita el fan-out del JOIN a `sensitive` cargando contactos/notas por lote.
  */

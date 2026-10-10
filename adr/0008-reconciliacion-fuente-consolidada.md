@@ -2,6 +2,8 @@
 
 Fecha: 2026-07-23 · Estado: **aceptado** · Extiende: [[ADR-0004]] (matching conservador), [[ADR-0005]] (catálogo de hospitales), [[ADR-0007]] (remediación prod) · Reusa: `packages/core/.../patient-registry/domain`.
 
+Partially superseded by [ADR-0010](./0010-migracion-supabase-vercel-a-aws.md).
+
 > Este ADR decide **cómo diagnosticar** si conviene reconciliar o reemplazar el contenido actual con un
 > `.xlsx` consolidado. **No ejecuta** ninguna de las dos: produce el reporte cuantificado que soporta esa
 > decisión. Toda operación es **solo lectura sobre producción**; el staging vive en un esquema aislado y

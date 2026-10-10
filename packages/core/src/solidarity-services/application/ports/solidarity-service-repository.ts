@@ -66,7 +66,7 @@ export interface ListAllInput {
   offset: number;
 }
 
-// Port de ESCRITURA (service_role, salta RLS por diseño).
+// Port de ESCRITURA (server-side, rol admin; el público solo lee por el RPC).
 export interface SolidarityServiceRepository {
   create(record: NewSolidarityServiceRecord): Promise<void>;
   countActiveByEmail(email: string): Promise<number>; // pending + approved

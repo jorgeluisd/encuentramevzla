@@ -12,7 +12,7 @@ import type {
 
 type Db = ReturnType<typeof getDb>;
 
-// Escritura por conexión directa (service_role, salta RLS). Solo servidor.
+// Escritura con el rol evzla_admin (el público solo lee por el RPC). Solo servidor.
 export class DrizzleSolidarityServiceRepository implements SolidarityServiceRepository {
   constructor(private readonly db: Db) {}
 

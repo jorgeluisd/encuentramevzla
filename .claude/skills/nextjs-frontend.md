@@ -17,7 +17,7 @@ de la onion: aquí se inyectan los adapters en los casos de uso de `@evzla/core`
 - Patrón: una función por caso de uso que construye el use case con sus ports implementados.
   ```ts
   export function searchPatientsUseCase(): SearchPatients {
-    return new SearchPatients(new SupabasePatientSearchGateway(createAnonClient()));
+    return new SearchPatients(new DrizzlePatientSearchGateway(getDb("public")));
   }
   ```
 - Los componentes/acciones **piden el caso de uso aquí**, no instancian adapters por su cuenta.
@@ -27,15 +27,18 @@ de la onion: aquí se inyectan los adapters en los casos de uso de `@evzla/core`
 - Archivo con `"use server"` arriba. Reciben `FormData` y delegan en el caso de uso del composition root.
 - Devuelven un estado serializable (`{ ok, mensaje?, resumen? }`) para `useActionState`.
 - Validan input antes de ejecutar (p. ej. archivo `.xlsx` no vacío).
-- La ingesta usa la **service role / conexión directa** (vía composition); el público nunca.
-- TODOs vigentes: exigir sesión + rol (`uploader`/`moderador`) y registrar `uploadedBy` (auth pendiente).
+- Las acciones de `/admin` re-verifican sesión (`getSessionEmail()`, id token de Cognito) + membresía en
+  `team_members` antes de ejecutar, y usan `getDb('admin')` vía composition; el público, `getDb('public')`.
+- Secretos de la app con `appSecret(...)` (Secrets Manager `evzla/app` en AWS, `process.env` en dev).
+- Excel: el navegador sube a S3 con URL prefirmada (`stageExcelUpload`); Lambda no acepta cuerpos > ~6 MB.
 
 ## Infraestructura (`apps/web/lib/infrastructure/patient-registry/`)
 
 Adapters que implementan los ports de `@evzla/core`:
 - `sheetjs-patient-list-parser.ts` — parser Excel (SheetJS).
-- `drizzle-repositories.ts` — repos sobre `@evzla/db`.
-- `supabase-patient-search-gateway.ts` — invoca el RPC mediado.
+- `drizzle-*.ts` — repos y lectores sobre `@evzla/db`.
+- `drizzle-patient-search-gateway.ts` — invoca el RPC mediado con el rol `public`.
+- `../auth/*` (Cognito EMAIL_OTP), `../uploads/*` (S3), `../app-secrets.ts`, `../safe-error.ts`.
 - `status-mapping.ts`, `excel-parsing.ts` (con su `.test.ts`).
 
 ## Reglas
@@ -48,4 +51,5 @@ Adapters que implementan los ports de `@evzla/core`:
 
 ## Estado / pendientes
 
-UI shadcn/ui · auth magic-link + roles + audit en `/admin` · PWA preparado sin Service Worker activo.
+UI shadcn/ui · auth Cognito EMAIL_OTP + roles + audit en `/admin` · `proxy.ts` (refresco de sesión y
+`x-origin-verify`) · deploy en Lambda vía OpenNext (`build:aws`) · PWA preparado sin Service Worker activo.

@@ -123,7 +123,7 @@ export function EquipoClient({
         </Card>
       )}
 
-      {/* Invitar miembro (allow-list + magic-link). */}
+      {/* Invitar miembro (allow-list + alta en Cognito). */}
       <Card>
         <CardBody className="space-y-3">
           <CardTitle>Invitar miembro</CardTitle>
@@ -157,7 +157,7 @@ export function EquipoClient({
           </form>
           <p className="text-xs text-text-3">
             Al invitar, el correo queda habilitado en la allow-list. La persona entra con su correo
-            (magic-link) desde la pantalla de acceso.
+            y un código de acceso desde la pantalla de acceso.
           </p>
         </CardBody>
       </Card>

@@ -1,5 +1,5 @@
-// Aplica 0010 a PROD (retención de search_log vía pg_cron). One-off con OK explícito.
-// Requiere pg_cron habilitado en el proyecto Supabase.
+// HISTÓRICO: aplicó 0010 (retención de search_log vía pg_cron) en Supabase. En AWS no se usa:
+// la purga la hace EventBridge Scheduler + Lambda con el rol evzla_job (infra/jobs/purge).
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";

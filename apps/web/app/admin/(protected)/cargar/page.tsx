@@ -3,7 +3,7 @@ import { getCurrentMember } from "@/lib/auth/current-member";
 import { hospitalDirectory, hospitalPatientListReader } from "@/lib/composition";
 import { CargarClient } from "./cargar-client";
 
-// STT + extracción + ingesta: red de seguridad de tiempo (Vercel Pro). Render por request.
+// STT + extracción + ingesta. En Lambda manda el timeout de la función (infra); maxDuration no aplica.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;

@@ -30,7 +30,7 @@ export interface HospitalPatientListPage {
 }
 
 // Port de LECTURA de la lista de un hospital. La implementación filtra por hospitalId
-// (service_role); el scope lo controla quién pasa el hospitalId (página server-side).
+// (rol admin); el scope lo controla quién pasa el hospitalId (página server-side).
 export interface HospitalPatientListReader {
   listForHospital(query: HospitalPatientListQuery): Promise<HospitalPatientListPage>;
 }

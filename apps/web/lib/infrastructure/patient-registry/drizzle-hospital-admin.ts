@@ -15,7 +15,7 @@ const COLS = {
   test: hospitals.test,
 };
 
-// Gestión de hospitales (D13) por conexión directa (service_role). Solo servidor.
+// Gestión de hospitales (D13) con el rol evzla_admin. Solo servidor.
 export class DrizzleHospitalAdmin implements HospitalAdmin {
   constructor(private readonly db: Db) {}
 

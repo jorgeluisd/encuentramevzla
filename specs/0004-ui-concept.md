@@ -4,7 +4,7 @@ Estado: en progreso · Fuente: prototipo de UI/UX `docs/design/concept-mvp1.html
 Destila el concepto a documentación versionada. **Tokens** en `specs/0003-design-system.md`. Mobile-first.
 
 > Tomamos el **concepto** del prototipo, pero adaptado a lo que conviene al proyecto: privacidad mediada
-> (ver `specs/0001`/`README` y `.claude/skills/privacy-and-security.md`) y stack real (Next 16 + Supabase).
+> (ver `specs/0001`/`README` y `.claude/skills/privacy-and-security.md`) y stack real (Next 16 en AWS Lambda vía OpenNext + RDS PostgreSQL).
 > Lo que en el prototipo es estático aquí se mapea a casos de uso reales.
 
 ## Dos áreas
@@ -12,7 +12,7 @@ Destila el concepto a documentación versionada. **Tokens** en `specs/0003-desig
 | Área | Quién | Entrada |
 |---|---|---|
 | **Público** | Familias / ciudadanía | Sin login. Buscador mediado. |
-| **Privado** | Personal de hospitales y voluntariado verificado | Login magic-link. Ingesta de listas. |
+| **Privado** | Personal de hospitales y voluntariado verificado | Login sin contraseña (código por correo). Ingesta de listas. |
 
 Elementos comunes de marca: logo + wordmark `encuentrameVZLA`, franja tricolor de Venezuela en el header.
 
@@ -59,6 +59,7 @@ Elementos comunes de marca: logo + wordmark `encuentrameVZLA`, franja tricolor d
   mala noticia; solo que su nombre aún no ha sido ingresado. No pierda la esperanza y vuelva a consultar."*
 - **CTA Cruz Roja** + teléfono.
 
+> (ADR-0003 retiró el marcador `requires_human_contact`; hoy este estado cubre solo "sin coincidencia".)
 > Este estado cubre tanto "sin coincidencia" como el marcador `{ requires_human_contact: true }`
 > (menores/fallecidos), siempre derivando a una persona, nunca dando la noticia la app.
 
@@ -69,13 +70,13 @@ Elementos comunes de marca: logo + wordmark `encuentrameVZLA`, franja tricolor d
 ### Estructura
 - **Nav privado**: logo + *"Portal del equipo"*; chip de usuario + **Salir** (cuando hay sesión).
 
-### B1. Login seguro (magic-link)
+### B1. Login seguro (código por correo)
 - Título *"Acceso del equipo"* · *"Personal de hospitales y voluntariado verificado"*.
 - **Acceso sin contraseña**: enlace mágico al **correo institucional**; *caduca en 15 minutos*.
 - Estado **enviado**: *"Revisa tu correo… Enviamos un enlace de acceso."* + *"Usar otro correo"*.
 - Nota: *"Acceso restringido. Cada lista cargada pasa por deduplicación y validación humana."*
 
-> Mapea a: **Supabase Auth magic-link** (previsto) + roles. Ver `.claude/skills/supabase.md`.
+> Mapea a: **Amazon Cognito EMAIL_OTP** + roles por allow-list `team_members` (ADR-0010). Ver `.claude/skills/privacy-and-security.md`.
 
 ### B2. Dashboard / Ingesta de listas
 - Título *"Portal de carga de listas"* + contexto del hospital/sesión.

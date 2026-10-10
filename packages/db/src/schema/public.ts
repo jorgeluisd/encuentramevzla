@@ -11,7 +11,7 @@ import { statusEnum, teamRoleEnum } from "./enums";
 
 /**
  * Schema `public` — datos NO sensibles.
- * El rol anónimo NO recibe grants directos (ver supabase/migrations/0002_rls.sql).
+ * El rol público (evzla_public) NO recibe grants sobre tablas: solo EXECUTE de los RPC mediados.
  * El acceso público pasa SOLO por el RPC `public.search_patient`.
  */
 
@@ -105,7 +105,7 @@ export const auditLog = pgTable("audit_log", {
 
 /**
  * team_members — allow-list del portal /admin. Solo emails con membresía ACTIVA
- * acceden. Se lee SIEMPRE server-side (Drizzle); anon/authenticated sin grants.
+ * acceden. Se lee SIEMPRE server-side (Drizzle, rol evzla_admin).
  */
 export const teamMembers = pgTable("team_members", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -131,7 +131,7 @@ export const searchLog = pgTable("search_log", {
 /**
  * action_rate_log — límite de tasa por IP hasheada para acciones públicas de escritura
  * (alta y reporte de servicios). Solo se guarda el HASH de la IP, nunca la IP en claro.
- * anon no tiene grants; lo lee/escribe service_role desde las Server Actions.
+ * Lo lee/escribe el rol evzla_admin desde las Server Actions; el público no tiene grants.
  */
 export const actionRateLog = pgTable("action_rate_log", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -144,8 +144,8 @@ export const actionRateLog = pgTable("action_rate_log", {
  * solidarity_services — directorio público de servicios solidarios (spec 0023).
  * Es el INVERSO de privacidad del buscador: aquí `contact_phone` es público POR DISEÑO
  * (con consentimiento explícito). En cambio `submitter_email` y `edit_token_hash` son
- * PRIVADOS: el RPC público `list_solidarity_services` nunca los devuelve. Anon no tiene
- * grants directos; escribe solo `service_role`.
+ * PRIVADOS: el RPC público `list_solidarity_services` nunca los devuelve. El rol público no
+ * tiene grants sobre la tabla; escribe solo evzla_admin.
  */
 export const solidarityServices = pgTable("solidarity_services", {
   id: uuid("id").defaultRandom().primaryKey(),

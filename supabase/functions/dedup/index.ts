@@ -1,20 +1,19 @@
 // ============================================================================
-// supabase/functions/dedup — Edge Function (Deno) — STUB de fase 2.
+// supabase/functions/dedup — STUB heredado de fase 2. NO está desplegado.
 //
-// Aquí vivirá el WORKER PESADO de deduplicación / OCR cuando llegue la fase 2.
-// Todo el backend del proyecto es Supabase (no hay NestJS ni servidor propio):
-// este worker corre como Supabase Edge Function en Deno, NO con BullMQ/Redis.
+// Se escribió como Supabase Edge Function (Deno) cuando el proyecto vivía en Supabase.
+// Desde el 9 de octubre de 2026 todo corre en AWS: si el worker de dedup/OCR llega a
+// construirse, correrá en AWS (p. ej. Lambda con el rol de base que corresponda), no aquí.
 //
 // Flujo previsto (fase 2, aún NO implementado):
-//   1. Disparado por webhook / cron de Supabase tras una ingesta.
-//   2. Lee lotes de `public.raw_rows` con el service role.
+//   1. Disparado tras una ingesta.
+//   2. Lee lotes de `public.raw_rows` server-side.
 //   3. (OCR) Si la fila provino de imagen/PDF, extrae texto.
 //   4. Normaliza nombres/documentos (lógica equivalente a @evzla/core).
 //   5. Dedup (pg_trgm + fuzzystrmatch/levenshtein) contra `public.patients`.
 //   6. Upsert de `patients` y `admissions` (resolviendo traslados) + audit_log.
 //
-// NOTA: este archivo es un placeholder Deno; el monorepo Node/TS no lo compila.
-// Se despliega con `supabase functions deploy dedup`.
+// NOTA: placeholder Deno; el monorepo Node/TS no lo compila.
 // ============================================================================
 
 // @ts-nocheck — entorno Deno (Edge Runtime), fuera del tsconfig del monorepo.

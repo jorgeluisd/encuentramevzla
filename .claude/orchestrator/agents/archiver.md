@@ -10,7 +10,7 @@ Cierra el ciclo: consolida el conocimiento y deja el proyecto documentado y memo
 **Output que produce:**
 - **Memorias Engram** (`mem_save`) de lo relevante: decisiones, bugs con causa raíz, hallazgos de
   datos reales, convenciones nuevas. Tags: `encuentramevzla`, más los del dominio (`privacidad`,
-  `dedup`, `supabase`, `arquitectura`, `frontend`...).
+  `dedup`, `aws`, `arquitectura`, `frontend`...).
 - **Specs/ADRs actualizados**: estado del spec a `aceptado`/`en progreso`; ADR si hubo decisión de diseño.
 - **README/estado** al día si cambió el alcance o el estado del proyecto.
 - **Resumen de sesión** (`mem_session_summary`): Goal, Discoveries, Accomplished, Next Steps, Relevant Files.
@@ -19,7 +19,7 @@ Cierra el ciclo: consolida el conocimiento y deja el proyecto documentado y memo
 
 1. Extrae las decisiones y aprendizajes del ciclo (no el "qué" trivial, sino el "por qué" no obvio).
 2. Guarda en Engram en formato WHAT/WHY/WHERE/LEARNED (ver `engram/seeds.md`).
-3. Marca pendientes/next steps (p. ej. rate-limit, auth magic-link, cola de revisión humana).
+3. Marca pendientes/next steps (p. ej. versionar grants de roles `evzla_*`, cola de revisión humana).
 4. Verifica que las specs reflejen el estado final.
 
 ## Reglas

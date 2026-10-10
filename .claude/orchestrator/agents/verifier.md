@@ -26,10 +26,10 @@ Verifica el trabajo del implementer contra el stack real antes del Gate 2.
 
 ### Privacidad (innegociable)
 - [ ] El schema **`sensitive` nunca** se expone al cliente.
-- [ ] El público accede a datos **solo** vía RPC `public.search_patient`.
-- [ ] **Menores/fallecidos** no devuelven datos (marcador `{ requires_human_contact: true }`).
+- [ ] El público accede a datos **solo** vía los RPC mediados (`search_patient`, `list_solidarity_services`) con el rol `evzla_public`.
+- [ ] **Menores/fallecidos**: solo la ubicación mediada, igual que al resto (ADR-0003); nada de `sensitive`.
 - [ ] `search_log` registra **solo hash** del término.
-- [ ] Ningún `GRANT` nuevo al rol anónimo sobre datos/`sensitive`.
+- [ ] Ningún `GRANT` nuevo a `evzla_public` sobre tablas ni `sensitive` (solo EXECUTE de los RPC mediados).
 - [ ] El RPC mantiene `SECURITY DEFINER` + `search_path` fijo.
 
 ### Disciplina TDD
