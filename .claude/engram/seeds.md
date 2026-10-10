@@ -9,23 +9,25 @@ WHAT/WHY/WHERE/LEARNED. Sirven de base; el `archiver` sigue guardando con `mem_s
   bug corregido (con causa raíz), convención nueva, hallazgo no obvio en datos reales, preferencia del
   usuario, feature con enfoque no trivial.
 - **No guardar** lo que el repo ya registra (estructura de código, historial git, lo obvio).
-- **Tags base:** `encuentramevzla`. Añadir según dominio: `privacidad`, `dedup`, `supabase`,
+- **Tags base:** `encuentramevzla`. Añadir según dominio: `privacidad`, `dedup`, `aws`,
   `arquitectura`, `frontend`, `bug`, `decision`.
 - **Una memoria = un hecho.** Fechas en absoluto. Enlazar memorias relacionadas.
 - **Cierre de sesión:** `mem_session_summary` (Goal, Discoveries, Accomplished, Next Steps, Files).
 
 ---
 
-## Semilla 1 — Stack: todo Supabase (sin backend propio)
+## Semilla 1 — Stack: 100% AWS (sin backend propio aparte de Next.js)
 
-- **WHAT:** No hay backend propio (ni NestJS). Todo es Supabase: Postgres 16, RLS, RPC `SECURITY
-  DEFINER`, Edge Functions (Deno), Auth magic-link previsto. El frontend (Next.js 16) habla directo
-  con Supabase.
-- **WHY:** Proyecto humanitario sin fines de lucro; minimizar superficie y costo operativo, y
-  concentrar la mediación de privacidad en la DB.
-- **WHERE:** `supabase/migrations/`, `supabase/functions/dedup`, `apps/web/lib/supabase`.
-- **LEARNED:** El público solo invoca el RPC mediado con la anon key; la ingesta usa Server Actions con
-  conexión directa/service role. El worker pesado de dedup/OCR (fase 2) será Edge Function Deno.
+- **WHAT:** Desde el 9 de octubre de 2026 (ADR-0010) todo corre en AWS `sa-east-1`: Next.js 16 en
+  Lambda vía OpenNext + CloudFront, RDS PostgreSQL 18 (base `encuentramevzla` en `blockealo-prod-db`),
+  Cognito con EMAIL_OTP, S3 de subidas, Secrets Manager, purga por EventBridge Scheduler + Lambda.
+  CDK en `infra/`; DNS en Cloudflare. Supabase y Vercel fueron dados de baja.
+- **WHY:** Proyecto humanitario sin fines de lucro; minimizar costo y superficie, y concentrar la
+  mediación de privacidad en la DB (RPC `SECURITY DEFINER` + roles por uso).
+- **WHERE:** `infra/`, `packages/db/src/client.ts`, `apps/web/lib/composition.ts`, `supabase/migrations/`
+  (SQL canónico, nombre heredado).
+- **LEARNED:** Un rol por uso: `evzla_public` solo ejecuta los RPC mediados; `evzla_admin` para
+  /admin e ingesta; `evzla_job` para la purga; `evzla_owner` para migraciones.
 
 ## Semilla 2 — Arquitectura: Onion + Screaming, inglés/español, SDD+TDD
 
@@ -40,11 +42,12 @@ WHAT/WHY/WHERE/LEARNED. Sirven de base; el `archiver` sigue guardando con `mem_s
 ## Semilla 3 — Privacidad mediada (innegociable)
 
 - **WHAT:** Separación física `public`/`sensitive`. El público solo usa `public.search_patient(term)`
-  (`SECURITY DEFINER`), que devuelve solo `{ hospital_name, info_desk_phone, confidence }`.
-  Menores/fallecidos → `{ requires_human_contact: true }`. `search_log` guarda solo el hash.
+  (`SECURITY DEFINER`), que devuelve solo `{ hospital_name, info_desk_phone, patient_name, confidence }`.
+  Menores/fallecidos: también se informa la ubicación (ADR-0003 retiró `requires_human_contact`).
+  `search_log` guarda solo el hash.
 - **WHY:** La privacidad de los pacientes es un requisito de diseño no negociable.
 - **WHERE:** `supabase/migrations/0002_rls.sql`, `0003_rpc_search_patient.sql`; `README.md`.
-- **LEARNED:** El rol anónimo no tiene grants sobre tablas; `sensitive` jamás llega al cliente. Mostrar
+- **LEARNED:** El rol público (`evzla_public`) no tiene grants sobre tablas; `sensitive` jamás llega al cliente. Mostrar
   nombres en el buscador fue una decisión RESUELTA (opción abierta, con consentimiento de la residente);
   los nombres de adultos vivos se exponen vía `search_patient`, implementado en `0003`.
 

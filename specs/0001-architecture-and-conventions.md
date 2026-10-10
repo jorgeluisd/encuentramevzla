@@ -17,7 +17,7 @@ Estado: aceptado · Aplica a todo el código nuevo y a la migración del existen
 
 - **domain** — entidades, value objects y servicios de dominio. Puro, sin I/O ni libs externas.
 - **application** — casos de uso + **ports** (interfaces). Orquesta el dominio.
-- **infrastructure** — **adapters** que implementan los ports (Drizzle/Postgres, Supabase, SheetJS).
+- **infrastructure** — **adapters** que implementan los ports (Drizzle/Postgres, Cognito, S3, SheetJS).
 - **presentation** — `apps/web` (Next.js) + composition root (inyecta adapters en casos de uso).
 
 Regla de dependencia: una capa solo importa hacia adentro. `domain` no importa `application`, etc.
@@ -53,7 +53,7 @@ apps/web/                      <- presentation + composition root
 
 1. ✅ **domain** de `patient-registry` (value objects + matching) con TDD.
 2. ✅ **application**: ports + casos de uso (`IngestPatientList`, `SearchPatients`) con TDD y fakes.
-3. ✅ **infrastructure**: adapters Drizzle/Supabase/SheetJS + composition root en `apps/web`.
+3. ✅ **infrastructure**: adapters Drizzle/SheetJS (hoy también Cognito/S3) + composition root en `apps/web`.
 4. ✅ Recableado `apps/web` a los casos de uso; eliminado `@registro/ingesta`.
 5. ✅ Renombrado el scope `@registro/*` → `@evzla/*` (core, db, config, web).
 

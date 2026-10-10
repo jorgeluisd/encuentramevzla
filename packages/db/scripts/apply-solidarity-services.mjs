@@ -5,6 +5,7 @@
 // Todas son ADITIVAS e idempotentes (IF NOT EXISTS / CREATE OR REPLACE) → seguras de
 // re-aplicar y sin impacto sobre pacientes ni el buscador existente.
 //
+// HISTÓRICO (aplicado en Supabase): verifica el grant a `anon`; en AWS el EXECUTE es de evzla_public.
 // Uso: DATABASE_URL=<url> node packages/db/scripts/apply-solidarity-services.mjs
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

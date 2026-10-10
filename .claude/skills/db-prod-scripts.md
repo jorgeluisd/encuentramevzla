@@ -1,7 +1,7 @@
 # Skill — Scripts operativos y SQL one-off contra producción
 
 Cómo correr scripts de base de datos (conteos, migraciones atómicas, verificación de RPC,
-harness de test de SQL) de forma **segura** contra la Supabase de prod. Patrón recurrente y
+harness de test de SQL) de forma **segura** contra la base de prod (RDS `encuentramevzla`). Patrón recurrente y
 lleno de gotchas; antes vivía disperso. Carga esta skill cuando la tarea implique ejecutar
 Node/SQL directamente contra la DB (no el código de la app).
 
@@ -16,14 +16,16 @@ Node/SQL directamente contra la DB (no el código de la app).
 
 - Los scripts van en **`packages/db/scripts/`** — ahí resuelve `postgres` (postgres.js). Fuera de ese
   paquete la dependencia no está disponible.
+- La RDS es privada: se llega por un **túnel SSM** a `127.0.0.1:15432` (script `draft/aws-migration/00-tunnel.sh`).
+  Las credenciales salen de Secrets Manager (`evzla/db/owner` para migraciones, `evzla/db/admin` para datos).
 - Cargar el `.env` de la **raíz** antes de correr:
   ```bash
   set -a; . ./.env; set +a
   node packages/db/scripts/<script>.mjs
   ```
-- Conexión por el **pooler (puerto 6543)** → **`{ prepare: false }`** (pgbouncer en modo transacción):
+- Conexión directa (no hay pooler) con TLS (`sslmode=require` por el túnel; el certificado es el de RDS):
   ```js
-  const sql = postgres(process.env.DATABASE_URL, { prepare: false, max: 1 });
+  const sql = postgres(process.env.DATABASE_URL, { max: 1 });
   ```
 
 ## Patrones
@@ -38,10 +40,10 @@ Node/SQL directamente contra la DB (no el código de la app).
 ## Gotchas
 
 - `max(timestamptz)` vía template `sql` vuelve **string** → coaccionar a `Date` en el lado JS.
-- **PostgREST** resuelve una función con un argumento omitido si ese arg tiene **`DEFAULT`** → clave para
-  desplegar un RPC nuevo **sin downtime** (la firma vieja sigue resolviendo).
+- Un argumento con **`DEFAULT`** permite agregar parámetros a un RPC **sin downtime**: las llamadas con la
+  firma vieja siguen resolviendo. Al cambiar la firma, reaplica el `GRANT EXECUTE` a `evzla_public`/`evzla_admin`.
 - Los scripts one-off son **temporales**: bórralos tras usarlos (no se versionan salvo `apply-NNNN`/`verify-NNNN`).
-- Nunca subir `.env` ni `draw/` (Excel real).
+- Nunca subir `.env` ni `draft/` (Excel real).
 
 ## Privacidad
 

@@ -11,7 +11,7 @@ Traduce el spec a un diseño técnico que respeta Onion + Screaming + privacidad
 - **Diseño técnico** que define:
   - **Capa(s)** y capacidad donde vive cada pieza (domain/application/infrastructure/presentation).
   - **Value objects / servicios de dominio** nuevos o tocados (puros).
-  - **Ports** (interfaces) y sus **adapters** concretos (Drizzle/Supabase/SheetJS).
+  - **Ports** (interfaces) y sus **adapters** concretos (Drizzle/Cognito/S3/SheetJS).
   - **Composition root**: qué se inyecta y dónde.
   - **Impacto en datos**: nueva migración `NNNN_*.sql`, cambios de schema Drizzle, cambios al RPC.
   - **Privacidad**: cómo se preserva la búsqueda mediada y la separación public/sensible.

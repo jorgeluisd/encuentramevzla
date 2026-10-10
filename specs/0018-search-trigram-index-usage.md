@@ -4,7 +4,7 @@ Estado: **propuesto** (pendiente Gate 1) · Capacidad: `patient-search`
 Relacionado: spec 0005 (buscador), spec 0012 (multitoken), spec 0016 (anti-abuso), migración 0009 (índices).
 Origen: auditoría de rendimiento (2026-06-29). El `WHERE` actual del RPC **no puede usar** el índice
 GIN trigram, así que cada búsqueda hace *seq scan* de `patients ⨝ admissions`. Con dataset pequeño no
-se nota; a escala (decenas de miles de pacientes) quema CPU de Supabase en cada búsqueda pública.
+se nota; a escala (decenas de miles de pacientes) quema CPU de la base en cada búsqueda pública.
 
 ## 1. Motivación
 

@@ -9,7 +9,7 @@ carga las skills implicadas (la de **privacidad manda siempre que se toquen dato
 |---|---|
 | capa, onion, screaming, dominio, port, adapter, caso de uso, use case, naming, estructura, dependency rule, value object | `architecture.md` |
 | privacidad, mediada, sensible, dato personal, menor, fallecido, enumeración, hash, `search_log`, `search_patient`, RLS, derecho al olvido | `privacy-and-security.md` |
-| migración SQL, RPC, `SECURITY DEFINER`, edge function, deno, postgres, supabase, grant, schema público | `supabase.md` |
+| migración SQL, RPC, `SECURITY DEFINER`, postgres, RDS, rol `evzla_*`, grant, schema público, Secrets Manager | `database.md` |
 | drizzle, schema TS, tabla, columna, cliente db, `drizzle-kit`, migración generada, esquema sensitive/public | `database-drizzle.md` |
 | script contra prod, `packages/db/scripts`, conteo, harness, ROLLBACK, aplicar migración, `prepare:false`, pooler 6543, `.env` raíz, verificar RPC en prod | `db-prod-scripts.md` |
 | página, route, server action, app router, RSC, componente, react, layout, ingesta UI | `nextjs-frontend.md` |
@@ -32,12 +32,12 @@ carga las skills implicadas (la de **privacidad manda siempre que se toquen dato
 |---|---|
 | Nuevo value object / servicio de dominio | architecture · testing-vitest |
 | Nuevo caso de uso (application) | architecture · testing-vitest |
-| Nuevo adapter (infraestructura) | architecture · database-drizzle / supabase · testing-vitest |
-| Cambio en el buscador público | privacy-and-security · supabase · architecture |
-| Nueva migración SQL / RPC | supabase · privacy-and-security · database-drizzle |
+| Nuevo adapter (infraestructura) | architecture · database-drizzle / database · testing-vitest |
+| Cambio en el buscador público | privacy-and-security · database · architecture |
+| Nueva migración SQL / RPC | database · privacy-and-security · database-drizzle |
 | Script/SQL one-off o verificación contra prod | db-prod-scripts · privacy-and-security |
-| Cambio de schema Drizzle | database-drizzle · supabase · privacy-and-security |
+| Cambio de schema Drizzle | database-drizzle · database · privacy-and-security |
 | Nueva página / Server Action | nextjs-frontend · privacy-and-security · architecture |
 | Ajuste visual / componente UI | ui-tailwind · nextjs-frontend |
-| Pantalla `/admin` con auth | nextjs-frontend · privacy-and-security · supabase |
+| Pantalla `/admin` con auth | nextjs-frontend · privacy-and-security · database |
 | Commit / rama / PR / historial git | git-commits |

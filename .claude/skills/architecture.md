@@ -15,7 +15,7 @@ Migrado de `specs/0001-architecture-and-conventions.md`. Aplica a todo el códig
 
 - **domain** — entidades, value objects, servicios de dominio. **Puro**: sin I/O, sin libs externas.
 - **application** — casos de uso + **ports** (interfaces). Orquesta el dominio.
-- **infrastructure** — **adapters** que implementan los ports (Drizzle/Postgres, Supabase, SheetJS).
+- **infrastructure** — **adapters** que implementan los ports (Drizzle/Postgres, Cognito, S3, SheetJS).
 - **presentation** — `apps/web` (Next.js) + composition root que inyecta adapters en los casos de uso.
 
 **Regla de dependencia:** una capa solo importa hacia adentro. `domain` no importa `application`;

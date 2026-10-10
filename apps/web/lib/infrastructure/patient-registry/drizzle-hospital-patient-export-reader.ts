@@ -6,7 +6,7 @@ import type { ExportRow, HospitalPatientExportReader } from "@evzla/core";
 type Db = ReturnType<typeof getDb>;
 
 /**
- * Lectura del export de UN hospital (público + sensible) por conexión directa (service_role).
+ * Lectura del export de UN hospital (público + sensible) con el rol evzla_admin.
  * Filtra SIEMPRE por hospitalId (el scope adicional lo valida el caso de uso).
  *
  * Se evita el JOIN directo contra `sensitive.contacts`/`clinical_notes` para no multiplicar

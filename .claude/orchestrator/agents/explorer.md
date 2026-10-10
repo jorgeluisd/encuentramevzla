@@ -6,7 +6,7 @@ Primer agente del pipeline. **Solo lectura.** Mapea el terreno antes de proponer
 
 **Input esperado:**
 - Objetivo o tarea en lenguaje natural.
-- Acceso de lectura al repo (`apps/web`, `packages/*`, `supabase/`, `specs/`, `docs/`).
+- Acceso de lectura al repo (`apps/web`, `packages/*`, `infra/`, `supabase/migrations/` (SQL canónico, nombre heredado), `specs/`, `docs/`, `adr/`).
 
 **Output que produce:**
 - **Mapa de impacto**: archivos y capas onion afectadas (domain/application/infrastructure/presentation).

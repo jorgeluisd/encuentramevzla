@@ -28,14 +28,15 @@ packages/db/src/
 
 ## Separación public / sensitive
 
-- `schema/public.ts` — todo lo que el sistema puede mostrar de forma mediada. Sin grants directos al anónimo.
+- `schema/public.ts` — todo lo que el sistema puede mostrar de forma mediada. `evzla_public` no tiene grants sobre estas tablas.
 - `schema/sensitive.ts` — teléfonos, direcciones, observaciones clínicas. **Nunca** se consulta desde el
-  cliente; solo por conexión directa de servidor. No expongas estas tablas vía PostgREST/supabase-js.
+  cliente; solo desde el servidor con `getDb('admin')`. No hay PostgREST: nunca agregues una vía directa.
 
 ## Cliente (`client.ts`)
 
-- `getDb()` — singleton perezoso. Requiere `DATABASE_URL`. `postgres(url, { prepare:false, max:5 })`
-  (`prepare:false` por el pooler de Supabase / pgbouncer en modo transacción).
+- `getDb('admin' | 'public' | 'job')` — un cliente por rol, perezoso (se conecta en la primera query) y con
+  `max: 1` (una Lambda atiende un request a la vez). En AWS lee `EVZLA_DB_SECRET_<ROL>` de Secrets Manager con
+  TLS verify-full; en dev, `DATABASE_URL_<ROL>` o `DATABASE_URL`. Detalle de roles en `database.md`.
 - **SOLO servidor**: nunca importar `@evzla/db/client` desde un componente de cliente. Lo usan ingesta,
   admin y workers; el público jamás.
 

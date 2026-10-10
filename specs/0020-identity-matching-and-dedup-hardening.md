@@ -388,4 +388,4 @@ cola `/admin/review` ~912**. Toda la remediación auditada (`patients_merged`, `
 
 - ADR-0004 (matching conservador sin cédula) · ADR-0005 (catálogo de hospitales) ·
   ADR-0006 (carga scoped, filas ajenas) · ADR-0007 (remediación dedup prod).
-- Specs: 0002, 0005, 0009, 0010, 0017, 0018 (voz), 0019.
+- Specs: 0002, 0005, 0009, 0010, 0017, 0025 (voz), 0019.

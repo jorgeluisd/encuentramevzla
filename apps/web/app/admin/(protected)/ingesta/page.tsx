@@ -3,8 +3,8 @@ import { canModerate } from "@evzla/core";
 import { getCurrentMember } from "@/lib/auth/current-member";
 import { IngestaClient } from "./ingesta-client";
 
-// Red de seguridad de tiempo para archivos grandes. Vercel Pro permite hasta 300s;
-// el peso real lo lleva el bulk insert (segundos), esto evita el corte por timeout.
+// El peso real lo lleva el bulk insert (segundos). En Lambda manda el timeout de la función
+// (infra); maxDuration no aplica.
 export const maxDuration = 300;
 export const runtime = "nodejs";
 

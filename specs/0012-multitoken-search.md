@@ -1,5 +1,7 @@
 # Spec 0012 — Búsqueda multi-token (AND por palabra)
 
+> Estado: ADR-0003 retiró el marcador `requires_human_contact`; el buscador devuelve la ubicación también para menores y fallecidos.
+
 Estado: **propuesto** · Capacidad: `patient-search` · Corrige el RPC de 0003 / spec 0005.
 
 ## 1. Problema

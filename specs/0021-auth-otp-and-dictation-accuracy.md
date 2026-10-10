@@ -1,11 +1,13 @@
 # 0021 — Acceso por código OTP + precisión del dictado por voz
 
+> Estado (2026-10-09): la auth pasó a Amazon Cognito con EMAIL_OTP — ver ADR-0010. El flujo de código OTP de esta spec hoy lo da Cognito (USER_AUTH + EMAIL_OTP); la configuración de plantillas de Supabase ya no aplica.
+
 Estado: **propuesto** (pendiente GATE 1) · Rama: `feat/0021-auth-otp-and-dictation` (desde `develop`).
 Capas: presentation (`/admin/login`, `/admin/cargar`) · infrastructure (STT adapter) · application/domain
 (port de transcripción). **Privacidad:** no toca datos del buscador; el audio del dictado se descarta tras
 transcribir (D7). El código OTP no lleva datos de pacientes.
 
-> Reusa lo ya construido: **0007** (auth magic-link + guard allow-list `team_members`), **0018-voice**
+> Reusa lo ya construido: **0007** (auth magic-link + guard allow-list `team_members`), **0025**
 > (dictado STT + extracción), **0020** (borrador editable, humano en el loop). NO reinventa el guard ni el
 > flujo de ingesta: cambia el **método de verificación de auth** y **endurece la captura/contexto del STT**.
 
@@ -110,7 +112,7 @@ fijar el valor final (documentar resultado).
 ## 5. Fuera de alcance
 - **PWA offline (Service Worker + IndexedDB + sync)** — spec propio con Gate 1 y análisis de privacidad
   (datos cacheados en dispositivo). Hoy la PWA es solo *instalable* (`manifest.ts`, sin SW).
-- Cambiar de proveedor STT o self-host de Whisper (spec 0018 §7).
+- Cambiar de proveedor STT o self-host de Whisper (spec 0025 §7).
 - Deshabilitar del todo el magic link (se mantiene como respaldo).
 
 ---

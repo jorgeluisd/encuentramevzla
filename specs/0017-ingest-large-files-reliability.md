@@ -1,5 +1,7 @@
 # Spec 0017 — Ingesta robusta para archivos grandes (capacidad + feedback)
 
+> Estado (2026-10-09): Supabase y Vercel dados de baja; la app corre en AWS — ver ADR-0010. La ingesta corre en Lambda (no en Vercel Hobby) y el Excel se sube a S3 con URL prefirmada; `REVALIDATE_TOKEN` vive en Secrets Manager (`evzla/app`).
+
 Estado: **implementado** (Gate 1 aprobado 2026-06-27, plan **Vercel Hobby**) · Capacidad: `patient-registry`
 Relacionado: spec 0008 (ingesta + dedup), spec 0013 (sello "última actualización").
 Origen: bug en producción (2026-06-26) — un Excel de 2.760 filas dejó la UI en "Procesando…"
@@ -129,7 +131,7 @@ Desviaciones respecto al borrador de §4, todas para reforzar la atomicidad sin 
 - **A3:** `experimental.serverActions.bodySizeLimit = "8mb"` en `next.config.ts`.
 - **B1:** `ingesta-client.tsx` con estados `idle/processing/done/error`, aviso "tarda más de lo normal" a
   los 45s (no cancela la action; evita el spinner perpetuo) y `try/catch/finally`.
-- **B2:** `POST /api/revalidate` protegido por `REVALIDATE_TOKEN` (**nueva env var en Vercel**); dispara
+- **B2:** `POST /api/revalidate` protegido por `REVALIDATE_TOKEN` (**nueva env var**; hoy en Secrets Manager `evzla/app`); dispara
   `revalidatePath("/")` sin exponer datos. El camino de éxito de la action ya revalidaba.
 
 **Verificación:** `pnpm typecheck` 4/4 · `pnpm test` verde (core 22 archivos + web 3) · `pnpm build` OK.

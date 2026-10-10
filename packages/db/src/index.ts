@@ -3,10 +3,10 @@
  *
  * Recordatorio de diseño (innegociable):
  *  - Dos schemas Postgres: `public` (no sensible) y `sensitive` (PII / clínico, aislado).
- *  - El rol anónimo NO accede a `sensitive` ni a las tablas de datos de `public`.
+ *  - El rol público (evzla_public) NO accede a `sensitive` ni a las tablas de datos de `public`.
  *  - El acceso público sucede SOLO vía el RPC `public.search_patient` (SECURITY DEFINER).
  *
- * Las migraciones canónicas (extensiones, RLS, grants y RPC) viven en `supabase/migrations/`.
+ * Las migraciones canónicas (extensiones, grants y RPC) viven en `supabase/migrations/` (nombre heredado).
  */
 export * as schema from "./schema/index";
 export * from "./schema/index";

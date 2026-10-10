@@ -1,10 +1,8 @@
 import type { Config } from "drizzle-kit";
 
 // Drizzle Kit apunta al Postgres mediante DATABASE_URL.
-// NOTA: las migraciones "de verdad" del producto viven como SQL versionado en
-// `supabase/migrations/` (extensiones, schema `sensitive`, RLS y el RPC SECURITY DEFINER
-// no se expresan bien desde el generador de Drizzle). Este config sirve para
-// generar diffs de las TABLAS del schema `public` durante el desarrollo.
+// Las migraciones canónicas son SQL versionado en `supabase/migrations/` (nombre heredado;
+// se aplican con evzla_owner). Este config solo genera diffs de TABLAS durante el desarrollo.
 export default {
   schema: "./src/schema/index.ts",
   out: "./drizzle",
@@ -12,7 +10,7 @@ export default {
   dbCredentials: {
     url: process.env.DATABASE_URL ?? "",
   },
-  // Solo gestionamos estos schemas desde Drizzle; el resto se controla con SQL en supabase/.
+  // Solo gestionamos estos schemas desde Drizzle; el resto se controla con SQL en supabase/migrations/.
   schemaFilter: ["public", "sensitive"],
   verbose: true,
   strict: true,

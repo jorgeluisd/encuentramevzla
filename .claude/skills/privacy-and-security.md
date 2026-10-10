@@ -20,14 +20,17 @@ Una familia busca por **nombre o cédula** y solo recibe:
    `public.search_patient(term)` (`SECURITY DEFINER`), que:
    - valida el término,
    - hace matching **por nombre o cédula**,
-   - para **adultos vivos** devuelve `{ hospital_name, info_desk_phone, patient_name, confidence }`
-     (nombres agrupados por hospital).
+   - devuelve `{ hospital_name, info_desk_phone, patient_name, confidence }` (nombres agrupados por
+     hospital) y nada más: nunca teléfonos, direcciones, cédula ni notas.
+   - Lo ejecuta el rol `evzla_public`, que **solo** tiene EXECUTE sobre los RPC mediados.
 
-3. **Menores y fallecidos.** Si el match es **menor de edad** o **persona fallecida**, el buscador
-   **nunca** devuelve su nombre: entrega `{ requires_human_contact: true }` para derivar a atención humana.
+3. **Menores y fallecidos.** Desde ADR-0003 el buscador **también** informa su ubicación (hospital y
+   mesa de información): las familias necesitan saber dónde está la persona. El marcador
+   `requires_human_contact` fue retirado. Los datos sensibles siguen sin salir.
 
 4. **Anti-enumeración.** Se registra solo el **hash** del término buscado (`search_log`), nunca el
-   texto en claro. Rate-limit previsto (TODO en el RPC) + Cloudflare Turnstile (pendiente).
+   texto en claro. Rate-limit por hash de IP en el RPC + Cloudflare Turnstile en la Server Action.
+   Los logs de la app (CloudWatch) no llevan PII: errores como `nombre:código` (`safeErrorTag`).
 
 5. **Derecho al olvido.** El dato crudo se preserva en `raw_rows` para trazabilidad; el modelo
    permite baja/anonimización de una persona y sus contactos sensibles.
@@ -36,17 +39,19 @@ Una familia busca por **nombre o cédula** y solo recibe:
 
 - ❌ Devolver nombre/cédula/teléfono del paciente al cliente público.
 - ❌ Consultar tablas de pacientes sin pasar por `search_patient`.
-- ❌ Conceder grants al rol anónimo sobre `public.*` de datos o cualquier `sensitive.*`.
-- ❌ Exponer datos de menores o fallecidos por el buscador.
+- ❌ Conceder a `evzla_public` grants sobre tablas de `public.*` o cualquier `sensitive.*`.
+- ❌ Exponer datos sensibles (teléfono, dirección, cédula, notas) por el buscador, de nadie.
+- ❌ Loggear términos, nombres, cédulas, teléfonos o filas (incluido `error.message` de Drizzle).
 - ❌ Guardar el término de búsqueda en claro.
 - ❌ Mover lógica de privacidad del RPC al cliente (debe vivir server-side / DB).
 
 ## Decisión resuelta (nombres en el buscador)
 
 Se decidió **mostrar nombres de pacientes adultos vivos** en el buscador, agrupados por hospital
-(opción "abierta"), con **consentimiento explícito de la residente** (dueña del dato). **Menores y
-fallecidos nunca** muestran nombre → `requires_human_contact`. Ver `adr/0002-apertura-de-nombres-adultos.md`
-y `specs/0005-buscador-nombres-y-dedupe.md`. Cualquier cambio futuro a este contrato vuelve a Gate 1.
+(opción "abierta"), con **consentimiento explícito de la residente** (dueña del dato). Luego
+`adr/0003-mostrar-ubicacion-todos-los-casos.md` extendió la ubicación a **menores y fallecidos**. Ver
+`adr/0002-apertura-de-nombres-adultos.md`, ADR-0003 y `specs/0015-show-location-all-cases.md`. Cualquier
+cambio futuro a este contrato vuelve a Gate 1.
 
 ## Checklist de privacidad (Gate 1 y Gate 2)
 

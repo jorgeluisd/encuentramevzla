@@ -1,5 +1,7 @@
 # 0005 — Nombres en el buscador + dedupe por hospital
 
+> Estado: ADR-0003 retiró el marcador `requires_human_contact`; el buscador devuelve la ubicación también para menores y fallecidos. El gateway hoy es `DrizzlePatientSearchGateway` (rol `evzla_public`, ADR-0010).
+
 Estado: **Implementado y desplegado** · Capas: `application` (port) · `domain` (presentación de
 nombre) · infraestructura (RPC `0003_rpc_search_patient` + gateway) · presentación (`/buscar`,
 `/confianza`). El RPC se entregó primero como `0007` y luego se **consolidó en `0003`** al pasar el

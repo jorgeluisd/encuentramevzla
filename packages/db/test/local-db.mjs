@@ -23,7 +23,7 @@ export async function loadSchema(sql, { searchMigration = "0008_search_patient_r
   // Reset limpio.
   await sql.unsafe(`DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;`);
   await sql.unsafe(`CREATE SCHEMA IF NOT EXISTS extensions;`);
-  // Extensiones (en Supabase viven en `extensions`; aquí en public basta para search_path).
+  // Extensiones (en RDS pgcrypto/uuid-ossp viven en `extensions`; aquí en public basta para search_path).
   await sql.unsafe(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`); // digest()
   // 0001 ya crea pg_trgm / fuzzystrmatch / unaccent.
   // El buscador solo necesita el índice trigram de 0001 (no las 0009).
