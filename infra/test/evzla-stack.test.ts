@@ -1,7 +1,10 @@
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { App } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../lib/app.js";
 
 const infraDir = fileURLToPath(new URL("..", import.meta.url));
@@ -163,7 +166,16 @@ describe("EvzlaStack", () => {
     });
   });
 
-  it("grants the server only the three app secrets, uploads read/write and two Cognito admin actions", () => {
+  it("issues 60-minute access/ID tokens and 30-day refresh tokens", () => {
+    template.hasResourceProperties("AWS::Cognito::UserPoolClient", {
+      AccessTokenValidity: 60,
+      IdTokenValidity: 60,
+      RefreshTokenValidity: 30 * 24 * 60,
+      TokenValidityUnits: { AccessToken: "minutes", IdToken: "minutes", RefreshToken: "minutes" },
+    });
+  });
+
+  it("grants the server only the three app secrets, uploads read/write/delete and the Cognito admin actions", () => {
     const serverRole = (serverFunction().Properties.Role as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0];
     const policies = Object.values(resources).filter(
       (r) =>
@@ -181,11 +193,13 @@ describe("EvzlaStack", () => {
     expect(text).not.toContain("evzla/db/owner");
     expect(statements).toContainEqual(
       expect.objectContaining({
-        Action: ["cognito-idp:AdminCreateUser", "cognito-idp:AdminDisableUser"],
+        Action: ["cognito-idp:AdminCreateUser", "cognito-idp:AdminDisableUser", "cognito-idp:AdminSetUserPassword"],
         Resource: { "Fn::GetAtt": [expect.stringMatching(/^AdminUserPool/), "Arn"] },
       }),
     );
-    expect(statements).toContainEqual(expect.objectContaining({ Action: ["s3:GetObject", "s3:PutObject"] }));
+    expect(statements).toContainEqual(
+      expect.objectContaining({ Action: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"] }),
+    );
     expect(text).not.toMatch(/"Resource":"\*"/);
   });
 
@@ -205,6 +219,25 @@ describe("EvzlaStack", () => {
     const groups = Object.values(resources).filter((r) => r.Type === "AWS::Logs::LogGroup");
     expect(groups.length).toBeGreaterThan(0);
     for (const g of groups) expect(g.Properties.RetentionInDays).toBe(30);
+  });
+
+  // Un error no capturado puede volcar parámetros de queries: ningún log sale de CloudWatch.
+  it("sends every Lambda to an explicit log group with no subscriptions or exports", () => {
+    const fns = Object.values(resources).filter((r) => r.Type === "AWS::Lambda::Function");
+    for (const fn of fns) {
+      expect((fn.Properties.LoggingConfig as { LogGroup?: unknown } | undefined)?.LogGroup).toBeDefined();
+    }
+    const types = new Set(Object.values(resources).map((r) => r.Type));
+    for (const forbidden of [
+      "AWS::Logs::SubscriptionFilter",
+      "AWS::Logs::Destination",
+      "AWS::Logs::DeliveryDestination",
+      "AWS::Logs::Delivery",
+      "AWS::Logs::AccountPolicy",
+      "AWS::KinesisFirehose::DeliveryStream",
+    ]) {
+      expect(types.has(forbidden)).toBe(false);
+    }
   });
 
   it("sets a USD 5 monthly budget scoped to the project cost tag", () => {
@@ -276,6 +309,54 @@ describe("origin verify header", () => {
 
     const env = (serverFunction().Properties.Environment as { Variables: Record<string, unknown> }).Variables;
     expect(JSON.stringify(env.ORIGIN_VERIFY_SECRET)).toMatch(/resolve:secretsmanager:/);
+  });
+});
+
+describe("server bundle symlinks", () => {
+  let workDir: string;
+
+  beforeAll(() => {
+    // Reproduce OpenNext: .next/node_modules/postgres apunta a node_modules/.pnpm dentro del bundle,
+    // y node_modules/postgres apunta fuera de él.
+    workDir = mkdtempSync(path.join(tmpdir(), "evzla-open-next-"));
+    const web = path.join(workDir, "web");
+    cpSync(path.join(infraDir, "test/fixtures/web"), web, { recursive: true });
+    const store = path.join(workDir, "store/postgres");
+    mkdirSync(store, { recursive: true });
+    writeFileSync(path.join(store, "package.json"), JSON.stringify({ name: "postgres" }));
+    const modules = path.join(web, ".open-next/server-functions/default/node_modules");
+    mkdirSync(modules, { recursive: true });
+    symlinkSync(store, path.join(modules, "postgres"), "dir");
+
+    const bundle = path.join(web, ".open-next/server-functions/default");
+    const pnpmPostgres = path.join(bundle, "node_modules/.pnpm/postgres@3.4.9/node_modules/postgres");
+    mkdirSync(pnpmPostgres, { recursive: true });
+    writeFileSync(path.join(pnpmPostgres, "package.json"), JSON.stringify({ name: "postgres" }));
+    const nextModules = path.join(bundle, "apps/web/.next/node_modules");
+    mkdirSync(nextModules, { recursive: true });
+    symlinkSync(path.relative(nextModules, pnpmPostgres), path.join(nextModules, "postgres"), "dir");
+  });
+
+  afterAll(() => rmSync(workDir, { recursive: true, force: true }));
+
+  it("materializes symlinked dependencies inside the server asset", () => {
+    const { evzla } = synth({ openNextPath: path.join(workDir, "web/.open-next") });
+    const json = Template.fromStack(evzla).toJSON() as { Resources: Record<string, Resource> };
+    const server = Object.values(json.Resources).find(
+      (r) =>
+        r.Type === "AWS::Lambda::Function" &&
+        "EVZLA_DB_SECRET_ADMIN" in ((r.Properties.Environment as { Variables: object }).Variables ?? {}),
+    );
+    const s3Key = (server?.Properties.Code as { S3Key?: string } | undefined)?.S3Key;
+    if (!s3Key) throw new Error("server asset key missing");
+    const outdir = (evzla.node.root as App).outdir;
+    const assetDir = path.join(outdir, `asset.${s3Key.replace(/\.zip$/, "")}`);
+
+    for (const rel of ["node_modules/postgres", "apps/web/.next/node_modules/postgres"]) {
+      const dir = path.join(assetDir, rel);
+      expect(lstatSync(dir).isSymbolicLink(), rel).toBe(false);
+      expect(existsSync(path.join(dir, "package.json")), rel).toBe(true);
+    }
   });
 });
 

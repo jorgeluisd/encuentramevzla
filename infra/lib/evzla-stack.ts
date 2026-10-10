@@ -75,6 +75,9 @@ export class EvzlaStack extends Stack {
     const userPoolClient = userPool.addClient("AdminWebClient", {
       generateSecret: false,
       authFlows: { user: true },
+      accessTokenValidity: Duration.minutes(60),
+      idTokenValidity: Duration.minutes(60),
+      refreshTokenValidity: Duration.days(30),
       disableOAuth: true,
       preventUserExistenceErrors: true,
     });
@@ -139,13 +142,13 @@ export class EvzlaStack extends Stack {
     for (const s of [dbAdminSecret, dbPublicSecret, appSecret]) s.grantRead(server);
     server.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["s3:GetObject", "s3:PutObject"],
+        actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
         resources: [`arn:${Aws.PARTITION}:s3:::${uploadsBucketName}/*`],
       }),
     );
     server.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["cognito-idp:AdminCreateUser", "cognito-idp:AdminDisableUser"],
+        actions: ["cognito-idp:AdminCreateUser", "cognito-idp:AdminDisableUser", "cognito-idp:AdminSetUserPassword"],
         resources: [userPool.userPoolArn],
       }),
     );
