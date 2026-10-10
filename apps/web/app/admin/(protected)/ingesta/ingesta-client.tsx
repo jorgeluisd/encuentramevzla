@@ -6,6 +6,7 @@ import {
   type IngestionSummary,
 } from "@evzla/core";
 import { subirExcelAction } from "@/lib/actions/ingesta";
+import { stageExcelUpload } from "@/lib/upload/stage-excel-upload";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
@@ -53,7 +54,11 @@ export function IngestaClient(): React.ReactElement {
     slowTimer.current = setTimeout(() => setTakingLong(true), SLOW_MS);
 
     try {
-      const result = await subirExcelAction({ ok: false }, formData);
+      const staged = await stageExcelUpload(formData);
+      const result =
+        staged instanceof FormData
+          ? await subirExcelAction({ ok: false }, staged)
+          : { ok: false, mensaje: staged.error };
 
       if (result.ok && result.resumen) {
         const summary = result.resumen;

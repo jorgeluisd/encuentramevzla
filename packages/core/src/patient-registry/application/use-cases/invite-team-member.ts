@@ -1,6 +1,7 @@
 import { canManageHospitalTeam, type Role } from "../../domain/value-objects/team-role";
 import type { TeamMember } from "../ports/team-member-repository";
 import type { TeamMemberAdmin } from "../ports/team-member-admin";
+import type { TeamIdentityProvisioner } from "../ports/team-identity-provisioner";
 import {
   EmailAlreadyMemberError,
   InvalidTeamInputError,
@@ -12,7 +13,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Invita a un miembro al equipo (lo añade a la allow-list). El hospital_admin solo puede invitar
 // a SU hospital y no crear moderadores globales; el moderador, a cualquiera (D5/D13).
 export class InviteTeamMember {
-  constructor(private readonly team: TeamMemberAdmin) {}
+  constructor(
+    private readonly team: TeamMemberAdmin,
+    private readonly identities: TeamIdentityProvisioner,
+  ) {}
 
   async execute(input: {
     actor: { role: Role; hospitalId: string | null };
@@ -45,6 +49,8 @@ export class InviteTeamMember {
     const existing = await this.team.findByEmail(email);
     if (existing) throw new EmailAlreadyMemberError();
 
+    // Identidad primero: si falla, no queda un miembro en la allow-list que no puede entrar.
+    await this.identities.provision(email);
     return this.team.create({ email, role, hospitalId });
   }
 }

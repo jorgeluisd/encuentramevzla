@@ -12,7 +12,7 @@ import {
   resolveTeamMemberUseCase,
   updateHospitalUseCase,
 } from "@/lib/composition";
-import { getSessionEmail } from "@/lib/supabase/ssr-server";
+import { getSessionEmail } from "@/lib/auth/session";
 
 export interface EstadoHospital {
   ok: boolean;

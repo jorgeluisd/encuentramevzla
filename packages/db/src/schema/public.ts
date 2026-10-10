@@ -109,7 +109,7 @@ export const auditLog = pgTable("audit_log", {
  */
 export const teamMembers = pgTable("team_members", {
   id: uuid("id").defaultRandom().primaryKey(),
-  // Email en minúsculas: clave de unión con la sesión de Supabase Auth.
+  // Email en minúsculas: clave de unión con la sesión de Cognito (claim email del id token).
   email: text("email").notNull().unique(),
   role: teamRoleEnum("role").notNull(),
   // nullable: un moderador puede ser global (sin hospital fijo).

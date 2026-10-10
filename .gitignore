@@ -32,3 +32,10 @@ draft/
 # permisos locales de Claude Code (personal)
 .claude/settings.local.json
 *.dump
+
+# cdk
+cdk.out/
+
+# OpenNext (build:aws)
+.open-next/
+cdk-outputs.json

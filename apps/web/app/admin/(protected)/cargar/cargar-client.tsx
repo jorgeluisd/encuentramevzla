@@ -9,6 +9,7 @@ import {
   editarPacienteAction,
 } from "@/lib/actions/voz";
 import { subirExcelAction } from "@/lib/actions/ingesta";
+import { stageExcelUpload } from "@/lib/upload/stage-excel-upload";
 import { ExcelUploadField } from "@/components/excel-upload-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -294,7 +295,11 @@ export function CargarClient({
     setGuardando(true);
     setAviso(null);
     try {
-      const res = await subirExcelAction({ ok: false }, fd);
+      const staged = await stageExcelUpload(fd);
+      const res =
+        staged instanceof FormData
+          ? await subirExcelAction({ ok: false }, staged)
+          : { ok: false, mensaje: staged.error, resumen: undefined };
       if (!res.ok) {
         setAviso({ tipo: "error", texto: res.mensaje ?? "No se pudo subir el archivo." });
         return;

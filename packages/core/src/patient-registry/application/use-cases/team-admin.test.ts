@@ -1,6 +1,7 @@
 import type { CreatedHospital, Hospital, HospitalAdmin, HospitalChanges } from "../ports/hospital-admin";
 import type { TeamMember } from "../ports/team-member-repository";
 import type { TeamMemberAdmin, TeamMembersPage } from "../ports/team-member-admin";
+import type { TeamIdentityProvisioner } from "../ports/team-identity-provisioner";
 import { CreateHospital } from "./create-hospital";
 import { ListHospitals } from "./list-hospitals";
 import { UpdateHospital } from "./update-hospital";
@@ -96,6 +97,15 @@ class FakeTeamAdmin implements TeamMemberAdmin {
   }
 }
 
+class FakeIdentities implements TeamIdentityProvisioner {
+  provisioned: string[] = [];
+  constructor(private readonly failWith: Error | null = null) {}
+  async provision(email: string): Promise<void> {
+    if (this.failWith) throw this.failWith;
+    this.provisioned.push(email);
+  }
+}
+
 describe("CreateHospital", () => {
   it("el moderador global crea un hospital", async () => {
     const admin = new FakeHospitalAdmin();
@@ -126,7 +136,7 @@ describe("CreateHospital", () => {
 describe("InviteTeamMember", () => {
   it("el moderador invita a cualquier hospital", async () => {
     const team = new FakeTeamAdmin();
-    await new InviteTeamMember(team).execute({
+    await new InviteTeamMember(team, new FakeIdentities()).execute({
       actor: { role: "moderator", hospitalId: null },
       email: "Nueva@Hosp.test",
       role: "uploader",
@@ -137,7 +147,7 @@ describe("InviteTeamMember", () => {
 
   it("el moderador puede crear otro moderador global (sin hospital)", async () => {
     const team = new FakeTeamAdmin();
-    await new InviteTeamMember(team).execute({
+    await new InviteTeamMember(team, new FakeIdentities()).execute({
       actor: { role: "moderator", hospitalId: null },
       email: "mod@hosp.test",
       role: "moderator",
@@ -148,7 +158,7 @@ describe("InviteTeamMember", () => {
 
   it("el hospital_admin solo invita a SU hospital (fuerza el hospitalId)", async () => {
     const team = new FakeTeamAdmin();
-    await new InviteTeamMember(team).execute({
+    await new InviteTeamMember(team, new FakeIdentities()).execute({
       actor: { role: "hospital_admin", hospitalId: "ho-1" },
       email: "u@hosp.test",
       role: "uploader",
@@ -160,7 +170,7 @@ describe("InviteTeamMember", () => {
   it("el hospital_admin NO puede crear moderadores globales", async () => {
     const team = new FakeTeamAdmin();
     await expect(
-      new InviteTeamMember(team).execute({
+      new InviteTeamMember(team, new FakeIdentities()).execute({
         actor: { role: "hospital_admin", hospitalId: "ho-1" },
         email: "x@hosp.test",
         role: "moderator",
@@ -171,7 +181,7 @@ describe("InviteTeamMember", () => {
 
   it("un uploader no puede invitar", async () => {
     await expect(
-      new InviteTeamMember(new FakeTeamAdmin()).execute({
+      new InviteTeamMember(new FakeTeamAdmin(), new FakeIdentities()).execute({
         actor: { role: "uploader", hospitalId: "ho-1" },
         email: "x@hosp.test",
         role: "uploader",
@@ -182,7 +192,7 @@ describe("InviteTeamMember", () => {
 
   it("un rol acotado exige hospital", async () => {
     await expect(
-      new InviteTeamMember(new FakeTeamAdmin()).execute({
+      new InviteTeamMember(new FakeTeamAdmin(), new FakeIdentities()).execute({
         actor: { role: "moderator", hospitalId: null },
         email: "x@hosp.test",
         role: "uploader",
@@ -194,7 +204,7 @@ describe("InviteTeamMember", () => {
   it("rechaza email inválido y email ya existente", async () => {
     const team = new FakeTeamAdmin([member({ email: "ya@hosp.test" })]);
     await expect(
-      new InviteTeamMember(team).execute({
+      new InviteTeamMember(team, new FakeIdentities()).execute({
         actor: { role: "moderator", hospitalId: null },
         email: "no-es-email",
         role: "uploader",
@@ -202,13 +212,60 @@ describe("InviteTeamMember", () => {
       }),
     ).rejects.toBeInstanceOf(InvalidTeamInputError);
     await expect(
-      new InviteTeamMember(team).execute({
+      new InviteTeamMember(team, new FakeIdentities()).execute({
         actor: { role: "moderator", hospitalId: null },
         email: "ya@hosp.test",
         role: "uploader",
         hospitalId: "ho-1",
       }),
     ).rejects.toBeInstanceOf(EmailAlreadyMemberError);
+  });
+
+  it("da de alta la identidad de acceso con el email normalizado", async () => {
+    const identities = new FakeIdentities();
+    await new InviteTeamMember(new FakeTeamAdmin(), identities).execute({
+      actor: { role: "moderator", hospitalId: null },
+      email: "  Nueva@Hosp.test ",
+      role: "uploader",
+      hospitalId: "ho-1",
+    });
+    expect(identities.provisioned).toEqual(["nueva@hosp.test"]);
+  });
+
+  it("no da de alta la identidad si la invitación se rechaza", async () => {
+    const identities = new FakeIdentities();
+    const team = new FakeTeamAdmin([member({ email: "ya@hosp.test" })]);
+    await expect(
+      new InviteTeamMember(team, identities).execute({
+        actor: { role: "moderator", hospitalId: null },
+        email: "ya@hosp.test",
+        role: "uploader",
+        hospitalId: "ho-1",
+      }),
+    ).rejects.toBeInstanceOf(EmailAlreadyMemberError);
+    await expect(
+      new InviteTeamMember(team, identities).execute({
+        actor: { role: "uploader", hospitalId: "ho-1" },
+        email: "x@hosp.test",
+        role: "uploader",
+        hospitalId: "ho-1",
+      }),
+    ).rejects.toBeInstanceOf(TeamAdminForbiddenError);
+    expect(identities.provisioned).toEqual([]);
+  });
+
+  it("si falla el alta de la identidad, no agrega al miembro a la allow-list", async () => {
+    const team = new FakeTeamAdmin();
+    const boom = new Error("idp down");
+    await expect(
+      new InviteTeamMember(team, new FakeIdentities(boom)).execute({
+        actor: { role: "moderator", hospitalId: null },
+        email: "x@hosp.test",
+        role: "uploader",
+        hospitalId: "ho-1",
+      }),
+    ).rejects.toBe(boom);
+    expect(team.created).toEqual([]);
   });
 });
 
