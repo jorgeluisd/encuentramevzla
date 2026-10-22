@@ -22,16 +22,16 @@ importers:
   .:
     devDependencies:
       prettier:
-        specifier: ^3.4.2
+        specifier: 3.8.4
         version: 3.8.4
       tsx:
-        specifier: ^4.19.2
+        specifier: 4.22.4
         version: 4.22.4
       turbo:
-        specifier: ^2.10.0
+        specifier: 2.10.0
         version: 2.10.0
       typescript:
-        specifier: ^5.7.3
+        specifier: 5.9.3
         version: 5.9.3
       vite:
         specifier: 7.3.7
@@ -40,7 +40,7 @@ importers:
   apps/web:
     dependencies:
       '@anthropic-ai/sdk':
-        specifier: ^0.107.0
+        specifier: 0.107.0
         version: 0.107.0
       '@aws-sdk/client-cognito-identity-provider':
         specifier: 3.1146.0
@@ -64,34 +64,34 @@ importers:
         specifier: 5.2.1
         version: 5.2.1
       clsx:
-        specifier: ^2.1.1
+        specifier: 2.1.1
         version: 2.1.1
       drizzle-orm:
-        specifier: ^0.45.2
+        specifier: 0.45.2
         version: 0.45.2(gel@2.2.0)(postgres@3.4.9)
       next:
         specifier: 16.4.2
         version: 16.4.2(@types/node@22.20.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       openai:
-        specifier: ^6.45.0
+        specifier: 6.45.0
         version: 6.45.0(@aws-sdk/credential-provider-node@3.972.85)(@smithy/hash-node@4.5.2)(@smithy/signature-v4@5.7.4)
       postgres:
-        specifier: ^3.4.5
+        specifier: 3.4.9
         version: 3.4.9
       react:
-        specifier: ^19.2.0
+        specifier: 19.2.7
         version: 19.2.7
       react-dom:
-        specifier: ^19.2.0
+        specifier: 19.2.7
         version: 19.2.7(react@19.2.7)
       resend:
-        specifier: ^6.16.0
+        specifier: 6.16.0
         version: 6.16.0
       server-only:
-        specifier: ^0.0.1
+        specifier: 0.0.1
         version: 0.0.1
       tailwind-merge:
-        specifier: ^2.6.0
+        specifier: 2.6.1
         version: 2.6.1
       xlsx:
         specifier: https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
@@ -104,31 +104,31 @@ importers:
         specifier: 4.1.8
         version: 4.1.8(next@16.4.2(@types/node@22.20.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))
       '@tailwindcss/postcss':
-        specifier: ^4.0.0
+        specifier: 4.3.1
         version: 4.3.1
       '@types/node':
-        specifier: ^22.10.7
+        specifier: 22.20.0
         version: 22.20.0
       '@types/react':
-        specifier: ^19.2.0
+        specifier: 19.2.17
         version: 19.2.17
       '@types/react-dom':
-        specifier: ^19.2.0
+        specifier: 19.2.3
         version: 19.2.3(@types/react@19.2.17)
       eslint:
-        specifier: ^9.18.0
+        specifier: 9.39.4
         version: 9.39.4(jiti@2.7.0)
       tailwindcss:
-        specifier: ^4.0.0
+        specifier: 4.3.1
         version: 4.3.1
       typescript:
-        specifier: ^5.7.3
+        specifier: 5.9.3
         version: 5.9.3
       typescript-eslint:
-        specifier: ^8.20.0
+        specifier: 8.62.0
         version: 8.62.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
       vitest:
-        specifier: ^4.1.12
+        specifier: 4.1.12
         version: 4.1.12(@types/node@22.20.0)(vite@7.3.7(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.1))
 
   infra:
@@ -153,7 +153,7 @@ importers:
         specifier: 8.10.164
         version: 8.10.164
       '@types/node':
-        specifier: ^22.10.7
+        specifier: 22.20.0
         version: 22.20.0
       aws-cdk:
         specifier: 2.1144.0
@@ -162,34 +162,34 @@ importers:
         specifier: 0.28.1
         version: 0.28.1
       eslint:
-        specifier: ^9.18.0
+        specifier: 9.39.4
         version: 9.39.4(jiti@2.7.0)
       tsx:
-        specifier: ^4.19.2
+        specifier: 4.22.4
         version: 4.22.4
       typescript:
-        specifier: ^5.7.3
+        specifier: 5.9.3
         version: 5.9.3
       typescript-eslint:
-        specifier: ^8.20.0
+        specifier: 8.62.0
         version: 8.62.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
       vitest:
-        specifier: ^4.1.12
+        specifier: 4.1.12
         version: 4.1.12(@types/node@22.20.0)(vite@7.3.7(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.1))
 
   packages/config:
     devDependencies:
       '@eslint/js':
-        specifier: ^9.18.0
+        specifier: 9.39.4
         version: 9.39.4
       eslint:
-        specifier: ^9.18.0
+        specifier: 9.39.4
         version: 9.39.4(jiti@2.7.0)
       eslint-plugin-import:
-        specifier: ^2.32.0
+        specifier: 2.32.0
         version: 2.32.0(eslint@9.39.4(jiti@2.7.0))
       typescript-eslint:
-        specifier: ^8.20.0
+        specifier: 8.62.0
         version: 8.62.0(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
 
   packages/core:
@@ -198,13 +198,13 @@ importers:
         specifier: workspace:^
         version: link:../config
       eslint:
-        specifier: ^9.18.0
+        specifier: 9.39.4
         version: 9.39.4(jiti@2.7.0)
       typescript:
-        specifier: ^5.7.3
+        specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^4.1.12
+        specifier: 4.1.12
         version: 4.1.12(@types/node@22.20.0)(vite@7.3.7(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.1))
 
   packages/db:
@@ -216,10 +216,10 @@ importers:
         specifier: workspace:*
         version: link:../core
       drizzle-orm:
-        specifier: ^0.45.2
+        specifier: 0.45.2
         version: 0.45.2(gel@2.2.0)(postgres@3.4.9)
       postgres:
-        specifier: ^3.4.5
+        specifier: 3.4.9
         version: 3.4.9
       xlsx:
         specifier: https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
@@ -229,22 +229,22 @@ importers:
         specifier: workspace:*
         version: link:../config
       '@types/node':
-        specifier: ^22.10.7
+        specifier: 22.20.0
         version: 22.20.0
       drizzle-kit:
-        specifier: ^0.31.10
+        specifier: 0.31.10
         version: 0.31.10
       exceljs:
-        specifier: ^4.4.0
+        specifier: 4.4.0
         version: 4.4.0
       tsx:
-        specifier: ^4.19.2
+        specifier: 4.22.4
         version: 4.22.4
       typescript:
-        specifier: ^5.7.3
+        specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^4.1.12
+        specifier: 4.1.12
         version: 4.1.12(@types/node@22.20.0)(vite@7.3.7(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.1))
 
 packages:
