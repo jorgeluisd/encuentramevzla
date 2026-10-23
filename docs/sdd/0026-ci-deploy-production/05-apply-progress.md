@@ -11,7 +11,8 @@
 | T-6 | terminada | 3774382 | AC-14, AC-23 (parte script), AC-13 (validación de entradas del tar, parte script) |
 | T-7 | terminada | 84c4344 | AC-26, AC-27, AC-28, AC-29 |
 | T-8 | terminada | fd02a41 | AC-34 (parte summary) |
-| T-9 | terminada | (este commit) | AC-19, AC-24, AC-25, AC-33, AC-35 |
+| T-9 | terminada | ff5763f | AC-19, AC-24, AC-25, AC-33, AC-35 |
+| T-10 | terminada | (este commit) | AC-7, AC-8 (resolve/checks), AC-9, AC-10, AC-12, AC-17 (timeouts), AC-18, AC-21 (workflow), AC-23 (orden en checks) |
 
 ## T-1 — Dependencia `yaml` en infra   estado: terminada
 TDD: OFF (config pura: alta de una devDependency, sin código de producción ni test propio; definido así en 04-plan)
@@ -285,7 +286,7 @@ Checks locales:
 - lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total"
 - tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 112, core 286, db 20, web 61) (2026-10-23T03:49:00Z)
 
-Commit: (este commit) chore(ci): add repo hygiene guards, codeowners and dependabot
+Commit: ff5763f chore(ci): add repo hygiene guards, codeowners and dependabot
 Decisiones menores:
 - `apps/web/.env.production` se versionó con `git add` tal cual; el agente nunca lo abrió, imprimió ni editó. El test lo lee en proceso pero solo afirma booleanos y conteos (1 línea no vacía; empieza con `NEXT_PUBLIC_TURNSTILE_SITE_KEY=`) y el exit code de `check-public-env.mjs`; ninguna aserción puede imprimir el valor.
 - `git check-ignore --no-index`: evalúa las reglas aunque el archivo esté trackeado (sin `--no-index` un archivo trackeado nunca figura como ignorado).
@@ -297,3 +298,44 @@ Notas para el verifier:
 - La corrida 03:46:14Z encadena `rm` antes del runner; el exit code registrado es el de vitest (último comando).
 - Ninguna línea del log de esta tarea (03:44:05Z a 03:49:00Z) tiene `WARN`.
 - SHA pinning: GitHub exige acciones fijadas por SHA (`sha_pinning_required`). Esta tarea no agrega acciones; los PRs de Dependabot para `github-actions` actualizan SHA y comentario `# vX.Y.Z` cuando el workflow (T-10) los use así.
+
+## T-10 — Workflow `deploy-production.yml`: triggers, permisos, jobs `resolve` y `checks`   estado: terminada
+TDD: ON (test estructural con `yaml` sobre el workflow, rojo primero)
+Safety net: `pnpm --filter @evzla/infra test -- test/repo-hygiene.test.ts` (escanea `.github/`, que esta tarea toca; `ci-workflow.test.ts` no existía) → `Test Files 1 passed (1) Tests 15 passed (15)` (2026-10-23T03:51:20Z)
+Archivos tocados: [.github/workflows/deploy-production.yml, infra/test/ci-workflow.test.ts, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]   Desviaciones respecto al plan: ninguna. Sin placeholder del job `deploy` (no hace falta: el workflow es válido con `resolve` y `checks`; T-11 lo agrega).
+
+Acciones fijadas (resueltas con `gh api repos/<r>/releases` y `git/ref/tags/<t>`, tag anotado pelado a su commit; contrastado con `git ls-remote`). Majors según 03-design y el pedido del orquestador; dentro de cada major, la última release estable publicada hace ≥ 72 h (hoy 2026-10-23):
+| Acción | Versión | SHA (commit) | Publicada |
+|---|---|---|---|
+| actions/checkout | v5.1.0 | fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 | 2026-07-20T15:27:58Z |
+| pnpm/action-setup | v4.4.0 | fc06bc1257f339d1d5d8b3a19a8cae5388b55320 (objeto tag anotado a15d269c…) | 2026-03-13T10:44:28Z |
+| actions/setup-node | v5.0.0 | a0853c24544627f65ddf259abe73b1d18a591444 | 2025-09-04T02:52:29Z |
+| actions/upload-artifact | v7.0.2 (mayor vigente) | cf430e030ddbb5b0abf93d22962f4752f3646cd9 | 2026-10-07T10:08:14Z |
+| actions/download-artifact | v8.0.2 (mayor vigente; lo usa T-11) | 9000827ccba6bdab643e8b6fd33ac0654aef8333 | 2026-10-07T10:09:51Z |
+`upload-artifact` v7.0.2 conserva los inputs del diseño (`name`, `path`, `retention-days`, `if-no-files-found`, `overwrite`); `setup-node` v5.0.0 acepta `node-version` y `cache` (ambas corren en `node24`).
+
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | 25 tests de `ci-workflow.test.ts` sin el workflow | `pnpm --filter @evzla/infra test -- test/ci-workflow.test.ts` | FAIL (comportamiento ausente: el archivo no existe, `on`/`permissions`/jobs `undefined`) · `Tests 16 failed \| 9 passed (25)` | 2026-10-23T03:53:05Z |
+| GREEN | mismos 25 con `deploy-production.yml` | `pnpm --filter @evzla/infra test -- test/ci-workflow.test.ts` | PASS · `Tests 25 passed (25)` | 2026-10-23T03:53:24Z |
+| TRIANGULATE | mutación: `actions/setup-node@v5 # v5.0.0` (tag en vez de SHA) | `pnpm --filter @evzla/infra test -- test/ci-workflow.test.ts -t "pins every action"` | FAIL esperado · `Tests 1 failed \| 24 skipped (25)` | 2026-10-23T03:53:46Z |
+| TRIANGULATE | mutación: `check-bundle.mjs` movido después del `tar` | `pnpm --filter @evzla/infra test -- test/ci-workflow.test.ts -t "designed order"` | FAIL esperado (diff muestra el cambio de orden) · `Tests 1 failed \| 24 skipped (25)` | 2026-10-23T03:54:04Z |
+| REFACTOR | — (mutaciones revertidas, sin cambios tras el verde) | `pnpm test` | PASS · `exit=0` (infra 6 archivos, 137 tests = 112 previos + 25 nuevos) | 2026-10-23T03:55:41Z |
+
+Checks locales:
+- typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total"
+- lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total"
+- tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 137, core 286, db 20, web 61) (2026-10-23T03:55:41Z)
+
+Commit: (este commit) feat(ci): add production workflow resolve and checks jobs
+Decisiones menores:
+- `resolve` hace checkout de `github.sha` con `fetch-depth: 0` (trae tags y `origin/main`, que `resolve-ref.mjs` necesita para `merge-base --is-ancestor`); el step tiene `id: ref` y el job expone `sha: ${{ steps.ref.outputs.sha }}`. `GITHUB_SHA` y `GITHUB_OUTPUT` los pone el runner; solo `INPUT_REF` y `EVENT_NAME` van por `env:`.
+- Condición del tarball y del upload: `github.event_name == 'push' || github.event_name == 'workflow_dispatch'` (misma cadena en ambos; el test la fija y exige que ningún otro paso de `checks` tenga `if`).
+- Sin `concurrency` a nivel workflow: el diseño la pone en el job `deploy` (T-11) para no serializar PRs; el test afirma su ausencia a nivel workflow.
+- El test, además de lo pedido, fija la lista blanca de acciones del diseño y que ningún `run:` de `resolve`/`checks` contenga `${{` (más estricto que "sin `${{ inputs.* }}`", que aplica a todos los jobs y cubre T-11).
+Notas para el verifier:
+- En el RED pasaron 9 tests: son guardas negativas o cuantificadas sobre el conjunto vacío (sin `pull_request_target`, sin `secrets.`, sin concurrency global, sin acciones fuera de lista, sin `${{ inputs.` en `run:`, timeouts de todos los jobs, sin `${{` en `run:` de resolve/checks).
+- Triangulación de la guarda de inyección (`${{ inputs.ref }}` dentro de `run:`): no se ejecutó; el clasificador de permisos bloqueó escribir esa mutación en el workflow, aunque fuera temporal. Se triangularon el pin por SHA y el orden de pasos.
+- Majors más nuevas existen (checkout v7, setup-node v7, pnpm/action-setup v6): se respetaron las del diseño (checkout v5, setup-node v5, pnpm v4); Dependabot (mensual, agrupado) propondrá los saltos.
+- Ninguna línea del log de esta tarea (03:51:20Z a 03:55:41Z) tiene `WARN`.

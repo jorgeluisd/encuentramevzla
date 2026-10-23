@@ -1,0 +1,70 @@
+name: deploy-production
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "SHA de 40 hex o tag ancestro de origin/main (vacío = commit actual)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.ref.outputs.sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      # El input del dispatch entra solo por env: nunca se interpola en el script.
+      - id: ref
+        run: node infra/scripts/ci/resolve-ref.mjs
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+          EVENT_NAME: ${{ github.event_name }}
+
+  checks:
+    needs: resolve
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node infra/scripts/ci/check-public-env.mjs apps/web/.env.production
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm audit --audit-level=high
+      - run: pnpm --filter @evzla/web build:aws
+      - run: node infra/scripts/ci/check-bundle.mjs apps/web/.open-next
+      # Tarball y no la carpeta: upload-artifact reemplaza los symlinks de pnpm que necesita zip-bundle.ts.
+      - if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: tar -C apps/web -czf "$RUNNER_TEMP/open-next.tgz" .open-next
+      - if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: open-next-${{ github.run_id }}
+          path: ${{ runner.temp }}/open-next.tgz
+          retention-days: 1
+          if-no-files-found: error
+          overwrite: true
