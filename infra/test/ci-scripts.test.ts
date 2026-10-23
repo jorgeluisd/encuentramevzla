@@ -1,9 +1,9 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 const scriptsDir = fileURLToPath(new URL("../scripts/ci/", import.meta.url));
 
@@ -20,6 +20,7 @@ function runScript(script: string, cwd: string, env: Record<string, string>, arg
     cwd,
     encoding: "utf8",
     env: { ...isolatedGitEnv, GITHUB_OUTPUT: outputFile, ...env },
+    timeout: 30_000,
   });
   const output = readFileSync(outputFile, "utf8");
   rmSync(outputDir, { recursive: true, force: true });
@@ -191,5 +192,237 @@ describe("check-public-env.mjs", () => {
     const unreadable = runScript("check-public-env.mjs", dir, {}, [path.join(dir, "does-not-exist")]);
     expect(unreadable.status).toBe(1);
     expect(unreadable.stderr).toBe("check-public-env: no se pudo leer el archivo\n");
+  });
+});
+
+describe("check-bundle.mjs", () => {
+  let workDir: string;
+  let bundle: string;
+
+  // Los patrones de secreto se arman en runtime para que el repo no contenga literales que los imiten.
+  const syntheticAccessKeyId = ["AK", "IA"].join("") + "TESTONLY" + "0".repeat(8);
+  const syntheticPemHeader = ["-----BEGIN", "RSA", "PRIVATE", "KEY-----"].join(" ");
+
+  const write = (relativePath: string, contents: string): void => {
+    const file = path.join(bundle, relativePath);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, contents);
+  };
+
+  const link = (relativePath: string, target: string): void => {
+    const file = path.join(bundle, relativePath);
+    mkdirSync(path.dirname(file), { recursive: true });
+    symlinkSync(target, file);
+  };
+
+  const check = (args: string[] = [bundle]): ScriptRun => runScript("check-bundle.mjs", workDir, {}, args);
+
+  beforeEach(() => {
+    workDir = mkdtempSync(path.join(tmpdir(), "evzla-check-bundle-"));
+    bundle = path.join(workDir, ".open-next");
+    mkdirSync(bundle);
+    write("open-next.output.json", '{"edgeFunctions":{}}');
+    write("server-functions/default/index.mjs", 'export const siteKey = "NEXT_PUBLIC_SITE_KEY:synthetic-public";\n');
+  });
+
+  afterEach(() => {
+    rmSync(workDir, { recursive: true, force: true });
+  });
+
+  it("passes on a clean bundle with open-next.output.json", () => {
+    const run = check();
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
+  });
+
+  it("fails when open-next.output.json is missing (AC-23)", () => {
+    rmSync(path.join(bundle, "open-next.output.json"));
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe("check-bundle: falta open-next.output.json\n");
+  });
+
+  it.each([".env", ".env.local", "x.pem", "x.key"])("fails on a forbidden file name %s listing only its path", (name) => {
+    write(`server-functions/default/${name}`, "synthetic-secret-value");
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(`check-bundle: "server-functions/default/${name}": nombre de archivo prohibido\n`);
+    expect(run.stderr + run.stdout).not.toContain("synthetic-secret-value");
+  });
+
+  it.each([
+    ["an AWS access key id", () => `const k = "${syntheticAccessKeyId}";`],
+    ["a private key PEM header", () => `${syntheticPemHeader}\nsynthetic-body\n`],
+  ])("fails on content with %s, listing only the path", (_label, contents) => {
+    const secret = contents();
+    write("assets/chunk.js", secret);
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe('check-bundle: "assets/chunk.js": contenido con patrón de secreto\n');
+    expect(run.stderr + run.stdout).not.toContain(secret.split("\n")[0] ?? secret);
+  });
+
+  it("fails on a symlink pointing outside the bundle by absolute path or by ../..", () => {
+    link("server-functions/default/host", "/etc/hostname");
+    link("server-functions/up", "../..");
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(
+      'check-bundle: "server-functions/default/host": symlink fuera del bundle\n' +
+        'check-bundle: "server-functions/up": symlink fuera del bundle\n',
+    );
+  });
+
+  it("does not flag the SDK property access to the secret key field, only an assigned value", () => {
+    const field = ["aws", "secret", "access", "key"].join("_");
+    write("server-functions/default/sdk.js", `secretAccessKey: profile.${field}, ok: typeof e.${field}=="string"`);
+    expect(check().status).toBe(0);
+
+    const assigned = `${field} = ${"Q".repeat(40)}`;
+    write("assets/config.ini", `[default]\n${assigned}\n`);
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe('check-bundle: "assets/config.ini": contenido con patrón de secreto\n');
+    expect(run.stderr + run.stdout).not.toContain("Q".repeat(40));
+  });
+
+  it("fails on a symlink to a sibling directory that only shares the bundle name prefix", () => {
+    mkdirSync(path.join(workDir, ".open-next-evil"));
+    link("server-functions/sibling", "../../.open-next-evil");
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe('check-bundle: "server-functions/sibling": symlink fuera del bundle\n');
+  });
+
+  it("does not descend into an internal symlink loop", () => {
+    link("server-functions/default/loop", ".");
+    const run = check();
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
+  });
+
+  it("fails on a symlink with a forbidden name even if it points inside", () => {
+    link("server-functions/default/.env", "index.mjs");
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe('check-bundle: "server-functions/default/.env": nombre de archivo prohibido\n');
+  });
+
+  it("reports every violation, matching forbidden extensions case-insensitively, with nothing on stdout", () => {
+    write("a/b/c/CERT.PEM", "x");
+    write("assets/z.js", `"${syntheticAccessKeyId}"`);
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(
+      'check-bundle: "a/b/c/CERT.PEM": nombre de archivo prohibido\n' +
+        'check-bundle: "assets/z.js": contenido con patrón de secreto\n',
+    );
+    expect(run.stdout).toBe("");
+  });
+
+  it("escapes paths so a hostile file name cannot start a workflow command line", () => {
+    write("assets/evil\n::warning::x.pem", "x");
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe('check-bundle: "assets/evil\\n::warning::x.pem": nombre de archivo prohibido\n');
+    expect(run.stderr.split("\n").some((line) => line.startsWith("::"))).toBe(false);
+  });
+
+  it("fails on an entry that is neither a regular file, a directory nor a symlink, without blocking on it", () => {
+    execFileSync("mkfifo", [path.join(bundle, "assets-pipe")]);
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe('check-bundle: "assets-pipe": tipo de archivo no permitido\n');
+  });
+
+  it("fails when open-next.output.json is not a regular file", () => {
+    rmSync(path.join(bundle, "open-next.output.json"));
+    mkdirSync(path.join(bundle, "open-next.output.json"));
+    expect(check().stderr).toBe("check-bundle: falta open-next.output.json\n");
+
+    rmSync(path.join(bundle, "open-next.output.json"), { recursive: true });
+    write("real-output.json", "{}");
+    link("open-next.output.json", "real-output.json");
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe("check-bundle: falta open-next.output.json\n");
+  });
+
+  it("fails closed when the bundle path is missing, does not exist, is a file or is a symlink", () => {
+    const missing = check([]);
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toBe("check-bundle: falta la ruta del bundle\n");
+
+    const absent = check([path.join(workDir, "nope")]);
+    expect(absent.status).toBe(1);
+    expect(absent.stderr).toBe("check-bundle: el bundle no existe\n");
+
+    const file = path.join(workDir, "plain-file");
+    writeFileSync(file, "x");
+    const notDir = check([file]);
+    expect(notDir.status).toBe(1);
+    expect(notDir.stderr).toBe("check-bundle: la raíz del bundle no es un directorio\n");
+
+    const rootLink = path.join(workDir, "linked-bundle");
+    symlinkSync(bundle, rootLink);
+    const linked = check([rootLink]);
+    expect(linked.status).toBe(1);
+    expect(linked.stderr).toBe("check-bundle: la raíz del bundle no es un directorio\n");
+  });
+
+  describe("--tar-entries", () => {
+    const checkEntries = (listing: string): ScriptRun => {
+      const listFile = path.join(workDir, "entries.txt");
+      writeFileSync(listFile, listing);
+      return check(["--tar-entries", listFile]);
+    };
+
+    it("passes when every entry is under .open-next/", () => {
+      const run = checkEntries(".open-next/\n.open-next/open-next.output.json\n.open-next/server-functions/default/index.mjs\n");
+      expect(run.stderr).toBe("");
+      expect(run.status).toBe(0);
+    });
+
+    it("rejects absolute paths, .. segments and entries outside .open-next/, by line number only", () => {
+      const run = checkEntries(
+        [
+          ".open-next/ok.js",
+          "/etc/passwd",
+          ".open-next/../outside",
+          "other/file",
+          "./.open-next/x",
+          "..",
+          ".open-next-evil/x",
+          ".open-next/a/../../b",
+        ].join("\n") + "\n",
+      );
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe(
+        [2, 3, 4, 5, 6, 7, 8].map((line) => `check-bundle: entrada ${line} del tar fuera de .open-next/\n`).join(""),
+      );
+      expect(run.stderr).not.toContain("passwd");
+    });
+
+    it("fails closed on an empty listing or an unreadable listing file", () => {
+      const empty = checkEntries("\n");
+      expect(empty.status).toBe(1);
+      expect(empty.stderr).toBe("check-bundle: el tar no tiene entradas\n");
+
+      const unreadable = check(["--tar-entries", path.join(workDir, "missing.txt")]);
+      expect(unreadable.status).toBe(1);
+      expect(unreadable.stderr).toBe("check-bundle: no se pudo leer la lista de entradas del tar\n");
+
+      const noFile = check(["--tar-entries"]);
+      expect(noFile.status).toBe(1);
+      expect(noFile.stderr).toBe("check-bundle: falta la ruta de la lista de entradas del tar\n");
+    });
+  });
+
+  it("passes with an internal pnpm-style relative symlink", () => {
+    write("server-functions/default/node_modules/.pnpm/next@1.0.0/node_modules/next/index.js", "export {};\n");
+    link("server-functions/default/node_modules/next", ".pnpm/next@1.0.0/node_modules/next");
+    const run = check();
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
   });
 });

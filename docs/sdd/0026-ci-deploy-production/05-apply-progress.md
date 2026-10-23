@@ -7,7 +7,8 @@
 | T-2 | terminada | f831e75 | AC-1, AC-2, AC-3, AC-4, AC-5 |
 | T-3 | terminada | 185db6c | AC-6 |
 | T-4 | terminada | 2172795 | AC-20, AC-21 (parte script) |
-| T-5 | terminada | (ver commit de T-5) | AC-22 (parte script) |
+| T-5 | terminada | f20fdb6 | AC-22 (parte script) |
+| T-6 | terminada | (ver commit de T-6) | AC-14, AC-23 (parte script), AC-13 (validación de entradas del tar, parte script) |
 
 ## T-1 — Dependencia `yaml` en infra   estado: terminada
 TDD: OFF (config pura: alta de una devDependency, sin código de producción ni test propio; definido así en 04-plan)
@@ -158,7 +159,7 @@ Checks locales:
 - lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total"
 - tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 57 = 52 previos + 5 nuevos; core 286, db 20, web 61) (2026-10-23T03:17:37Z)
 
-Commit: ver `git log` (subject `feat(infra): add ci script to guard public env keys`)
+Commit: f20fdb6 feat(infra): add ci script to guard public env keys
 Decisiones menores:
 - Contrato: la ruta del archivo entra por argv (`node infra/scripts/ci/check-public-env.mjs apps/web/.env.production`), tal como lo invoca el job `checks` en 03-design.md; no hay otras entradas. Sin ruta o archivo ilegible → exit 1 con mensaje fijo.
 - Una línea cuenta como asignación solo si casa `^(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=`; cualquier otra línea no vacía ni comentario falla con "no es una asignación CLAVE=valor" sin imprimir su contenido (un secreto pegado sin `=` no se reproduce como si fuera clave). La clave solo se imprime cuando es un identificador válido.
@@ -166,3 +167,40 @@ Decisiones menores:
 Notas para el verifier:
 - Ninguna línea del log de esta tarea (03:14:45Z a 03:17:37Z) tiene `WARN`.
 - No se leyó ni se ejecutó el script sobre `apps/web/.env.production` real; eso queda para T-9.
+
+## T-6 — Script `check-bundle.mjs` (bundle presente + escaneo + symlinks confinados + entradas del tar)   estado: terminada
+TDD: ON (script de CI de seguridad; tests con bundles sintéticos en `tmpdir` ejecutando el `.mjs` con `node`)
+Safety net: `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` → `Test Files 1 passed (1) Tests 17 passed (17)` (2026-10-23T03:16:05Z, sin cambios en el archivo desde entonces; check-bundle es nuevo)
+Bloqueo previo (resuelto): el literal `aws_secret_access_key` aparece en el AWS SDK inlined del bundle real como acceso a propiedad. El orquestador ajustó AC-14 en `02-spec.md` (solo con valor asignado: `aws_secret_access_key\s*[=:]\s*["']?[A-Za-z0-9/+]{40}`) y aprobó las decisiones menores de abajo.
+Archivos tocados: [infra/scripts/ci/check-bundle.mjs, infra/test/ci-scripts.test.ts, docs/sdd/0026-ci-deploy-production/02-spec.md (cambio del orquestador, commit pedido por él), docs/sdd/0026-ci-deploy-production/05-apply-progress.md]   Desviaciones respecto al plan: el modo `--tar-entries` (validación de entradas del tar de AC-13) vive en `check-bundle.mjs`, aprobado por el orquestador; T-11 lo invoca. En el test, `runScript` gana `timeout: 30_000` en `spawnSync` para que un script colgado (FIFO) falle en vez de bloquear la suite.
+
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | passes on a clean bundle… · fails when open-next.output.json is missing (AC-23) · forbidden file name ×4 (`.env`, `.env.local`, `x.pem`, `x.key`) · content with AWS access key id / PEM header · symlink outside by absolute path or ../.. · internal pnpm-style symlink passes | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | FAIL (esqueleto `not implemented`, exit 2): "expected 2 to be 1" / "expected 'check-bundle: not implemented\n' to be ''" · `Tests 10 failed \| 17 passed (27)` | 2026-10-23T03:22:04Z |
+| GREEN (previo) | mismos 10 | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | FAIL por error del fixture: el symlink `../..` estaba en `server-functions/default/` y resolvía a la propia raíz del bundle (dentro); se movió a `server-functions/up` para que realmente salga · `Tests 1 failed \| 26 passed (27)` | 2026-10-23T03:22:27Z |
+| GREEN | mismos 10 | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | PASS · `Tests 27 passed (27)` | 2026-10-23T03:22:47Z |
+| TRIANGULATE RED | FIFO (tipo no permitido, sin bloquear) · open-next.output.json directorio/symlink · raíz ausente/inexistente/archivo/symlink · `--tar-entries` ×3 (válido, rechazos por línea, vacío/ilegible/sin ruta) | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | FAIL: FIFO → `status null` (lectura bloqueada hasta el timeout de 30 s), "expected '' to be 'check-bundle: falta open-next.output.json'", stack de `realpathSync` ENOENT en vez de mensaje fijo · `Tests 6 failed \| 33 passed (39)` | 2026-10-23T03:24:08Z |
+| GUARDA (sin RED) | acceso a propiedad del SDK no dispara / valor asignado sí (pedido del orquestador) · symlink a hermano `.open-next-evil` · loop interno `loop -> .` · symlink llamado `.env` · varias violaciones + `.PEM` en mayúsculas, stdout vacío · nombre con `\n::warning::` escapado | (misma corrida) | PASS de entrada: el GREEN ya usa el patrón con valor, `path.relative` (no `startsWith` de prefijo), no sigue symlinks, revisa el nombre antes que el tipo de link, compara en minúsculas y etiqueta con `JSON.stringify` | 2026-10-23T03:24:08Z |
+| TRIANGULATE GREEN | archivo completo | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | PASS · `Tests 39 passed (39)` | 2026-10-23T03:24:43Z |
+| REFACTOR | — (el GREEN de triangulación ya separa `bundleRoot`/`violationOf`/`checkTarEntries`; sin cambios posteriores) | `pnpm test` | PASS · infra `Test Files 4 passed (4)` `Tests 79 passed (79)` | 2026-10-23T03:26:33Z |
+
+Checks locales:
+- typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total"
+- lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total"
+- tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 79 = 57 previos + 22 nuevos; core 286, db 20, web 61) (2026-10-23T03:26:33Z)
+- Sanidad sin test (fuera del log): `node infra/scripts/ci/check-bundle.mjs apps/web/.open-next` sobre el bundle real local → exit 0 (sin falsos positivos; 109 symlinks pnpm internos); `tar -C apps/web -cf - .open-next | tar -tf -` (2285 entradas) → `--tar-entries` exit 0.
+
+Commit: (ver `git log`; subject `feat(infra): add ci script to check the open-next bundle`)
+Decisiones menores (aprobadas por el orquestador):
+- Contrato: `node infra/scripts/ci/check-bundle.mjs <dir .open-next>` y `node infra/scripts/ci/check-bundle.mjs --tar-entries <archivo con la salida de tar -tzf>`. Solo argv; sin env.
+- Raíz: sin ruta, inexistente, archivo o symlink → exit 1 con mensaje fijo. `open-next.output.json` debe ser archivo regular (ni directorio ni symlink).
+- Symlink válido si su destino, resuelto léxicamente respecto de su directorio, queda dentro de la raíz real; nunca se siguen symlinks ni se leen sus destinos. Otro tipo de entrada (FIFO, socket, dispositivo) → falla sin leerla.
+- Nombres prohibidos en minúsculas (`.env`, `.env.*`, `*.pem`, `*.key`), también para symlinks. Contenido leído como `latin1` solo en archivos regulares.
+- Tar: entrada válida si no empieza por `/`, su primer segmento es exactamente `.open-next` y ningún segmento es `.` ni `..` (rechaza `./.open-next/x` y `.open-next-evil/x`). Mensajes por número de línea, nunca la entrada. Lista vacía → falla.
+- Mensajes: `check-bundle: <ruta relativa en JSON>: <motivo>`; `JSON.stringify` escapa saltos de línea, así un nombre hostil no puede abrir una línea `::comando::` en el log de Actions. stdout siempre vacío.
+- Las regex se arman por partes (con comentario del porqué) para que el script no case con el escaneo de secretos del repo (AC-33, T-9); los fixtures de los tests también se arman en runtime.
+Notas para el verifier:
+- La línea 03:22:27Z es un fallo del fixture (`../..` resolvía dentro), no del script; el GREEN de referencia es 03:22:47Z.
+- Ninguna línea del log de esta tarea (03:22:04Z a 03:26:33Z) tiene `WARN`.
+- El modo `--tar-entries` no ve destinos de symlinks (tar -t no los lista); esa parte la cubre el escaneo del directorio tras extraer, como fija el orden de AC-16.
