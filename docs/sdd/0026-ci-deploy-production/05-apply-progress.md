@@ -5,7 +5,8 @@
 |---|---|---|---|
 | T-1 | terminada | 729f6f1 | habilita AC-7..18 |
 | T-2 | terminada | f831e75 | AC-1, AC-2, AC-3, AC-4, AC-5 |
-| T-3 | terminada | (ver commit de T-3) | AC-6 |
+| T-3 | terminada | 185db6c | AC-6 |
+| T-4 | terminada | (ver commit de T-4) | AC-20, AC-21 (parte script) |
 
 ## T-1 — Dependencia `yaml` en infra   estado: terminada
 TDD: OFF (config pura: alta de una devDependency, sin código de producción ni test propio; definido así en 04-plan)
@@ -92,7 +93,7 @@ Checks locales:
 - lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total"
 - tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 40 = 34 previos + 6 nuevos; `evzla-stack.test.ts` 22 passed sin tocarlo) (2026-10-23T03:00:14Z y 03:02:50Z)
 
-Commit: ver `git log` (subject `feat(infra): add separate cdk app for the ci stack`)
+Commit: 185db6c feat(infra): add separate cdk app for the ci stack
 Decisiones menores:
 - `buildCiApp` valida el context `account` con el mismo mensaje que `buildApp` (`Falta el context "account"`) y delega en el constructor de `EvzlaCiStack` el rechazo de una cuenta distinta de `CI_ACCOUNT`.
 - `bin/evzla-ci.ts` no pasa `baseDir` (el stack de CI no lee `.open-next`).
@@ -101,3 +102,37 @@ Notas para el verifier:
 - La corrida 02:57:02Z falló por las razones correctas en los 3 tests de `buildCiApp`, pero el hook la marcó `WARN=compile-error` por el bin inexistente; no se usa como RED. El RED de referencia es 03:02:07Z (sin WARN): se volvió temporalmente al stub y a un bin `new App().synth()` y se restauró el GREEN idéntico (turbo reutiliza el hash `d686ee35e026da91` en 03:02:50Z).
 - AC-6 "`cdk deploy --all` en `infra/` no lo incluye" queda cubierto por los dos tests guarda: `buildApp` no crea `EvzlaCiStack` y `cdk.json#app` sigue apuntando a `bin/evzla.ts`.
 
+
+## T-4 — Script `resolve-ref.mjs` (ref del dispatch → SHA)   estado: terminada
+TDD: ON (script de CI, test con repos git temporales sintéticos ejecutando el `.mjs` con `node` y entradas solo por `env`)
+Safety net: N/A en tests (solo archivos nuevos: `infra/scripts/ci/resolve-ref.mjs`, `infra/test/ci-scripts.test.ts`); `pnpm --filter @evzla/infra lint` verde antes de empezar.
+Archivos tocados: [infra/scripts/ci/resolve-ref.mjs, infra/test/ci-scripts.test.ts, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]   Desviaciones respecto al plan: ninguna. `infra/vitest.config.ts` (`include: ["**/*.test.ts"]`) e `infra/eslint.config.mjs` (`eslint .`, solo ignora `cdk.out/**` y `test/fixtures/**`) ya cubren los archivos nuevos sin cambios: el lint marcó `no-undef` sobre `process` en el `.mjs` (prueba de que lo analiza) y se resolvió con `import process from "node:process"`.
+
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED (previo, descartado) | 4 tests iniciales | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | FAIL del `beforeAll` (fixture): `git tag side-tag` → "fatal: no tag message?" por la config global de git del desarrollador · `Tests 4 skipped (4)`; no es RED de comportamiento. Se aisló git con `GIT_CONFIG_GLOBAL=/dev/null` y `GIT_CONFIG_NOSYSTEM=1` | 2026-10-23T03:06:46Z |
+| RED | uses GITHUB_SHA when the event is not workflow_dispatch… · uses GITHUB_SHA on workflow_dispatch with an empty ref · accepts a 40-hex SHA that is an ancestor of origin/main · rejects a SHA that is not an ancestor of origin/main | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | FAIL (esqueleto `not implemented`, exit 2): "expected 2 to be +0" / "expected 2 to be 1" · `Tests 4 failed (4)` | 2026-10-23T03:07:01Z |
+| GREEN | mismos 4 | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | PASS · `Tests 4 passed (4)` | 2026-10-23T03:07:13Z |
+| TRIANGULATE RED | resolves an existing annotated tag… · rejects an existing tag whose commit is not an ancestor… · rejects a tag that does not exist · rejects a well-formed 40-hex SHA that is not in the repository | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | FAIL: "expected 1 to be +0" (tag rechazado como inválido), "expected 'resolve-ref: ref inválido\n' to contain 'no existe'", "expected 'resolve-ref: el commit no es ancestro…' to contain 'no existe'" · `Tests 4 failed \| 4 passed (8)` | 2026-10-23T03:07:26Z |
+| TRIANGULATE GREEN | mismos 4 | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | PASS · `Tests 8 passed (8)` | 2026-10-23T03:07:41Z |
+| TRIANGULATE RED | fails closed when GITHUB_SHA is not a 40-hex SHA | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | FAIL: "expected +0 to be 1" (escribía `sha=not-a-sha`) · `Tests 1 failed \| 11 passed (12)` | 2026-10-23T03:08:01Z |
+| GUARDA (sin RED) | rejects garbage with shell metacharacters / a value starting with '-' / a workflow command injection attempt, without echoing the value | (misma corrida) | PASS de entrada: la regex de tag del diseño (`^[A-Za-z0-9][A-Za-z0-9._/-]*$`) ya los rechazaba; se registran como guardas de AC-20 | 2026-10-23T03:08:01Z |
+| TRIANGULATE GREEN | archivo completo | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | PASS · `Tests 12 passed (12)` | 2026-10-23T03:08:20Z |
+| REFACTOR | archivo completo (tras `import process from "node:process"`) | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | PASS · `Tests 12 passed (12)` | 2026-10-23T03:09:59Z |
+
+Checks locales:
+- typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total"
+- lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total"
+- tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra `Test Files 4 passed (4)` `Tests 52 passed` = 40 previos + 12 nuevos; core 286, db 20, web 61) (2026-10-23T03:12:17Z)
+
+Commit: ver `git log` (subject `feat(infra): add ci script to resolve the deploy ref`)
+Decisiones menores:
+- Contrato del script: entradas `EVENT_NAME`, `INPUT_REF`, `GITHUB_SHA`, `GITHUB_OUTPUT` (solo `env`); salida `sha=<40 hex>` en `GITHUB_OUTPUT` y una línea `resolve-ref: <sha>` en stdout. T-10 debe pasar `EVENT_NAME: ${{ github.event_name }}` e `INPUT_REF: ${{ inputs.ref }}` por `env:`; `GITHUB_SHA`/`GITHUB_OUTPUT` los pone el runner.
+- `git` se invoca con `execFileSync` y argumentos en array (sin shell). Un SHA de 40 hex se verifica con `rev-parse --verify <sha>^{commit}`; un tag primero con `show-ref --verify refs/tags/<t>` y luego se pela a su commit (`^{commit}`), así un tag anotado devuelve el SHA del commit, no del objeto tag.
+- Los mensajes de error nunca reproducen el valor recibido: evita que un `ref` hostil inyecte comandos de workflow (`::…::`) en el log.
+- Fuera del dispatch (o con `ref` vacío), `GITHUB_SHA` también se valida como 40 hex: falla cerrado si el entorno viene mal.
+- SHA abreviado o en mayúsculas no son SHA válidos; caen en la rama de tag y fallan con "el tag no existe" (mensaje claro, sin eco).
+Notas para el verifier:
+- La línea 03:06:46Z es un fallo del fixture (config global de git), no RED; el RED de referencia es 03:07:01Z.
+- Ninguna línea del log de esta tarea (03:06:46Z a 03:12:17Z) tiene `WARN`.
