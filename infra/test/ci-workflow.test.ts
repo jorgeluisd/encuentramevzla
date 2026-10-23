@@ -11,10 +11,14 @@ type Step = {
   run?: string;
   with?: Record<string, unknown>;
   env?: Record<string, unknown>;
+  "working-directory"?: string;
 };
 
 type Job = {
   needs?: string | string[];
+  if?: string;
+  environment?: unknown;
+  concurrency?: unknown;
   "runs-on"?: string;
   "timeout-minutes"?: number;
   permissions?: Record<string, string>;
@@ -71,6 +75,15 @@ function stepRunning(jobName: string, command: string): Step {
 
 const allSteps = Object.values(jobs).flatMap((j) => j.steps ?? []);
 
+// Cubre también github.event.inputs.* e inputs dentro de funciones como format().
+const INPUTS_EXPRESSION = /\$\{\{(?:(?!\}\}).)*\binputs\./s;
+
+function runScriptsInterpolatingInputs(candidate: Workflow): string[] {
+  return Object.entries(candidate.jobs ?? {}).flatMap(([name, j]) =>
+    (j.steps ?? []).flatMap((step, index) => (INPUTS_EXPRESSION.test(step.run ?? "") ? [`${name}#${index}`] : [])),
+  );
+}
+
 describe("deploy-production workflow — triggers and permissions", () => {
   it("exists", () => {
     expect(existsSync(workflowPath)).toBe(true);
@@ -104,10 +117,17 @@ describe("deploy-production workflow — triggers and permissions", () => {
 });
 
 describe("deploy-production workflow — every job", () => {
-  it.each(["resolve", "checks"])("%s runs on the arm runner with a timeout and no id-token", (name) => {
+  it.each(["resolve", "checks", "deploy"])("%s runs on the arm runner with a timeout", (name) => {
     expect(job(name)["runs-on"]).toBe(ARM_RUNNER);
     expect(job(name)["timeout-minutes"]).toBeGreaterThan(0);
-    expect(job(name).permissions?.["id-token"]).toBeUndefined();
+  });
+
+  it("grants id-token only to the deploy job", () => {
+    expect(Object.keys(jobs).sort()).toEqual(["checks", "deploy", "resolve"]);
+    for (const [name, j] of Object.entries(jobs)) {
+      if (name !== "deploy") expect(j.permissions?.["id-token"]).toBeUndefined();
+    }
+    expect(job("deploy").permissions).toEqual({ contents: "read", "id-token": "write" });
   });
 
   it("sets timeout-minutes on every job", () => {
@@ -136,10 +156,33 @@ describe("deploy-production workflow — every job", () => {
   });
 
   it("never interpolates user inputs inside run scripts", () => {
-    for (const step of allSteps) expect(step.run ?? "").not.toMatch(/\$\{\{\s*inputs\./);
+    expect(runScriptsInterpolatingInputs(workflow)).toEqual([]);
   });
 
-  it.each(["resolve", "checks"])("%s has no expressions inside run scripts", (name) => {
+  it("the inputs guard flags a synthetic workflow that interpolates inputs in run scripts", () => {
+    const injected: Workflow = {
+      jobs: {
+        build: {
+          steps: [
+            { run: "echo ok" },
+            { run: 'git checkout "${{ inputs.ref }}"' },
+            { env: { REF: "${{ inputs.ref }}" }, run: 'echo "$REF"' },
+            { run: "set -e\necho ${{inputs.ref}}" },
+          ],
+        },
+        ship: {
+          steps: [
+            { with: { ref: "${{ inputs.ref }}" } },
+            { run: "echo ${{ github.event.inputs.ref }}" },
+            { run: "echo ${{ format('{0}', inputs.ref) }}" },
+          ],
+        },
+      },
+    };
+    expect(runScriptsInterpolatingInputs(injected)).toEqual(["build#1", "build#3", "ship#1", "ship#2"]);
+  });
+
+  it.each(["resolve", "checks", "deploy"])("%s has no expressions inside run scripts", (name) => {
     for (const step of steps(name)) expect(step.run ?? "").not.toContain("${{");
   });
 });
@@ -226,5 +269,130 @@ describe("deploy-production workflow — checks job", () => {
       "if-no-files-found": "error",
       overwrite: true,
     });
+  });
+});
+
+describe("deploy-production workflow — deploy job", () => {
+  const DEPLOY_ROLE_ARN = "arn:aws:iam::934106163170:role/evzla-github-deploy";
+  const TAR_LIST = 'tar -tzf "$RUNNER_TEMP/artifact/open-next.tgz" > "$RUNNER_TEMP/open-next.entries"';
+  const TAR_CHECK = 'node infra/scripts/ci/check-bundle.mjs --tar-entries "$RUNNER_TEMP/open-next.entries"';
+  const TAR_EXTRACT = 'tar -xzf "$RUNNER_TEMP/artifact/open-next.tgz" --no-same-owner -C apps/web';
+  const BUNDLE_CHECK = "node infra/scripts/ci/check-bundle.mjs apps/web/.open-next";
+  const INFRA_INSTALL = "pnpm install --frozen-lockfile --filter @evzla/infra...";
+  const SYNTH = "pnpm exec cdk synth --ci --quiet";
+  const CDK_DEPLOY =
+    "pnpm exec cdk deploy EvzlaStack --app cdk.out --ci --require-approval never --outputs-file cdk-outputs.json";
+  const SUMMARY = "node infra/scripts/ci/write-summary.mjs infra/cdk-outputs.json";
+  const SMOKE = "node infra/scripts/ci/smoke.mjs https://encuentramevzla.com";
+
+  const deploySteps = () => steps("deploy");
+  const indexOf = (predicate: (step: Step) => boolean) => deploySteps().findIndex(predicate);
+  const credentialsIndex = () => indexOf((step) => actionOf(step) === "aws-actions/configure-aws-credentials");
+
+  it("needs resolve and checks and never runs on pull requests or outside main", () => {
+    expect(job("deploy").needs).toEqual(["resolve", "checks"]);
+    expect(job("deploy").if).toBe("github.event_name != 'pull_request' && github.ref == 'refs/heads/main'");
+  });
+
+  it("runs in the protected Production environment", () => {
+    expect(job("deploy").environment).toBe("Production");
+  });
+
+  it("serializes deploys at job level without cancelling the running one", () => {
+    expect(job("deploy").concurrency).toEqual({ group: "deploy-production", "cancel-in-progress": false });
+    expect(workflow.concurrency).toBeUndefined();
+  });
+
+  it("runs the steps in the designed order", () => {
+    expect(deploySteps().map(signature)).toEqual([
+      "actions/checkout",
+      "actions/download-artifact",
+      TAR_LIST,
+      TAR_CHECK,
+      TAR_EXTRACT,
+      BUNDLE_CHECK,
+      "pnpm/action-setup",
+      "actions/setup-node",
+      INFRA_INSTALL,
+      SYNTH,
+      "aws-actions/configure-aws-credentials",
+      CDK_DEPLOY,
+      SUMMARY,
+      SMOKE,
+    ]);
+  });
+
+  it("checks out the same resolved sha as checks", () => {
+    expect(stepUsing("deploy", "actions/checkout").with).toEqual({
+      ref: "${{ needs.resolve.outputs.sha }}",
+      "persist-credentials": false,
+    });
+  });
+
+  it("downloads only this run's artifact by exact name, without run-id or token", () => {
+    expect(stepUsing("deploy", "actions/download-artifact").with).toEqual({
+      name: "open-next-${{ github.run_id }}",
+      path: "${{ runner.temp }}/artifact",
+    });
+  });
+
+  it("validates the tar entries before extracting and scans the extracted bundle after", () => {
+    const listed = indexOf((step) => step.run?.trim() === TAR_LIST);
+    const checked = indexOf((step) => step.run?.trim() === TAR_CHECK);
+    const extracted = indexOf((step) => step.run?.includes("tar -x") ?? false);
+    const scanned = indexOf((step) => step.run?.trim() === BUNDLE_CHECK);
+    expect(listed).toBeGreaterThan(-1);
+    expect(listed).toBeLessThan(checked);
+    expect(checked).toBeLessThan(extracted);
+    expect(extracted).toBeLessThan(scanned);
+    expect(scanned).toBeLessThan(credentialsIndex());
+  });
+
+  it("assumes the deploy role through OIDC only, never with access keys", () => {
+    expect(stepUsing("deploy", "aws-actions/configure-aws-credentials").with).toEqual({
+      "role-to-assume": DEPLOY_ROLE_ARN,
+      "aws-region": "sa-east-1",
+      "role-session-name": "evzla-deploy-${{ github.run_id }}",
+      "role-duration-seconds": 3600,
+    });
+  });
+
+  it("configures credentials after every install and the synth", () => {
+    const credentials = credentialsIndex();
+    expect(credentials).toBeGreaterThan(-1);
+    deploySteps().forEach((step, index) => {
+      if (/pnpm install|cdk synth/.test(step.run ?? "")) expect(index).toBeLessThan(credentials);
+    });
+  });
+
+  it("never installs, runs tsx or esbuild once credentials are configured", () => {
+    const withCredentials = deploySteps().slice(credentialsIndex() + 1);
+    expect(withCredentials.length).toBeGreaterThan(0);
+    for (const step of withCredentials) {
+      expect(step.run ?? "").not.toMatch(/pnpm install|\btsx\b|esbuild|cdk synth|action-setup|setup-node/);
+      expect(step.uses).toBeUndefined();
+    }
+  });
+
+  it("synthesizes and deploys from infra, only EvzlaStack from the synthesized assembly", () => {
+    expect(stepRunning("deploy", SYNTH)["working-directory"]).toBe("infra");
+    expect(stepRunning("deploy", CDK_DEPLOY)["working-directory"]).toBe("infra");
+    const serialized = JSON.stringify(job("deploy"));
+    expect(serialized).not.toMatch(/--exclusively|--all\b|EvzlaCiStack|evzla-ci/);
+  });
+
+  it("passes the deployed sha to the summary only through env", () => {
+    expect(stepRunning("deploy", SUMMARY).env).toEqual({ DEPLOY_SHA: "${{ needs.resolve.outputs.sha }}" });
+  });
+
+  it("never builds, lints or tests: the bundle comes only from the artifact", () => {
+    for (const step of deploySteps()) {
+      expect(step.run ?? "").not.toMatch(/build:aws|next build|open-next build|pnpm (test|lint|build|typecheck)\b/);
+    }
+  });
+
+  it("never prints the outputs file, the environment or traces commands", () => {
+    expect(rawWorkflow).not.toMatch(/set -x|set -o xtrace|cat [^\n]*cdk-outputs/);
+    for (const step of allSteps) expect(step.run ?? "").not.toMatch(/^\s*(env|printenv)\b/m);
   });
 });
