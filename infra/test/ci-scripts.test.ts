@@ -1,5 +1,7 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -424,5 +426,165 @@ describe("check-bundle.mjs", () => {
     const run = check();
     expect(run.stderr).toBe("");
     expect(run.status).toBe(0);
+  });
+});
+
+describe("smoke.mjs", () => {
+  const TITLE = "<title>EncuéntrameVzla — Buscador de pacientes</title>";
+  const BODY_MARKER = "synthetic-body-marker";
+
+  type Handler = (req: IncomingMessage, res: ServerResponse) => void;
+  type Route = Record<string, Handler[]>;
+
+  let server: Server;
+  let baseUrl: string;
+  let requests: string[];
+  let routes: Route;
+
+  const page = (status: number, body: string): Handler => (_req, res) => {
+    res.writeHead(status, { "content-type": "text/html; charset=utf-8" });
+    res.end(body);
+  };
+  const redirect = (status: number, location: string): Handler => (_req, res) => {
+    res.writeHead(status, { location });
+    res.end(BODY_MARKER);
+  };
+  const home = page(200, `<html><head>${TITLE}</head><body>${BODY_MARKER}</body></html>`);
+  const adminRedirect = redirect(307, "/admin/login");
+
+  // spawnSync bloquearía el event loop del servidor local; el smoke corre asíncrono.
+  const smoke = (args: string[] = [baseUrl], env: Record<string, string> = {}): Promise<ScriptRun> =>
+    new Promise((resolveRun) => {
+      const child = spawn(process.execPath, [path.join(scriptsDir, "smoke.mjs"), ...args], {
+        env: { PATH: process.env.PATH ?? "", SMOKE_RETRY_DELAY_MS: "1", SMOKE_REQUEST_TIMEOUT_MS: "300", ...env },
+      });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString("utf8")));
+      child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString("utf8")));
+      child.on("close", (status) => resolveRun({ status, stdout, stderr, output: "" }));
+    });
+
+  beforeEach(async () => {
+    requests = [];
+    routes = { "/": [home], "/admin": [adminRedirect] };
+    server = createServer((req, res) => {
+      requests.push(`${req.method} ${req.url}`);
+      const handlers = routes[req.url ?? ""] ?? [page(404, BODY_MARKER)];
+      const handler = handlers.length > 1 ? handlers.shift() : handlers[0];
+      handler?.(req, res);
+    });
+    await new Promise<void>((listening) => server.listen(0, "127.0.0.1", listening));
+    baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+
+  afterEach(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((closed) => server.close(() => closed()));
+  });
+
+  it("passes when / is 200 with the stable title and /admin redirects to /admin/login, without following it", async () => {
+    const run = await smoke();
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
+    expect(requests).toEqual(["GET /", "GET /admin"]);
+    expect(run.stdout).not.toContain(BODY_MARKER);
+  });
+
+  it("exports only / and /admin as the paths it requests", () => {
+    const listed = execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `const m = await import(${JSON.stringify(path.join(scriptsDir, "smoke.mjs"))}); process.stdout.write(JSON.stringify(m.SMOKE_PATHS));`,
+      ],
+      { encoding: "utf8" },
+    );
+    expect(JSON.parse(listed)).toEqual(["/", "/admin"]);
+  });
+
+  it("fails after 5 attempts printing path, status and attempt but never the body", async () => {
+    routes["/"] = [page(404, BODY_MARKER)];
+    const run = await smoke();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe([1, 2, 3, 4, 5].map((attempt) => `smoke: / 404 intento ${attempt}/5\n`).join(""));
+    expect(run.stdout + run.stderr).not.toContain(BODY_MARKER);
+    expect(requests).toEqual(Array(5).fill("GET /"));
+  });
+
+  it("retries until the site answers and passes within the 5 attempts", async () => {
+    routes["/"] = [page(503, BODY_MARKER), page(503, BODY_MARKER), home];
+    const run = await smoke();
+    expect(run.status).toBe(0);
+    expect(run.stderr).toBe("smoke: / 503 intento 1/5\nsmoke: / 503 intento 2/5\n");
+    expect(requests).toEqual(["GET /", "GET /", "GET /", "GET /admin"]);
+  });
+
+  it("fails when / is 200 without the stable title", async () => {
+    routes["/"] = [page(200, `<html><head><title>Otro sitio</title></head><body>${BODY_MARKER}</body></html>`)];
+    const run = await smoke();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(
+      [1, 2, 3, 4, 5].map((attempt) => `smoke: / 200 intento ${attempt}/5: título ausente\n`).join(""),
+    );
+    expect(run.stdout + run.stderr).not.toContain("Otro sitio");
+  });
+
+  it("fails when /admin is not a redirect or does not point to /admin/login", async () => {
+    routes["/admin"] = [page(404, BODY_MARKER)];
+    const notFound = await smoke();
+    expect(notFound.status).toBe(1);
+    expect(notFound.stderr).toBe([1, 2, 3, 4, 5].map((attempt) => `smoke: /admin 404 intento ${attempt}/5\n`).join(""));
+
+    routes["/admin"] = [page(200, BODY_MARKER)];
+    const served = await smoke();
+    expect(served.status).toBe(1);
+    expect(served.stderr).toContain("smoke: /admin 200 intento 5/5\n");
+
+    routes["/admin"] = [redirect(307, "/admin/login-elsewhere")];
+    const elsewhere = await smoke();
+    expect(elsewhere.status).toBe(1);
+    expect(elsewhere.stderr).toContain("smoke: /admin 307 intento 1/5: redirección inesperada\n");
+    expect(elsewhere.stderr).not.toContain("login-elsewhere");
+
+    routes["/admin"] = [redirect(302, "")];
+    const empty = await smoke();
+    expect(empty.status).toBe(1);
+    expect(empty.stderr).toContain("smoke: /admin 302 intento 1/5: redirección inesperada\n");
+    expect(requests).not.toContain("GET /admin/login");
+  });
+
+  it("accepts an absolute Location whose path is /admin/login", async () => {
+    routes["/admin"] = [redirect(308, `${baseUrl}/admin/login?next=%2Fadmin`)];
+    const run = await smoke();
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
+    expect(requests).toEqual(["GET /", "GET /admin"]);
+  });
+
+  it("fails when /admin redirects to /admin/login on another origin", async () => {
+    routes["/admin"] = [redirect(307, "https://other.example/admin/login")];
+    const run = await smoke();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain("smoke: /admin 307 intento 1/5: redirección inesperada\n");
+    expect(run.stderr).not.toContain("other.example");
+  });
+
+  it("treats a request that never answers as a failed attempt and ends red after 5", async () => {
+    routes["/"] = [() => undefined];
+    const run = await smoke();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe([1, 2, 3, 4, 5].map((attempt) => `smoke: / sin-respuesta intento ${attempt}/5\n`).join(""));
+    expect(requests).toEqual(Array(5).fill("GET /"));
+  });
+
+  it("fails closed without a valid http(s) base URL and makes no request", async () => {
+    for (const args of [[], ["not a url"], ["ftp://127.0.0.1/"]]) {
+      const run = await smoke(args);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe("smoke: falta la URL base http(s) del sitio\n");
+    }
+    expect(requests).toEqual([]);
   });
 });

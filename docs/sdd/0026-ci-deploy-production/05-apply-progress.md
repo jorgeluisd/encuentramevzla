@@ -8,7 +8,8 @@
 | T-3 | terminada | 185db6c | AC-6 |
 | T-4 | terminada | 2172795 | AC-20, AC-21 (parte script) |
 | T-5 | terminada | f20fdb6 | AC-22 (parte script) |
-| T-6 | terminada | (ver commit de T-6) | AC-14, AC-23 (parte script), AC-13 (validación de entradas del tar, parte script) |
+| T-6 | terminada | 3774382 | AC-14, AC-23 (parte script), AC-13 (validación de entradas del tar, parte script) |
+| T-7 | terminada | (este commit) | AC-26, AC-27, AC-28, AC-29 |
 
 ## T-1 — Dependencia `yaml` en infra   estado: terminada
 TDD: OFF (config pura: alta de una devDependency, sin código de producción ni test propio; definido así en 04-plan)
@@ -191,7 +192,7 @@ Checks locales:
 - tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 79 = 57 previos + 22 nuevos; core 286, db 20, web 61) (2026-10-23T03:26:33Z)
 - Sanidad sin test (fuera del log): `node infra/scripts/ci/check-bundle.mjs apps/web/.open-next` sobre el bundle real local → exit 0 (sin falsos positivos; 109 symlinks pnpm internos); `tar -C apps/web -cf - .open-next | tar -tf -` (2285 entradas) → `--tar-entries` exit 0.
 
-Commit: (ver `git log`; subject `feat(infra): add ci script to check the open-next bundle`)
+Commit: 3774382 feat(infra): add ci script to check the open-next bundle
 Decisiones menores (aprobadas por el orquestador):
 - Contrato: `node infra/scripts/ci/check-bundle.mjs <dir .open-next>` y `node infra/scripts/ci/check-bundle.mjs --tar-entries <archivo con la salida de tar -tzf>`. Solo argv; sin env.
 - Raíz: sin ruta, inexistente, archivo o symlink → exit 1 con mensaje fijo. `open-next.output.json` debe ser archivo regular (ni directorio ni symlink).
@@ -204,3 +205,34 @@ Notas para el verifier:
 - La línea 03:22:27Z es un fallo del fixture (`../..` resolvía dentro), no del script; el GREEN de referencia es 03:22:47Z.
 - Ninguna línea del log de esta tarea (03:22:04Z a 03:26:33Z) tiene `WARN`.
 - El modo `--tar-entries` no ve destinos de symlinks (tar -t no los lista); esa parte la cubre el escaneo del directorio tras extraer, como fija el orden de AC-16.
+
+## T-7 — Script `smoke.mjs` (GET `/` y `/admin` con reintentos)   estado: terminada
+TDD: ON (script de CI; tests contra un servidor `node:http` local en `127.0.0.1`, sin salir a internet)
+Safety net: `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` → `Test Files 1 passed (1) Tests 39 passed (39)` (2026-10-23T03:29:16Z)
+Archivos tocados: [infra/scripts/ci/smoke.mjs, infra/test/ci-scripts.test.ts, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]   Desviaciones respecto al plan: ninguna
+
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | los 10 tests de `describe("smoke.mjs")` (AC-26..29) contra el esqueleto | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts -t smoke.mjs` | FAIL (esqueleto `not implemented`, exit 2): "expected 'smoke: not implemented\n' to be ''" / "expected 2 to be 1" · `Tests 10 failed \| 39 skipped (49)` | 2026-10-23T03:35:39Z |
+| GREEN | archivo completo | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | PASS · `Tests 42 passed (42)` (los 3 primeros tests de smoke) | 2026-10-23T03:30:32Z |
+| TRIANGULATE RED | fails when /admin redirects to /admin/login on another origin | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts -t smoke.mjs` | FAIL: "expected +0 to be 1" (aceptaba cualquier origen con path `/admin/login`) · `Tests 2 failed \| 8 passed \| 39 skipped (49)` | 2026-10-23T03:35:53Z |
+| TRIANGULATE GREEN | archivo completo | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | PASS · `Tests 49 passed (49)` | 2026-10-23T03:36:15Z |
+| REFACTOR | — (renombre `delayFromEnv` → `millisecondsFromEnv`; `URL` desde `node:url`, `fetch`/`AbortSignal` desde `globalThis` por `no-undef`) | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | PASS · `Tests 49 passed (49)` | 2026-10-23T03:33:48Z |
+
+Checks locales:
+- typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total"
+- lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total" (primer intento rojo por `no-undef` de `URL`/`fetch`/`AbortSignal` en el `.mjs`; corregido en el REFACTOR)
+- tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 89 = 79 previos + 10 nuevos; core 286, db 20, web 61) (2026-10-23T03:35:12Z)
+
+Commit: (este commit) feat(infra): add ci smoke script for the deployed site
+Decisiones menores:
+- Contrato: `node infra/scripts/ci/smoke.mjs <url base http(s)>` (03-design: `smoke.mjs https://encuentramevzla.com`). Sin URL o con protocolo distinto de http/https → exit 1 con mensaje fijo y ninguna petición. Las rutas se resuelven con `new URL(ruta, base)`, así un path en la base no altera `/` ni `/admin`.
+- `SMOKE_PATHS = ["/", "/admin"]` exportada; el script solo ejecuta si es el entrypoint (`process.argv[1] === fileURLToPath(import.meta.url)`), así el test lee la constante con un `import()` en un `node` aparte (el `.mjs` no entra al `tsc` de infra).
+- Reintentos por ruta: hasta 5 intentos, `SMOKE_RETRY_DELAY_MS` (default 10000) solo entre intentos; si `/` agota los 5, `/admin` no se consulta. Además `SMOKE_REQUEST_TIMEOUT_MS` (default 10000, solo tests) acota cada intento con `AbortSignal.timeout` (cubre también la lectura del cuerpo); sin él, una petición colgada no tendría tope y el test de timeout tardaría minutos.
+- `/` exige 200 y que el cuerpo contenga `<title>EncuéntrameVzla —`. `/admin` exige 3xx con `Location` resuelto al mismo origen de la petición y path `/admin/login` (la query se ignora); `redirect: "manual"`, nunca se sigue.
+- Salida: cada intento fallido imprime en stderr `smoke: <ruta> <status> intento <n>/5` (+ `: título ausente` / `: redirección inesperada`); error de red o timeout usa `sin-respuesta` como status. Nunca cuerpo, `Location` ni cabeceras. Sin rollback: solo exit 1. Éxito: sin salida, exit 0.
+Notas para el verifier:
+- El RED de referencia (03:35:39Z) y el TRIANGULATE RED (03:35:53Z) se re-grabaron en primer plano restaurando temporalmente el esqueleto y la versión sin chequeo de origen: las corridas originales (03:30:02Z y 03:31:27Z, ambas exit=1) quedaron encadenadas tras el `python3` que editaba el test, por lo que el log las registra con ese comando y no valen como evidencia. En la re-grabación del TRIANGULATE RED falla además el caso `Location` vacío (`sin-respuesta`) por un artefacto de la reconstrucción (sin `?.`); el código final es idéntico byte a byte al de 03:33:48Z (verificado con `git diff --no-index`).
+- 03:31:03Z (triangulación sin RED: reintentos, título ausente, `/admin` 404/200/otro path/vacío, `Location` absoluto, timeout, URL inválida) también quedó encadenada al `python3`; sus casos los cubren las corridas limpias de 03:33:48Z y 03:36:15Z.
+- Ninguna línea del log de esta tarea (03:29:16Z a 03:36:15Z) tiene `WARN`.
