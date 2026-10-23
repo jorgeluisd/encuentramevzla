@@ -43,7 +43,7 @@ Desplegar producción de forma reproducible desde un SHA conocido, con checks ob
 ### Concurrencia y supply chain [STATIC]
 - AC-17 Given el workflow Then `concurrency: {group: deploy-production, cancel-in-progress: false}` y `timeout-minutes` en cada job.
 - AC-18 Given cada `uses:` de terceros Then fijado por SHA de 40 hex (con comentario de versión); ni `@v1`, `@main` ni `@master`.
-- AC-19 Given `.github/dependabot.yml` Then declara solo `package-ecosystem: github-actions`, `directory: /` y un `schedule`.
+- AC-19 Given `.github/dependabot.yml` Then declara exactamente dos entradas: (a) `github-actions`, `directory: /`, `schedule.interval: monthly`, un único grupo que cubre todas las acciones; (b) `npm`, `directory: /`, `open-pull-requests-limit: 0` (sin PRs de versión) y un grupo con `applies-to: security-updates` y `patterns: ["*"]` (un solo PR de seguridad por gestor). Alertas y security updates de Dependabot están habilitados en el repo (hecho por el orquestador el 2026-10-22).
 
 ### Guardas y rollback
 - AC-20 Given `workflow_dispatch` When `ref` no es SHA de 40 hex ni tag existente, o el commit no es ancestro de `origin/main` Then un paso inicial falla con mensaje claro antes de `checks`. [STATIC: script con repos temporales sintéticos]

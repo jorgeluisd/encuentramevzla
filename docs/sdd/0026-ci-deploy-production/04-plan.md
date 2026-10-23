@@ -64,3 +64,4 @@ Rollback de la feature: `cdk --app "pnpm exec tsx bin/evzla-ci.ts" destroy Evzla
 2. `apps/web/.env.production` YA EXISTE en local con una sola línea pública, revisada por el humano: T-9 lo versiona tal cual (`git add`), sin regenerarlo.
 3. SHAs de las acciones: el implementer los resuelve con `gh api` (lectura).
 4. `packageManager: "pnpm@9.15.0"` existe en el `package.json` raíz: `pnpm/action-setup` sin `version` funciona.
+5. Dependabot (pedido del humano, 2026-10-22): alertas y security updates YA habilitados en el repo vía API (no es tarea del implementer). T-9 escribe `.github/dependabot.yml` según AC-19 revisado: `github-actions` **mensual** y agrupado + `npm` solo seguridad agrupada (`open-pull-requests-limit: 0`, grupo `applies-to: security-updates`). Reemplaza el `weekly` de 03-design.md. `aws-actions/configure-aws-credentials` va en v5 (v4 avisa deprecación de Node 20).
