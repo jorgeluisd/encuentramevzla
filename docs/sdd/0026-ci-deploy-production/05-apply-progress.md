@@ -15,7 +15,18 @@ Detalle de T-1 a T-8 archivado en `05-apply-progress-T1-T8.md`.
 | T-8 | terminada | fd02a41 | AC-34 (parte summary) |
 | T-9 | terminada | ff5763f | AC-19, AC-24, AC-25, AC-33, AC-35 |
 | T-10 | terminada | c744b6a | AC-7, AC-8 (resolve/checks), AC-9, AC-10, AC-12, AC-17 (timeouts), AC-18, AC-21 (workflow), AC-23 (orden en checks) |
-| T-11 | terminada | 9f179b5 + corrección (este commit) | AC-8 (id-token solo en deploy), AC-11, AC-13, AC-14 (repetido en deploy), AC-15, AC-16, AC-17 (concurrency), AC-32 (parte estática), AC-34 |
+| T-11 | terminada | 9f179b5 + 7d5eedb (corrección v6) | AC-8 (id-token solo en deploy), AC-11, AC-13, AC-14 (repetido en deploy), AC-15, AC-16, AC-17 (concurrency), AC-32 (parte estática), AC-34 |
+| T-12 | terminada | b5a0c27 | AC-30 (docs) |
+| T-13 | terminada | 9bf0e44 (ADR) + b105bf8 (greps) | AC-30 (greps), AC-31 |
+| T-14 | terminada | commit `docs(sdd)` de este registro | barrido: todos |
+
+Commits previos a T-1 en la rama (artefactos del pipeline, no tareas): 001f3c8 (diseño), 9685aa7 (firma de ADR y alcance de Dependabot).
+
+Notas finales para el verifier:
+- Cobertura de AC-1..AC-35 por tarea en la tabla; AC-32 solo en su parte estática (la parte dinámica, `sub` real del token y AssumeRole, es el paso manual 5 tras el merge).
+- `.github/` y `infra/` concentran el código; el único archivo bajo `apps/` es `apps/web/.env.production` (público, previsto en T-9); nada bajo `packages/`.
+- Pasos manuales 1 a 6 de 04-plan.md quedan para el humano; no se llamó a AWS ni se hizo push.
+- Las líneas del log con `WARN=repo-cruzado` (T-11) y las corridas encadenadas descartadas están explicadas en cada sección.
 
 ## T-9 — Higiene del repo (`.gitignore`, `.env.production` versionado, CODEOWNERS, Dependabot)   estado: terminada
 TDD: ON para `infra/test/repo-hygiene.test.ts`; los archivos de config son config pura validada por ese test.
@@ -183,7 +194,7 @@ TDD Cycle Evidence
 | REFACTOR | — (sin cambios tras el verde) | `pnpm test` | PASS · `exit=0` (infra 178 = 156 + 22 nuevos) | 2026-10-23T04:16:34Z |
 
 Checks locales: typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total" (exit=0) · lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total" (exit=0) · tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 178, core 286, db 20, web 61) (2026-10-23T04:16:34Z)
-Commit: 9bf0e44 docs(adr): accept adr-0011 and align it with the implemented pipeline · (este commit) test(ci): add hygiene greps for deploy docs and adr-0011
+Commit: 9bf0e44 docs(adr): accept adr-0011 and align it with the implemented pipeline · b105bf8 test(ci): add hygiene greps for deploy docs and adr-0011
 Decisiones menores:
 - Dos commits por scope distinto: primero el ADR (`docs(adr)`), después los tests y este registro (`test(ci)`), para que cada commit quede verde.
 - Los greps de AC-30 (13 tests) pasaron desde el primer corrido porque T-12 ya había escrito los docs: son guardas de regresión, no RED. El RED de la tarea lo aportan los 7 tests de AC-31.
@@ -192,3 +203,30 @@ Decisiones menores:
 Notas para el verifier:
 - 04:14:44Z (`-t "AC-30"`, 13 passed) no es una triangulación: el intento de mutar temporalmente ARCHITECTURE/README/plantilla para ver fallar los greps de AC-30 fue denegado por el clasificador de permisos y no se aplicó (`git status` limpio en esos archivos). En su lugar está el test del extractor (04:15:05Z).
 
+
+## T-14 — Barrido final   estado: terminada
+TDD: OFF (verificación: no hay código nuevo)
+Safety net: la propia suite completa de abajo (cubre todos los archivos de la rama).
+Archivos tocados: [docs/sdd/0026-ci-deploy-production/05-apply-progress.md]   Desviaciones respecto al plan: ninguna (el plan prevé `[]`; este registro es el artefacto de la tarea)
+
+Checks (todos en primer plano salvo el build, en background con espera hasta su exit; turbo con `--force` para no reusar caché; sin pipes sobre la salida):
+- `pnpm install --frozen-lockfile` → "Lockfile is up to date, resolution step is skipped" · "Already up to date" (exit 0)
+- `pnpm typecheck --force` → "Tasks: 5 successful, 5 total" · "Cached: 0 cached, 5 total" (exit 0)
+- `pnpm lint --force` → "Tasks: 5 successful, 5 total" · "Cached: 0 cached, 5 total" (exit 0)
+- `pnpm run test --force` → "Tasks: 4 successful, 4 total" · "Cached: 0 cached, 4 total" (infra 178, core 286, db 20, web 61) · log 2026-10-23T04:21:51Z exit=0. La línea previa 04:20:56Z (`pnpm test --force`, exit=1, `WARN=no-tests-ran`) es un error de opción de pnpm ("Unknown option: 'force'"), no corrió ningún test.
+- `pnpm run build --force` → "Tasks: 1 successful, 1 total" · "Time: 3m59.026s" (exit 0; solo `@evzla/web` define `build`). El build no dejó cambios en el árbol.
+- `pnpm audit --audit-level=high` → "No known vulnerabilities found" (exit 0)
+
+Alcance (`git diff --stat develop...HEAD`: 32 archivos, +3157/−1) contra los "archivos" de T-1..T-13:
+- Todos los archivos previstos están en el diff y no hay ningún archivo de código fuera de ellos.
+- Diferencias, todas justificadas como artefactos del pipeline SDD de esta feature: `docs/sdd/0026-ci-deploy-production/{.level, 00-explore.md, 01-proposal.md, 02-spec.md, 03-design.md, 04-plan.md, gates.md, 05-apply-progress.md, 05-apply-progress-T1-T8.md}`.
+- Bajo `apps/` solo `apps/web/.env.production` (T-9); bajo `packages/`, nada. Los no trackeados del árbol (`docs/dictado-por-voz.md`, `docs/plantilla-carga-pacientes-hospital.xlsx`, `packages/db/scripts/*.mjs`, `supabase/.branches/`, `supabase/.temp/`) son previos a la feature y no se commitearon.
+
+Escaneo del diff (3157 líneas añadidas):
+- Claves AWS (`AKIA`/`ASIA` + 16), bloques `PRIVATE KEY`, tokens `ghp_`/`github_pat_`/`sk-`/`xox`/`re_`, asignaciones `secret|password|token|api_key` con valor largo: 0 coincidencias.
+- Correos: solo `@example.com` sintéticos (`ci-test@`, `no-reply@`, `budget@`). Teléfonos y cédulas venezolanas: 0.
+- Datos públicos presentes por diseño: el ID de cuenta AWS y el ARN del rol (DUDA RESUELTA 1) y la site key pública de Turnstile en `apps/web/.env.production` (DUDA RESUELTA 2).
+- Commits `develop..HEAD` (17): autor y committer `Jorge Diaz <diazjorgeluis10@gmail.com>` en todos; sin `Co-authored-by`, `Signed-off-by`, "Generated with" ni menciones a Claude/Anthropic.
+
+Commit: (este) docs(sdd): record final sweep for 0026
+Notas para el verifier: ninguna línea de esta tarea en el log lleva `WARN` salvo la 04:20:56Z explicada arriba.
