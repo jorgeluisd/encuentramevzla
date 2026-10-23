@@ -149,7 +149,22 @@ TDD Cycle Evidence
 | REFACTOR | — (sin cambios tras el verde) | `pnpm test` | PASS · `exit=0` (infra 156 = 155 + 1) | 2026-10-23T04:08:42Z |
 
 Checks locales: typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total" · lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total" · tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 156, core 286, db 20, web 61)
-Commit: (este commit) fix(ci): pin configure-aws-credentials to v6 on node24
+Commit: 7d5eedb fix(ci): pin configure-aws-credentials to v6 on node24
 Decisiones menores: ningún test fijaba el SHA ni la versión de esta acción (solo el formato `@<40 hex> # vX.Y.Z`), así que no hubo tests que ajustar; el test nuevo lee la mayor de todos los pins de la acción con `matchAll` y exige al menos uno.
 Notas para el verifier: líneas 04:06:33Z a 04:08:42Z con `WARN=repo-cruzado` (mismo motivo que arriba); ninguna otra marca.
 
+## T-12 — Documentación del deploy (ARCHITECTURE § 11, README, skill db-prod-scripts)   estado: terminada
+TDD: OFF (documentación; el grep de AC-30 lo agrega T-13)
+Safety net: `pnpm --filter @evzla/infra test -- test/repo-hygiene.test.ts` → PASS · `Test Files 1 passed (1) Tests 15 passed (15)` (2026-10-23T04:10:08Z)
+Archivos tocados: [docs/ARCHITECTURE.md, README.md, .claude/skills/db-prod-scripts.md, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]   Desviaciones respecto al plan: ninguna (05-apply-progress.md es el registro de la tarea)
+TDD Cycle Evidence: no aplica (TDD OFF).
+Checks locales: typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total" · lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total" · tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 156, core 286, db 20, web 61) (2026-10-23T04:11:03Z)
+Commit: (este commit) docs(deploy): document production ci/cd flow and migration order
+Decisiones menores:
+- `docs/ARCHITECTURE.md`: sección `## 11. Deploy` (ancla `#11-deploy`) tras `## 10`, con subsecciones Flujo (diagrama mermaid, como el resto del documento), Rol OIDC y sus límites, Rollback, Migraciones → app y Riesgo residual aceptado. Todo contrastado con `deploy-production.yml`, `infra/lib/ci-stack.ts`, `resolve-ref.mjs` y `smoke.mjs` de HEAD.
+- `cdk deploy EvzlaStack` sin `--exclusively` despliega también sus dependencias (`EvzlaEmailStack` y, con dominio propio, `EvzlaCertificateStack`); el texto lo dice como "más las stacks de las que depende".
+- `README.md`: sección corta `## Deploy` después de "Cómo levantar", con el comando de `EvzlaCiStack` y el enlace a `docs/ARCHITECTURE.md#11-deploy`.
+- Skill: bloque "Regla de orden: migraciones → merge → deploy automático" justo después de la introducción, antes de "Regla de oro", con la frase de AC-30 ("Migración antes del merge" y "Nunca contract en el mismo PR que la app").
+Notas para el verifier:
+- `pnpm typecheck`, `pnpm lint` y `pnpm test` salieron de la caché de turbo (los docs no son inputs de ninguna tarea): el resultado es el del árbol de HEAD más estos tres archivos de texto.
+- ADR-0011 y `.github/pull_request_template.md` sin tocar (T-13 y AC-30).

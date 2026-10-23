@@ -27,6 +27,18 @@ pnpm dev            # arranca apps en modo desarrollo (turbo)
 Scripts raíz (turbo): `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 Bundle para AWS Lambda (OpenNext): `pnpm --filter @evzla/web build:aws` → `apps/web/.open-next/`.
 
+## Deploy
+
+Producción se despliega desde GitHub Actions con OIDC (sin access keys): cada PR a `main` corre los
+checks; el merge a `main` vuelve a correrlos, construye el bundle, espera la aprobación del environment
+`Production`, despliega `EvzlaStack` y hace un smoke de `/` y `/admin`. El rollback es un
+`workflow_dispatch` con `ref` (SHA o tag ancestro de `main`) y no revierte el esquema. **Migraciones →
+app:** las migraciones de base se aplican a mano en producción, compatibles con el código que está
+corriendo (expand/contract), antes de mergear a `main`; el CI nunca migra. El rol del CI (`EvzlaCiStack`)
+se despliega a mano una sola vez desde `infra/`:
+`pnpm exec cdk --app "pnpm exec tsx bin/evzla-ci.ts" deploy EvzlaCiStack`.
+Detalle en [docs/ARCHITECTURE.md § 11. Deploy](docs/ARCHITECTURE.md#11-deploy).
+
 ## Arquitectura y estructura
 
 **Onion + Screaming Architecture.** Código en **inglés**, comentarios cortos en **español**,

@@ -5,6 +5,17 @@ harness de test de SQL) de forma **segura** contra la base de prod (RDS `encuent
 lleno de gotchas; antes vivía disperso. Carga esta skill cuando la tarea implique ejecutar
 Node/SQL directamente contra la DB (no el código de la app).
 
+## Regla de orden: migraciones → merge → deploy automático
+
+1. **Migración antes del merge**: se aplica a mano en prod (túnel SSM, `evzla_owner`, OK explícito) y debe
+   ser compatible con el código que está corriendo hoy (expand).
+2. **Merge a `main`**: recién entonces; el workflow `deploy-production` corre checks, espera la aprobación
+   de `Production`, despliega la app y hace el smoke. El CI **nunca** migra ni toca la RDS.
+3. **Nunca contract en el mismo PR que la app**: el contract va en un PR posterior, cuando ni el código
+   desplegado ni un rollback por `workflow_dispatch` con `ref` lo necesiten (el rollback no revierte esquema).
+
+Detalle en `docs/ARCHITECTURE.md` § 11. Deploy.
+
 ## Regla de oro: prod requiere OK explícito
 
 - **Leer** (conteos, `SELECT`) es seguro, pero igual conecta a prod: avísalo.
