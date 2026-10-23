@@ -159,7 +159,7 @@ Safety net: `pnpm --filter @evzla/infra test -- test/repo-hygiene.test.ts` → P
 Archivos tocados: [docs/ARCHITECTURE.md, README.md, .claude/skills/db-prod-scripts.md, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]   Desviaciones respecto al plan: ninguna (05-apply-progress.md es el registro de la tarea)
 TDD Cycle Evidence: no aplica (TDD OFF).
 Checks locales: typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total" · lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total" · tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 156, core 286, db 20, web 61) (2026-10-23T04:11:03Z)
-Commit: (este commit) docs(deploy): document production ci/cd flow and migration order
+Commit: b5a0c27 docs(deploy): document production ci/cd flow and migration order
 Decisiones menores:
 - `docs/ARCHITECTURE.md`: sección `## 11. Deploy` (ancla `#11-deploy`) tras `## 10`, con subsecciones Flujo (diagrama mermaid, como el resto del documento), Rol OIDC y sus límites, Rollback, Migraciones → app y Riesgo residual aceptado. Todo contrastado con `deploy-production.yml`, `infra/lib/ci-stack.ts`, `resolve-ref.mjs` y `smoke.mjs` de HEAD.
 - `cdk deploy EvzlaStack` sin `--exclusively` despliega también sus dependencias (`EvzlaEmailStack` y, con dominio propio, `EvzlaCertificateStack`); el texto lo dice como "más las stacks de las que depende".
@@ -168,3 +168,27 @@ Decisiones menores:
 Notas para el verifier:
 - `pnpm typecheck`, `pnpm lint` y `pnpm test` salieron de la caché de turbo (los docs no son inputs de ninguna tarea): el resultado es el del árbol de HEAD más estos tres archivos de texto.
 - ADR-0011 y `.github/pull_request_template.md` sin tocar (T-13 y AC-30).
+
+## T-13 — Greps de higiene de AC-30/AC-31 y ADR-0011 a ACEPTADO   estado: terminada
+TDD: ON (solo para los greps de higiene; el ADR es documentación)
+Safety net: `pnpm --filter @evzla/infra test -- test/repo-hygiene.test.ts` → PASS · `Test Files 1 passed (1) Tests 15 passed (15)` (2026-10-23T04:13:20Z)
+Archivos tocados: [infra/test/repo-hygiene.test.ts, adr/0011-ci-cd-github-actions-oidc.md, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]   Desviaciones respecto al plan: ninguna (05-apply-progress.md es el registro de la tarea)
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | `ADR-0011 (AC-31)`: estado ACEPTADO con fecha y registro en gates.md; separación build/deploy; sin bootstrap propio; configure-aws-credentials v6; Environment `Production` como requisito manual; cuenta AWS propia como mitigación futura | `pnpm --filter @evzla/infra test -- test/repo-hygiene.test.ts` | FAIL (comportamiento ausente: el ADR seguía PROPUESTO y no describía esos puntos) · `Tests 7 failed \| 29 passed (36)` | 2026-10-23T04:13:45Z |
+| GREEN (parcial) | mismo archivo, ADR enmendado | `pnpm --filter @evzla/infra test -- test/repo-hygiene.test.ts` | FAIL: el corte de línea del markdown separaba `checks` de "sin credenciales" y `configure-aws-credentials` de `v6` · `Tests 2 failed \| 34 passed (36)` | 2026-10-23T04:14:09Z |
+| GREEN | mismo archivo, puntos 2 y 3 del ADR re-envueltos | `pnpm --filter @evzla/infra test -- test/repo-hygiene.test.ts` | PASS · `Tests 36 passed (36)` | 2026-10-23T04:14:26Z |
+| TRIANGULATE | `reads only § 11 and yields nothing for a missing heading, so the greps fail closed` (el extractor de sección no puede volver vacuo un grep) | `pnpm --filter @evzla/infra test -- test/repo-hygiene.test.ts` | PASS · `Tests 37 passed (37)` | 2026-10-23T04:15:05Z |
+| REFACTOR | — (sin cambios tras el verde) | `pnpm test` | PASS · `exit=0` (infra 178 = 156 + 22 nuevos) | 2026-10-23T04:16:34Z |
+
+Checks locales: typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total" (exit=0) · lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total" (exit=0) · tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 178, core 286, db 20, web 61) (2026-10-23T04:16:34Z)
+Commit: 9bf0e44 docs(adr): accept adr-0011 and align it with the implemented pipeline · (este commit) test(ci): add hygiene greps for deploy docs and adr-0011
+Decisiones menores:
+- Dos commits por scope distinto: primero el ADR (`docs(adr)`), después los tests y este registro (`test(ci)`), para que cada commit quede verde.
+- Los greps de AC-30 (13 tests) pasaron desde el primer corrido porque T-12 ya había escrito los docs: son guardas de regresión, no RED. El RED de la tarea lo aportan los 7 tests de AC-31.
+- `.github/pull_request_template.md` "no cambia" se fija como ausencia de contenido del pipeline (`deploy-production`, `EvzlaCiStack`, `workflow_dispatch`, `OIDC`); comparar contra `main` no es fiable en un checkout superficial del CI.
+- ADR enmendado sin cambiar la decisión: punto nuevo "Build y deploy separados" (checks sin credenciales, artifact del mismo run, `cdk synth` antes de credenciales, configure-aws-credentials v6/node24); bootstrap `hnb659fds` existente sin bootstrap propio; Environment `Production` como requisito manual; la mitigación futura pasa de "bootstrap propio" a "cuenta AWS propia en Organizations" (lo registrado en gates.md y en la tabla de amenazas de 03-design) y el bootstrap propio queda en Alternativas como fuera de alcance; "checks en cada PR y push".
+Notas para el verifier:
+- 04:14:44Z (`-t "AC-30"`, 13 passed) no es una triangulación: el intento de mutar temporalmente ARCHITECTURE/README/plantilla para ver fallar los greps de AC-30 fue denegado por el clasificador de permisos y no se aplicó (`git status` limpio en esos archivos). En su lugar está el test del extractor (04:15:05Z).
+
