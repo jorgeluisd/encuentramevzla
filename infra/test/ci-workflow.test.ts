@@ -40,6 +40,8 @@ const jobs = workflow.jobs ?? {};
 
 const ARM_RUNNER = "ubuntu-24.04-arm";
 const ARTIFACT_EVENTS_ONLY = "github.event_name == 'push' || github.event_name == 'workflow_dispatch'";
+// v5 corre en node20 (deprecado en los runners); v6 es la primera mayor en node24.
+const MIN_CREDENTIALS_MAJOR = 6;
 const ALLOWED_ACTIONS = new Set([
   "actions/checkout",
   "pnpm/action-setup",
@@ -146,6 +148,13 @@ describe("deploy-production workflow — every job", () => {
     for (const line of usesLines) {
       expect(line).toMatch(/uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/);
     }
+  });
+
+  it("pins configure-aws-credentials to major 6 or later, which runs on node24", () => {
+    const pins = rawWorkflow.matchAll(/uses: aws-actions\/configure-aws-credentials@[0-9a-f]{40} # v(\d+)\./g);
+    const pinnedMajors = [...pins].map((pin) => Number(pin[1]));
+    expect(pinnedMajors.length).toBeGreaterThan(0);
+    for (const major of pinnedMajors) expect(major).toBeGreaterThanOrEqual(MIN_CREDENTIALS_MAJOR);
   });
 
   it("uses only the actions approved in the design", () => {

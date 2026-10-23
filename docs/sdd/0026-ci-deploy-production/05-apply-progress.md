@@ -15,7 +15,7 @@ Detalle de T-1 a T-8 archivado en `05-apply-progress-T1-T8.md`.
 | T-8 | terminada | fd02a41 | AC-34 (parte summary) |
 | T-9 | terminada | ff5763f | AC-19, AC-24, AC-25, AC-33, AC-35 |
 | T-10 | terminada | c744b6a | AC-7, AC-8 (resolve/checks), AC-9, AC-10, AC-12, AC-17 (timeouts), AC-18, AC-21 (workflow), AC-23 (orden en checks) |
-| T-11 | terminada | (este commit) | AC-8 (id-token solo en deploy), AC-11, AC-13, AC-14 (repetido en deploy), AC-15, AC-16, AC-17 (concurrency), AC-32 (parte estática), AC-34 |
+| T-11 | terminada | 9f179b5 + corrección (este commit) | AC-8 (id-token solo en deploy), AC-11, AC-13, AC-14 (repetido en deploy), AC-15, AC-16, AC-17 (concurrency), AC-32 (parte estática), AC-34 |
 
 ## T-9 — Higiene del repo (`.gitignore`, `.env.production` versionado, CODEOWNERS, Dependabot)   estado: terminada
 TDD: ON para `infra/test/repo-hygiene.test.ts`; los archivos de config son config pura validada por ese test.
@@ -117,7 +117,7 @@ Checks locales:
 - lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total"
 - tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 155, core 286, db 20, web 61) (2026-10-23T04:03:17Z)
 
-Commit: (este commit) feat(ci): add production workflow deploy job
+Commit: 9f179b5 feat(ci): add production workflow deploy job
 Decisiones menores:
 - Contratos de los scripts (notas de T-6/T-7/T-8): `tar -tzf … > "$RUNNER_TEMP/open-next.entries"` y luego `check-bundle.mjs --tar-entries "$RUNNER_TEMP/open-next.entries"` (antes de extraer); `tar -xzf … --no-same-owner -C apps/web`; `check-bundle.mjs apps/web/.open-next` (después, y antes de credenciales); `write-summary.mjs infra/cdk-outputs.json` con `DEPLOY_SHA: ${{ needs.resolve.outputs.sha }}` por `env:`; `smoke.mjs https://encuentramevzla.com`.
 - Listado y validación del tar en dos pasos separados: si `tar -t` falla, el paso cae antes que la validación, sin depender de `pipefail`.
@@ -130,6 +130,26 @@ Notas para el verifier:
 - Todas las líneas de esta tarea (03:58:44Z a 04:03:17Z) llevan `WARN=repo-cruzado` porque los comandos se lanzaron con `cd <repo> &&` desde la sesión; el repo y la rama (`wt=`/`branch=`) son estos.
 - 03:59:55Z (RED) y 04:00:14Z (GREEN) quedaron encadenadas a la escritura de archivos (heredoc/`python3`): no son evidencia. El RED se volvió a grabar en primer plano a las 04:00:35Z restaurando temporalmente el workflow de HEAD y el stub de la guarda (copias en el scratchpad); el GREEN, a las 04:00:44Z, con los archivos finales restaurados desde esas copias.
 - En el RED pasan 28 tests: los de T-10 (resolve/checks) y la guarda sobre el workflow real, que con el stub devuelve `[]` de forma trivial; por eso existe el test sintético.
-- `configure-aws-credentials` v5.1.1 corre en `node20` (su `action.yml`); la v6.3.0 (2026-09-15) corre en `node24`. Se respetó la v5 pedida; si el aviso de deprecación de Node 20 importa, el salto a v6 es decisión del orquestador (Dependabot también lo propondrá).
+- `configure-aws-credentials` v5.1.1 corría en `node20`; resuelto en la corrección de abajo (v6.3.0, `node24`).
 - El `if` del job es el de 03-design (`github.event_name != 'pull_request' && github.ref == 'refs/heads/main'`): cubre push a main y dispatch desde main y excluye `pull_request`.
+
+### T-11 · corrección — `configure-aws-credentials` a v6.3.0 (decisión del orquestador)
+Motivo: la v5.1.1 corre en `node20` (deprecado en los runners); la v6 es la primera mayor en `node24`. El orquestador revisó el changelog: el único cambio incompatible de la v6 es el paso a `node24` y los inputs usados no cambian (contrastado además en el `action.yml` del SHA: `role-to-assume`, `aws-region`, `role-session-name`, `role-duration-seconds` existen; `using: node24`).
+| Acción | Versión | SHA (commit) | Publicada |
+|---|---|---|---|
+| aws-actions/configure-aws-credentials | v6.3.0 (reemplaza v5.1.1) | e1253824e5c10ff9df46874f81ed3ec929e19cfd (tag liviano, `git ls-remote`) | 2026-09-15T05:13:09Z |
+Archivos tocados: [.github/workflows/deploy-production.yml, infra/test/ci-workflow.test.ts, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]   Desviaciones: ninguna
+
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | pins configure-aws-credentials to major 6 or later, which runs on node24 (mayor derivada del comentario `# vX.Y.Z` del pin, mínimo `MIN_CREDENTIALS_MAJOR = 6`) | `pnpm --filter @evzla/infra test -- test/ci-workflow.test.ts -t "major 6"` | FAIL (comportamiento ausente): "expected 5 to be greater than or equal to 6" · `Tests 1 failed \| 43 skipped (44)` | 2026-10-23T04:06:33Z |
+| GREEN (fallido) | archivo completo | `pnpm --filter @evzla/infra test -- test/ci-workflow.test.ts` | FAIL: la edición previa con `sed -i ''` no aplicó (el `sed` del entorno es GNU) y el pin seguía en v5 · `Tests 1 failed \| 43 passed (44)` | 2026-10-23T04:06:43Z |
+| GREEN | archivo completo, pin `e1253824… # v6.3.0` | `pnpm --filter @evzla/infra test -- test/ci-workflow.test.ts` | PASS · `Tests 44 passed (44)` | 2026-10-23T04:06:54Z |
+| REFACTOR | — (sin cambios tras el verde) | `pnpm test` | PASS · `exit=0` (infra 156 = 155 + 1) | 2026-10-23T04:08:42Z |
+
+Checks locales: typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total" · lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total" · tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 156, core 286, db 20, web 61)
+Commit: (este commit) fix(ci): pin configure-aws-credentials to v6 on node24
+Decisiones menores: ningún test fijaba el SHA ni la versión de esta acción (solo el formato `@<40 hex> # vX.Y.Z`), así que no hubo tests que ajustar; el test nuevo lee la mayor de todos los pins de la acción con `matchAll` y exige al menos uno.
+Notas para el verifier: líneas 04:06:33Z a 04:08:42Z con `WARN=repo-cruzado` (mismo motivo que arriba); ninguna otra marca.
 

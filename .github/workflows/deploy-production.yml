@@ -105,7 +105,7 @@ jobs:
       # Synth antes de las credenciales: tsx y esbuild nunca corren con acceso a AWS.
       - run: pnpm exec cdk synth --ci --quiet
         working-directory: infra
-      - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: arn:aws:iam::934106163170:role/evzla-github-deploy
           aws-region: sa-east-1
