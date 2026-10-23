@@ -92,3 +92,9 @@ Infraestructura (`@evzla/infra`; no importa `packages/*` ni `apps/*`):
 ## DECISIONES DEL ORQUESTADOR (2026-10-22)
 - Dudas 1–3 aceptadas tal cual: tarball de `.open-next` (AC-12), download sin `run-id` (AC-13), `cdk synth` antes de credenciales + `--app cdk.out` (AC-16). La spec quedó ajustada en esos tres AC.
 - Verificado: `infra/lib/evzla-stack.ts` usa `Vpc.fromVpcAttributes` (sin lookups) y no hay `cdk.context.json`: el synth funciona sin credenciales.
+
+## DECISIONES TRAS REVISIÓN (orquestador, 2026-10-23)
+- Ratificado: `upload-artifact` v7.0.2 y `download-artifact` v8.0.2 (en lugar de v4/v5): corren en node24, igual que las otras 5 acciones (verificado en su `action.yml` al SHA fijado). Queda registrado como desviación; T-16 verifica que los inputs usados existan en esas versiones y que la ruta de descarga por `name`+`path` siga siendo `path/<archivo>`.
+- Ratificadas como desviaciones menores: `SMOKE_REQUEST_TIMEOUT_MS`, el modo `--tar-entries` y el chequeo de mismo origen en `/admin`.
+- A corregir (tareas T-15 a T-17 del plan): cache de pnpm en `deploy` (alto, seguridad), guarda de symlinks por `realpath` y destinos de links/hardlinks del tar (medio), run obsoleto aprobado tarde, binario `zip`, `name:` en los pasos, comentario impreciso sobre `id-token`, greps tolerantes, helpers compartidos y bajas baratas.
+- Riesgos aceptados que van al GATE 2 para decisión humana: `id-token: write` a nivel de job durante install filtrado + synth (mitigado: sin cache, lockfile con integridad, solo dependencias de infra); outputs no secretos de EvzlaStack en el log público; trust que acepta cualquier workflow del repo con `environment: Production` (mitigado: CODEOWNERS sobre `.github/`, environment solo `main` + reviewer); el rollback despliega infra y scripts del SHA viejo; artifact descargable 1 día; `check-public-env` valida solo el prefijo.
