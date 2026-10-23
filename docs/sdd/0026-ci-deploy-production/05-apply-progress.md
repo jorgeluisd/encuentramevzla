@@ -4,7 +4,8 @@
 | Tarea | Estado | Commit | AC cubiertos |
 |---|---|---|---|
 | T-1 | terminada | 729f6f1 | habilita AC-7..18 |
-| T-2 | terminada | (ver commit de T-2) | AC-1, AC-2, AC-3, AC-4, AC-5 |
+| T-2 | terminada | f831e75 | AC-1, AC-2, AC-3, AC-4, AC-5 |
+| T-3 | terminada | (ver commit de T-3) | AC-6 |
 
 ## T-1 — Dependencia `yaml` en infra   estado: terminada
 TDD: OFF (config pura: alta de una devDependency, sin código de producción ni test propio; definido así en 04-plan)
@@ -60,7 +61,7 @@ Checks locales:
 - lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total"
 - tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 34 passed: 6 nuevos + 28 previos; core 286, db 20, web 61) (2026-10-23T02:53:31Z)
 
-Commit: ver `git log` (subject `feat(infra): add ci stack with github oidc deploy role`)
+Commit: f831e75 feat(infra): add ci stack with github oidc deploy role
 Decisiones menores:
 - Cuenta fijada como `CI_ACCOUNT = "934106163170"` exportada; los ARN (provider, 6 roles de bootstrap) se construyen con esa constante sin tokens. El constructor rechaza cualquier `env.account` distinto: las ARN literales solo tienen sentido en esa cuenta (T-3 pasará el account del context y fallará temprano si no coincide).
 - `BOOTSTRAP_ROLE_ARNS` exportado como `readonly string[]` (orden: deploy, file-publishing, lookup × sa-east-1, us-east-1).
@@ -69,3 +70,34 @@ Notas para el verifier:
 - AC-3 es una invariante negativa (no crear `AWS::IAM::OIDCProvider`, ni `Custom::*`, ni Lambda): quedó satisfecha por el GREEN de AC-2 (`fromOpenIdConnectProviderArn`), por eso su test pasó de entrada; se registra como guarda, no como par RED→GREEN.
 - La línea 02:50:37Z es un RED válido de comportamiento (no hay outputs) pero con `TypeError` en vez de aserción; la fila de referencia es 02:50:50Z.
 - Ninguna línea del log de esta tarea (02:48:30Z a 02:53:31Z) tiene `WARN`.
+
+## T-3 — App CDK separada para EvzlaCiStack   estado: terminada
+TDD: ON (infra, tests de síntesis CDK + synth real del bin con `tsx`)
+Safety net: `pnpm --filter @evzla/infra test -- test/ci-stack.test.ts` → Test Files 1 passed (1) Tests 6 passed (6) (2026-10-23T02:56:01Z)
+Archivos tocados: [infra/lib/ci-app.ts, infra/bin/evzla-ci.ts, infra/test/ci-stack.test.ts, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]   Desviaciones respecto al plan: ninguna (el apply-progress va en el mismo commit por pedido del orquestador). `infra/test/evzla-stack.test.ts`, `infra/lib/app.ts`, `infra/bin/evzla.ts` y `infra/cdk.json` sin cambios.
+
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED (previo, descartado) | 4 tests de `buildCiApp` / bin | `pnpm --filter @evzla/infra test -- test/ci-stack.test.ts` | FAIL · `Tests 4 failed \| 8 passed (12)` · `WARN=compile-error` por `ERR_MODULE_NOT_FOUND` de `bin/evzla-ci.ts` aún inexistente; se repitió con un bin vacío | 2026-10-23T02:57:02Z |
+| GREEN (previo) | archivo completo | `pnpm --filter @evzla/infra test -- test/ci-stack.test.ts` | PASS · `Tests 12 passed (12)` | 2026-10-23T02:57:42Z |
+| RED | creates only EvzlaCiStack…, fails early without the account context, fails early when the context account is not…, bin/evzla-ci.ts synthesizes EvzlaCiStack as its only stack | `pnpm --filter @evzla/infra test -- test/ci-stack.test.ts` | FAIL (comportamiento ausente: stub `throw "not implemented"` y bin que sintetiza una App vacía → "expected [] to deeply equal [ 'EvzlaCiStack' ]") · `Tests 4 failed \| 8 passed (12)` | 2026-10-23T03:02:07Z |
+| GREEN | archivo completo | `pnpm --filter @evzla/infra test -- test/ci-stack.test.ts` | PASS · `Tests 12 passed (12)` | 2026-10-23T03:02:41Z |
+| TRIANGULATE | fails early without the account context · fails early when the context account is not the one the stack belongs to | (misma corrida que RED/GREEN) | FAIL en 03:02:07Z → PASS en 03:02:41Z | 2026-10-23T03:02:41Z |
+| GUARDA (sin RED) | buildApp does not create EvzlaCiStack · cdk.json keeps bin/evzla.ts as the default app | (misma corrida) | PASS de entrada (invariantes negativas de AC-6) | 2026-10-23T03:02:07Z |
+| REFACTOR | — (sin cambios tras el GREEN) | `pnpm test` | PASS · infra `Test Files 3 passed (3)` `Tests 40 passed`, core 286, web 61 | 2026-10-23T03:02:50Z |
+
+Checks locales:
+- typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total"
+- lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total"
+- tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 40 = 34 previos + 6 nuevos; `evzla-stack.test.ts` 22 passed sin tocarlo) (2026-10-23T03:00:14Z y 03:02:50Z)
+
+Commit: ver `git log` (subject `feat(infra): add separate cdk app for the ci stack`)
+Decisiones menores:
+- `buildCiApp` valida el context `account` con el mismo mensaje que `buildApp` (`Falta el context "account"`) y delega en el constructor de `EvzlaCiStack` el rechazo de una cuenta distinta de `CI_ACCOUNT`.
+- `bin/evzla-ci.ts` no pasa `baseDir` (el stack de CI no lee `.open-next`).
+- El test del bin ejecuta `pnpm exec tsx bin/evzla-ci.ts` con `CDK_OUTDIR` temporal y `CDK_CONTEXT_JSON={"account":…}` (sin CLI de CDK ni credenciales) y lee `manifest.json`: es la prueba directa de que el bin instancia solo `EvzlaCiStack`. Tarda ~15 s, dentro del `testTimeout` de 120 s.
+Notas para el verifier:
+- La corrida 02:57:02Z falló por las razones correctas en los 3 tests de `buildCiApp`, pero el hook la marcó `WARN=compile-error` por el bin inexistente; no se usa como RED. El RED de referencia es 03:02:07Z (sin WARN): se volvió temporalmente al stub y a un bin `new App().synth()` y se restauró el GREEN idéntico (turbo reutiliza el hash `d686ee35e026da91` en 03:02:50Z).
+- AC-6 "`cdk deploy --all` en `infra/` no lo incluye" queda cubierto por los dos tests guarda: `buildApp` no crea `EvzlaCiStack` y `cdk.json#app` sigue apuntando a `bin/evzla.ts`.
+
