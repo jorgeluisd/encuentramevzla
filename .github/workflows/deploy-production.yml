@@ -23,13 +23,15 @@ jobs:
     outputs:
       sha: ${{ steps.ref.outputs.sha }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Checkout triggering commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
       # El input del dispatch entra solo por env: nunca se interpola en el script.
-      - id: ref
+      - name: Resolve deploy sha
+        id: ref
         run: node infra/scripts/ci/resolve-ref.mjs
         env:
           INPUT_REF: ${{ inputs.ref }}
@@ -40,27 +42,40 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Checkout resolved sha
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.resolve.outputs.sha }}
           persist-credentials: false
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: node infra/scripts/ci/check-public-env.mjs apps/web/.env.production
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm audit --audit-level=high
-      - run: pnpm --filter @evzla/web build:aws
-      - run: node infra/scripts/ci/check-bundle.mjs apps/web/.open-next
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check public env
+        run: node infra/scripts/ci/check-public-env.mjs apps/web/.env.production
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Test
+        run: pnpm test
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high
+      - name: Build OpenNext bundle
+        run: pnpm --filter @evzla/web build:aws
+      - name: Scan built bundle
+        run: node infra/scripts/ci/check-bundle.mjs apps/web/.open-next
       # Tarball y no la carpeta: upload-artifact reemplaza los symlinks de pnpm que necesita zip-bundle.ts.
-      - if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      - name: Pack bundle
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: tar -C apps/web -czf "$RUNNER_TEMP/open-next.tgz" .open-next
-      - if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      - name: Upload bundle artifact
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: open-next-${{ github.run_id }}
@@ -83,37 +98,61 @@ jobs:
       group: deploy-production
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Checkout resolved sha
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ needs.resolve.outputs.sha }}
           persist-credentials: false
+      # Un run aprobado tarde no debe desplegar un SHA viejo encima de uno más nuevo.
+      - name: Refuse stale run
+        if: github.event_name == 'push'
+        run: node infra/scripts/ci/check-main-tip.mjs
+        env:
+          EXPECTED_SHA: ${{ needs.resolve.outputs.sha }}
       # Sin run-id: solo ve los artifacts de este run y no requiere actions: read.
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - name: Download bundle artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: open-next-${{ github.run_id }}
           path: ${{ runner.temp }}/artifact
-      - run: tar -tzf "$RUNNER_TEMP/artifact/open-next.tgz" > "$RUNNER_TEMP/open-next.entries"
-      - run: node infra/scripts/ci/check-bundle.mjs --tar-entries "$RUNNER_TEMP/open-next.entries"
-      - run: tar -xzf "$RUNNER_TEMP/artifact/open-next.tgz" --no-same-owner -C apps/web
-      - run: node infra/scripts/ci/check-bundle.mjs apps/web/.open-next
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - name: List bundle tarball
+        run: tar -tzf "$RUNNER_TEMP/artifact/open-next.tgz" > "$RUNNER_TEMP/open-next.entries"
+      - name: Check tarball entries
+        run: node infra/scripts/ci/check-bundle.mjs --tar-entries "$RUNNER_TEMP/open-next.entries"
+      - name: Extract bundle
+        run: tar -xzf "$RUNNER_TEMP/artifact/open-next.tgz" --no-same-owner -C apps/web
+      - name: Scan extracted bundle
+        run: node infra/scripts/ci/check-bundle.mjs apps/web/.open-next
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      # Sin cache: un store escrito por checks (deps de todo el workspace) no debe llegar a este job.
+      - name: Setup Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile --filter @evzla/infra...
-      # Synth antes de las credenciales: tsx y esbuild nunca corren con acceso a AWS.
-      - run: pnpm exec cdk synth --ci --quiet
+          package-manager-cache: false
+      - name: Install infra dependencies
+        run: pnpm install --frozen-lockfile --filter @evzla/infra...
+      - name: Check zip binary
+        run: command -v zip
+      # Antes de configure-aws-credentials no hay claves STS en el entorno, pero el job tiene
+      # id-token: write: install y synth (tsx, esbuild) podrían pedir un token OIDC (riesgo aceptado).
+      - name: Synth
+        run: pnpm exec cdk synth --ci --quiet
         working-directory: infra
-      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: arn:aws:iam::934106163170:role/evzla-github-deploy
           aws-region: sa-east-1
           role-session-name: evzla-deploy-${{ github.run_id }}
           role-duration-seconds: 3600
-      - run: pnpm exec cdk deploy EvzlaStack --app cdk.out --ci --require-approval never --outputs-file cdk-outputs.json
+      - name: Deploy EvzlaStack
+        run: pnpm exec cdk deploy EvzlaStack --app cdk.out --ci --require-approval never --outputs-file cdk-outputs.json
         working-directory: infra
-      - run: node infra/scripts/ci/write-summary.mjs infra/cdk-outputs.json
+      - name: Write summary
+        run: node infra/scripts/ci/write-summary.mjs infra/cdk-outputs.json
         env:
           DEPLOY_SHA: ${{ needs.resolve.outputs.sha }}
-      - run: node infra/scripts/ci/smoke.mjs https://encuentramevzla.com
+      - name: Smoke test
+        run: node infra/scripts/ci/smoke.mjs https://encuentramevzla.com

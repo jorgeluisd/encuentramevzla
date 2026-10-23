@@ -139,6 +139,88 @@ describe("resolve-ref.mjs", () => {
   });
 });
 
+describe("check-main-tip.mjs", () => {
+  const STALE_MESSAGE = "el SHA aprobado ya no es la punta de origin/main";
+  let root: string;
+  let clone: string;
+  let approvedSha: string;
+  let newerSha: string;
+
+  const gitIn = (cwd: string, ...args: string[]): string =>
+    execFileSync("git", ["-c", "user.name=ci-test", "-c", "user.email=ci-test@example.com", ...args], {
+      cwd,
+      encoding: "utf8",
+      env: isolatedGitEnv,
+    }).trim();
+
+  let shallowClone: string;
+
+  const checkTip = (env: Record<string, string>): ScriptRun => runScript("check-main-tip.mjs", clone, env);
+
+  beforeAll(() => {
+    root = mkdtempSync(path.join(tmpdir(), "evzla-main-tip-"));
+    const origin = path.join(root, "origin.git");
+    const author = path.join(root, "author");
+    clone = path.join(root, "clone");
+    gitIn(root, "init", "--quiet", "--bare", "--initial-branch=main", origin);
+    gitIn(root, "init", "--quiet", "--initial-branch=main", author);
+    gitIn(author, "commit", "--allow-empty", "--no-gpg-sign", "-m", "approved");
+    approvedSha = gitIn(author, "rev-parse", "HEAD");
+    gitIn(author, "push", "--quiet", origin, "main");
+    gitIn(root, "clone", "--quiet", `file://${origin}`, clone);
+    shallowClone = path.join(root, "shallow");
+    gitIn(root, "clone", "--quiet", "--depth=1", `file://${origin}`, shallowClone);
+    gitIn(author, "commit", "--allow-empty", "--no-gpg-sign", "-m", "newer");
+    newerSha = gitIn(author, "rev-parse", "HEAD");
+    gitIn(author, "push", "--quiet", origin, "main");
+  });
+
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("passes when the approved sha is the tip of origin/main fetched right now", () => {
+    const run = checkTip({ EXPECTED_SHA: newerSha });
+    expect(run.status).toBe(0);
+  });
+
+  it("fails with a fixed message, echoing no sha, when main moved past the approved sha", () => {
+    const run = checkTip({ EXPECTED_SHA: approvedSha });
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain(STALE_MESSAGE);
+    expect(run.stderr + run.stdout).not.toContain(approvedSha);
+    expect(run.stderr + run.stdout).not.toContain(newerSha);
+  });
+
+  it.each([
+    ["passes", () => newerSha, 0],
+    ["fails", () => approvedSha, 1],
+  ])("on a shallow checkout like the CI one, %s against the freshly fetched tip", (_label, sha, status) => {
+    const run = runScript("check-main-tip.mjs", shallowClone, { EXPECTED_SHA: sha() });
+    expect(run.status).toBe(status);
+  });
+
+  it.each([
+    ["missing", {}],
+    ["not a 40-hex sha", { EXPECTED_SHA: "main; touch pwned" }],
+  ])("fails closed when EXPECTED_SHA is %s, without echoing it", (_label, env: Record<string, string>) => {
+    const run = checkTip(env);
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain("EXPECTED_SHA inválido");
+    expect(run.stderr + run.stdout).not.toContain("pwned");
+  });
+
+  it("fails closed when origin cannot be fetched", () => {
+    const offline = mkdtempSync(path.join(tmpdir(), "evzla-main-tip-offline-"));
+    gitIn(offline, "init", "--quiet", "--initial-branch=main");
+    gitIn(offline, "remote", "add", "origin", `file://${path.join(offline, "missing.git")}`);
+    const run = runScript("check-main-tip.mjs", offline, { EXPECTED_SHA: newerSha });
+    rmSync(offline, { recursive: true, force: true });
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain("no se pudo leer la punta de origin/main");
+  });
+});
+
 describe("check-public-env.mjs", () => {
   let dir: string;
 

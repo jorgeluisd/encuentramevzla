@@ -191,6 +191,13 @@ describe("deploy-production workflow — every job", () => {
     expect(runScriptsInterpolatingInputs(injected)).toEqual(["build#1", "build#3", "ship#1", "ship#2"]);
   });
 
+  it.each(["resolve", "checks", "deploy"])("%s names every step, without repeating a name", (name) => {
+    const names = steps(name).map((step) => step.name?.trim() ?? "");
+    expect(names.length).toBeGreaterThan(0);
+    for (const stepName of names) expect(stepName).not.toBe("");
+    expect(new Set(names).size).toBe(names.length);
+  });
+
   it.each(["resolve", "checks", "deploy"])("%s has no expressions inside run scripts", (name) => {
     for (const step of steps(name)) expect(step.run ?? "").not.toContain("${{");
   });
@@ -293,6 +300,8 @@ describe("deploy-production workflow — deploy job", () => {
     "pnpm exec cdk deploy EvzlaStack --app cdk.out --ci --require-approval never --outputs-file cdk-outputs.json";
   const SUMMARY = "node infra/scripts/ci/write-summary.mjs infra/cdk-outputs.json";
   const SMOKE = "node infra/scripts/ci/smoke.mjs https://encuentramevzla.com";
+  const MAIN_TIP_CHECK = "node infra/scripts/ci/check-main-tip.mjs";
+  const ZIP_CHECK = "command -v zip";
 
   const deploySteps = () => steps("deploy");
   const indexOf = (predicate: (step: Step) => boolean) => deploySteps().findIndex(predicate);
@@ -315,6 +324,7 @@ describe("deploy-production workflow — deploy job", () => {
   it("runs the steps in the designed order", () => {
     expect(deploySteps().map(signature)).toEqual([
       "actions/checkout",
+      MAIN_TIP_CHECK,
       "actions/download-artifact",
       TAR_LIST,
       TAR_CHECK,
@@ -323,6 +333,7 @@ describe("deploy-production workflow — deploy job", () => {
       "pnpm/action-setup",
       "actions/setup-node",
       INFRA_INSTALL,
+      ZIP_CHECK,
       SYNTH,
       "aws-actions/configure-aws-credentials",
       CDK_DEPLOY,
@@ -336,6 +347,34 @@ describe("deploy-production workflow — deploy job", () => {
       ref: "${{ needs.resolve.outputs.sha }}",
       "persist-credentials": false,
     });
+  });
+
+  it("on push, refuses a stale run whose approved sha is no longer the tip of origin/main", () => {
+    const tipCheck = stepRunning("deploy", MAIN_TIP_CHECK);
+    expect(tipCheck.if).toBe("github.event_name == 'push'");
+    expect(tipCheck.env).toEqual({ EXPECTED_SHA: "${{ needs.resolve.outputs.sha }}" });
+    const checkout = indexOf((step) => actionOf(step) === "actions/checkout");
+    const tipCheckIndex = indexOf((step) => step === tipCheck);
+    expect(tipCheckIndex).toBeGreaterThan(checkout);
+    expect(tipCheckIndex).toBeLessThan(credentialsIndex());
+  });
+
+  it("sets up Node without any package manager cache, so checks cannot seed what deploy installs", () => {
+    expect(stepUsing("deploy", "actions/setup-node").with).toEqual({
+      "node-version": 22,
+      "package-manager-cache": false,
+    });
+  });
+
+  it("verifies the zip binary used by zip-bundle before the synth", () => {
+    const zipCheck = indexOf((step) => step.run?.trim() === ZIP_CHECK);
+    expect(zipCheck).toBeGreaterThan(-1);
+    expect(zipCheck).toBeLessThan(indexOf((step) => step.run?.trim() === SYNTH));
+  });
+
+  it("does not claim that synth runs without AWS access while the job holds id-token: write", () => {
+    expect(rawWorkflow).not.toMatch(/nunca corren con acceso a AWS/);
+    expect(rawWorkflow).toMatch(/#[^\n]*id-token[^\n]*OIDC/);
   });
 
   it("downloads only this run's artifact by exact name, without run-id or token", () => {

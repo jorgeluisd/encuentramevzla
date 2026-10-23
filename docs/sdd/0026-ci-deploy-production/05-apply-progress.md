@@ -230,3 +230,27 @@ Escaneo del diff (3157 líneas añadidas):
 
 Commit: (este) docs(sdd): record final sweep for 0026
 Notas para el verifier: ninguna línea de esta tarea en el log lleva `WARN` salvo la 04:20:56Z explicada arriba.
+
+
+## T-15 — Cache, run obsoleto, zip, `name:` y comentario de `id-token`   estado: terminada
+TDD: ON (estricto)
+Safety net: `pnpm --filter @evzla/infra test -- test/ci-workflow.test.ts test/ci-scripts.test.ts` → PASS `Tests 101 passed (101)` (2026-10-23T04:34:49Z)
+Archivos tocados: [.github/workflows/deploy-production.yml, infra/test/ci-workflow.test.ts, infra/scripts/ci/check-main-tip.mjs, infra/test/ci-scripts.test.ts, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]
+Desviaciones respecto al plan: `infra/scripts/ci/check-main-tip.mjs` (nuevo) e `infra/test/ci-scripts.test.ts` · la lógica del chequeo de run obsoleto vive en un script con test propio, en el estilo de `resolve-ref.mjs`, para no poner lógica en `run:` (autorizado en el encargo de la tarea).
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+| RED | `check-main-tip.mjs` (5 tests: punta actual pasa, run obsoleto falla con mensaje fijo sin SHAs, EXPECTED_SHA ausente/inválido, origin inalcanzable) | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts -t "check-main-tip"` | FAIL (razón: comportamiento ausente, el script no existe) · `Tests 5 failed \| 57 skipped (62)` | 2026-10-23T04:35:27Z |
+| GREEN | ídem | ídem | PASS · `Tests 5 passed \| 57 skipped (62)` | 2026-10-23T04:35:38Z |
+| TRIANGULATE | clon superficial `--depth=1` como el checkout del CI: pasa con la punta, falla con el SHA viejo | ídem | PASS · `Tests 7 passed \| 57 skipped (64)` | 2026-10-23T04:35:55Z |
+| RED | workflow (8 tests): `name:` en cada paso y sin repetir (3 jobs), orden del deploy con chequeo de punta y de `zip`, paso de run obsoleto solo en `push` con `EXPECTED_SHA` por `env:` entre checkout y credenciales, `setup-node` de deploy sin cache, comentario de `id-token` preciso | `pnpm --filter @evzla/infra test -- test/ci-workflow.test.ts` | FAIL (razón: comportamiento ausente en el workflow) · `Tests 8 failed \| 43 passed (51)` | 2026-10-23T04:36:18Z |
+| GREEN | workflow + scripts | `pnpm --filter @evzla/infra test -- test/ci-workflow.test.ts test/ci-scripts.test.ts` | PASS · `Tests 115 passed (115)` | 2026-10-23T04:37:10Z |
+| REFACTOR | — (sin cambios tras el verde) | `pnpm test` | PASS · `exit=0` (infra 192) | 2026-10-23T04:38:43Z |
+Checks locales: typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total" · lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total" · tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 192, core 286, db 20, web 61)
+Commit: (este) fix(ci): harden deploy job against shared cache and stale runs
+Decisiones menores:
+- `setup-node` de deploy queda con `package-manager-cache: false` además de quitar `cache: pnpm`: en v5 (verificado en su `action.yml` al SHA fijado) el cache automático por `packageManager` viene activo por defecto.
+- El chequeo de run obsoleto hace `git fetch --no-tags --depth=1 origin refs/heads/main` y compara `FETCH_HEAD` (no `origin/main`: el checkout superficial no garantiza que esa ref remota se actualice). Va justo después del checkout para fallar antes de descargar e instalar; con `if: github.event_name == 'push'` (en `workflow_dispatch` el rollback despliega a propósito un SHA viejo). El mensaje es fijo y no imprime SHAs.
+- Chequeo de `zip`: `command -v zip` justo antes del synth.
+- El comentario de synth ahora dice que no hay claves STS pero el job tiene `id-token: write` y install/synth podrían pedir un token OIDC (riesgo aceptado que va a GATE 2).
+Notas para el verifier:
+- El fetch del chequeo corre sin credenciales (`persist-credentials: false`): funciona porque el repo es público. Si el repo pasara a privado, este paso fallaría cerrado.
