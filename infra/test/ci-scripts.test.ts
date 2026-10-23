@@ -588,3 +588,128 @@ describe("smoke.mjs", () => {
     expect(requests).toEqual([]);
   });
 });
+
+describe("write-summary.mjs", () => {
+  const DEPLOY_SHA = "0123456789abcdef0123456789abcdef01234567";
+  const DOMAIN = "d1a2b3c4d5e6f7.cloudfront.net";
+  const PRIVATE_VALUES = [
+    "sa-east-1_SyntheticPool",
+    "synthetic-client-id-0000",
+    "evzla-synthetic-uploads-bucket",
+    "arn:aws:lambda:sa-east-1:000000000000:function:synthetic",
+  ];
+
+  let workDir: string;
+  let summaryFile: string;
+  let outputsFile: string;
+
+  const writeOutputs = (evzlaStack: Record<string, string>): void => {
+    const outputs = {
+      EvzlaStack: {
+        UserPoolId: PRIVATE_VALUES[0],
+        UserPoolClientId: PRIVATE_VALUES[1],
+        UploadsBucketName: PRIVATE_VALUES[2],
+        ServerFunctionArn: PRIVATE_VALUES[3],
+        ...evzlaStack,
+      },
+    };
+    writeFileSync(outputsFile, JSON.stringify(outputs));
+  };
+
+  const writeSummary = (env: Record<string, string> = {}, args: string[] = [outputsFile]): ScriptRun => {
+    const result = spawnSync(process.execPath, [path.join(scriptsDir, "write-summary.mjs"), ...args], {
+      cwd: workDir,
+      encoding: "utf8",
+      env: { PATH: process.env.PATH ?? "", GITHUB_STEP_SUMMARY: summaryFile, DEPLOY_SHA, ...env },
+      timeout: 30_000,
+    });
+    return { status: result.status, stdout: result.stdout, stderr: result.stderr, output: readFileSync(summaryFile, "utf8") };
+  };
+
+  const expectNoPrivateValue = (run: ScriptRun): void => {
+    for (const value of PRIVATE_VALUES) {
+      expect(run.output).not.toContain(value);
+      expect(run.stdout).not.toContain(value);
+      expect(run.stderr).not.toContain(value);
+    }
+  };
+
+  beforeEach(() => {
+    workDir = mkdtempSync(path.join(tmpdir(), "evzla-write-summary-"));
+    summaryFile = path.join(workDir, "step-summary.md");
+    outputsFile = path.join(workDir, "cdk-outputs.json");
+    writeFileSync(summaryFile, "");
+    writeOutputs({ CloudFrontDomain: DOMAIN });
+  });
+
+  afterEach(() => rmSync(workDir, { recursive: true, force: true }));
+
+  it("writes only the deployed SHA and the CloudFront domain to the step summary", () => {
+    const run = writeSummary();
+    expect(run.status).toBe(0);
+    expect(run.output).toBe(`## Deploy de producción\n\n- SHA: \`${DEPLOY_SHA}\`\n- CloudFront: \`${DOMAIN}\`\n`);
+    expect(run.stdout).toBe("");
+    expect(run.stderr).toBe("");
+    expectNoPrivateValue(run);
+  });
+
+  it("appends to an existing step summary without replacing it", () => {
+    writeFileSync(summaryFile, "previous step\n");
+    const run = writeSummary();
+    expect(run.status).toBe(0);
+    expect(run.output.startsWith("previous step\n")).toBe(true);
+    expect(run.output).toContain(DEPLOY_SHA);
+  });
+
+  it("fails closed without writing when CloudFrontDomain is missing", () => {
+    writeOutputs({});
+    const run = writeSummary();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe("write-summary: falta EvzlaStack.CloudFrontDomain válido en el archivo de outputs\n");
+    expect(run.output).toBe("");
+    expectNoPrivateValue(run);
+  });
+
+  it("rejects a CloudFrontDomain that is not a CloudFront hostname, so nothing else can ride into the summary", () => {
+    for (const domain of [`${DOMAIN}\n- UserPoolId: ${PRIVATE_VALUES[0]}`, "evil.example.com", `${DOMAIN}\``, ""]) {
+      writeOutputs({ CloudFrontDomain: domain });
+      const run = writeSummary();
+      expect(run.status).toBe(1);
+      expect(run.output).toBe("");
+      expectNoPrivateValue(run);
+    }
+  });
+
+  it("fails closed without echoing the file when the outputs are not valid JSON", () => {
+    writeFileSync(outputsFile, `{ "EvzlaStack": { "UserPoolId": "${PRIVATE_VALUES[0]}" `);
+    const run = writeSummary();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe("write-summary: no se pudo leer el archivo de outputs\n");
+    expect(run.output).toBe("");
+    expectNoPrivateValue(run);
+  });
+
+  it("fails closed when the outputs file is missing or not given", () => {
+    for (const args of [[path.join(workDir, "absent.json")], []]) {
+      const run = writeSummary({}, args);
+      expect(run.status).toBe(1);
+      expect(run.output).toBe("");
+    }
+  });
+
+  it("fails closed when DEPLOY_SHA is not a 40-hex SHA", () => {
+    for (const sha of ["", "main", DEPLOY_SHA.toUpperCase(), `${DEPLOY_SHA}\n- injected`]) {
+      const run = writeSummary({ DEPLOY_SHA: sha });
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe("write-summary: DEPLOY_SHA no es un SHA de 40 hex\n");
+      expect(run.output).toBe("");
+    }
+  });
+
+  it("fails closed when GITHUB_STEP_SUMMARY is not set", () => {
+    const run = writeSummary({ GITHUB_STEP_SUMMARY: "" });
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe("write-summary: falta GITHUB_STEP_SUMMARY\n");
+    expect(run.output).toBe("");
+  });
+});

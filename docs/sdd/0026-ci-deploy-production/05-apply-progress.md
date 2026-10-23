@@ -9,7 +9,8 @@
 | T-4 | terminada | 2172795 | AC-20, AC-21 (parte script) |
 | T-5 | terminada | f20fdb6 | AC-22 (parte script) |
 | T-6 | terminada | 3774382 | AC-14, AC-23 (parte script), AC-13 (validación de entradas del tar, parte script) |
-| T-7 | terminada | (este commit) | AC-26, AC-27, AC-28, AC-29 |
+| T-7 | terminada | 84c4344 | AC-26, AC-27, AC-28, AC-29 |
+| T-8 | terminada | (este commit) | AC-34 (parte summary) |
 
 ## T-1 — Dependencia `yaml` en infra   estado: terminada
 TDD: OFF (config pura: alta de una devDependency, sin código de producción ni test propio; definido así en 04-plan)
@@ -225,7 +226,7 @@ Checks locales:
 - lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total" (primer intento rojo por `no-undef` de `URL`/`fetch`/`AbortSignal` en el `.mjs`; corregido en el REFACTOR)
 - tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 89 = 79 previos + 10 nuevos; core 286, db 20, web 61) (2026-10-23T03:35:12Z)
 
-Commit: (este commit) feat(infra): add ci smoke script for the deployed site
+Commit: 84c4344 feat(infra): add ci smoke script for the deployed site
 Decisiones menores:
 - Contrato: `node infra/scripts/ci/smoke.mjs <url base http(s)>` (03-design: `smoke.mjs https://encuentramevzla.com`). Sin URL o con protocolo distinto de http/https → exit 1 con mensaje fijo y ninguna petición. Las rutas se resuelven con `new URL(ruta, base)`, así un path en la base no altera `/` ni `/admin`.
 - `SMOKE_PATHS = ["/", "/admin"]` exportada; el script solo ejecuta si es el entrypoint (`process.argv[1] === fileURLToPath(import.meta.url)`), así el test lee la constante con un `import()` en un `node` aparte (el `.mjs` no entra al `tsc` de infra).
@@ -236,3 +237,30 @@ Notas para el verifier:
 - El RED de referencia (03:35:39Z) y el TRIANGULATE RED (03:35:53Z) se re-grabaron en primer plano restaurando temporalmente el esqueleto y la versión sin chequeo de origen: las corridas originales (03:30:02Z y 03:31:27Z, ambas exit=1) quedaron encadenadas tras el `python3` que editaba el test, por lo que el log las registra con ese comando y no valen como evidencia. En la re-grabación del TRIANGULATE RED falla además el caso `Location` vacío (`sin-respuesta`) por un artefacto de la reconstrucción (sin `?.`); el código final es idéntico byte a byte al de 03:33:48Z (verificado con `git diff --no-index`).
 - 03:31:03Z (triangulación sin RED: reintentos, título ausente, `/admin` 404/200/otro path/vacío, `Location` absoluto, timeout, URL inválida) también quedó encadenada al `python3`; sus casos los cubren las corridas limpias de 03:33:48Z y 03:36:15Z.
 - Ninguna línea del log de esta tarea (03:29:16Z a 03:36:15Z) tiene `WARN`.
+
+## T-8 — Script `write-summary.mjs` (SHA + CloudFrontDomain al step summary)   estado: terminada
+TDD: ON (script de CI; tests con `cdk-outputs.json` y `GITHUB_STEP_SUMMARY` sintéticos en un directorio temporal)
+Safety net: `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` → `Test Files 1 passed (1) Tests 49 passed (49)` (2026-10-23T03:38:54Z)
+Archivos tocados: [infra/scripts/ci/write-summary.mjs, infra/test/ci-scripts.test.ts, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]   Desviaciones respecto al plan: ninguna
+
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | los 8 tests de `describe("write-summary.mjs")` contra el esqueleto | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts -t write-summary.mjs` | FAIL (esqueleto `not implemented`, exit 2): "expected 2 to be +0" / "expected 2 to be 1" · `Tests 8 failed \| 49 skipped (57)` | 2026-10-23T03:39:32Z |
+| GREEN | 7 de 8 (validación del dominio solo "string no vacío") | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts -t write-summary.mjs` | GREEN parcial + TRIANGULATE RED: "rejects a CloudFrontDomain that is not a CloudFront hostname…" FAIL "expected +0 to be 1" (aceptaba un valor con salto de línea y otro output, `evil.example.com` y un backtick) · `Tests 1 failed \| 7 passed \| 49 skipped (57)` | 2026-10-23T03:39:47Z |
+| TRIANGULATE | archivo completo con `CLOUDFRONT_DOMAIN = /^[a-z0-9]+\.cloudfront\.net$/` | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | PASS · `Tests 57 passed (57)` | 2026-10-23T03:40:13Z |
+| REFACTOR | — (sin cambios tras el verde) | `pnpm test` | PASS · `exit=0` (infra 97 = 89 previos + 8 nuevos) | 2026-10-23T03:41:43Z |
+
+Checks locales:
+- typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total"
+- lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total"
+- tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 97, core 286, db 20, web 61) (2026-10-23T03:41:43Z)
+
+Commit: (este commit) feat(infra): add ci script to write the deploy summary
+Decisiones menores:
+- Contrato: `node infra/scripts/ci/write-summary.mjs <ruta a cdk-outputs.json>` con `DEPLOY_SHA` y `GITHUB_STEP_SUMMARY` por entorno. T-11 debe pasar `DEPLOY_SHA: ${{ needs.resolve.outputs.sha }}` por `env:` (no `GITHUB_SHA`: en un dispatch con `ref` el SHA desplegado es el resuelto) y la ruta `infra/cdk-outputs.json` (o `cdk-outputs.json` con `working-directory: infra`).
+- Salida: agrega (append, no reemplaza) `## Deploy de producción`, `- SHA: \`<sha>\``, `- CloudFront: \`<dominio>\``. Nada en stdout; solo se lee `EvzlaStack.CloudFrontDomain`, el resto del JSON nunca se imprime ni se copia.
+- Falla cerrado (exit 1, mensaje fijo en stderr, summary intacto) si falta `GITHUB_STEP_SUMMARY`, si `DEPLOY_SHA` no es `^[0-9a-f]{40}$`, si el archivo no existe/no se da/no es JSON, o si el dominio no es `^[a-z0-9]+\.cloudfront\.net$`. Ningún mensaje de error incluye contenido del archivo. El regex estricto impide que un valor con saltos de línea o backticks inyecte markdown u otros outputs al summary.
+Notas para el verifier:
+- El caso de inyección se escribió junto con el resto antes del esqueleto (falló en el RED de 03:39:32Z por exit 2); la primera implementación lo dejó rojo a propósito (03:39:47Z) y el regex lo puso en verde (03:40:13Z).
+- Ninguna línea del log de esta tarea (03:38:54Z a 03:41:43Z) tiene `WARN`.
