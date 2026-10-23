@@ -12,11 +12,11 @@ const isolatedGitEnv = { PATH: process.env.PATH ?? "", GIT_CONFIG_GLOBAL: "/dev/
 
 type ScriptRun ={ status: number | null; stdout: string; stderr: string; output: string };
 
-function runScript(script: string, cwd: string, env: Record<string, string>): ScriptRun {
+function runScript(script: string, cwd: string, env: Record<string, string>, args: string[] = []): ScriptRun {
   const outputDir = mkdtempSync(path.join(tmpdir(), "evzla-ci-out-"));
   const outputFile = path.join(outputDir, "github-output");
   writeFileSync(outputFile, "");
-  const result = spawnSync(process.execPath, [path.join(scriptsDir, script)], {
+  const result = spawnSync(process.execPath, [path.join(scriptsDir, script), ...args], {
     cwd,
     encoding: "utf8",
     env: { ...isolatedGitEnv, GITHUB_OUTPUT: outputFile, ...env },
@@ -133,5 +133,63 @@ describe("resolve-ref.mjs", () => {
     expect(run.status).toBe(1);
     expect(run.stderr).toContain("GITHUB_SHA inválido");
     expect(run.output).toBe("");
+  });
+});
+
+describe("check-public-env.mjs", () => {
+  let dir: string;
+
+  const check = (contents: string): ScriptRun => {
+    const envFile = path.join(dir, ".env.production");
+    writeFileSync(envFile, contents);
+    return runScript("check-public-env.mjs", dir, {}, [envFile]);
+  };
+
+  beforeAll(() => {
+    dir = mkdtempSync(path.join(tmpdir(), "evzla-public-env-"));
+  });
+
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("passes with only NEXT_PUBLIC_ keys, comments and blank lines", () => {
+    const run = check("# comentario\n\nNEXT_PUBLIC_SITE_KEY=synthetic-site-key\n  \nexport NEXT_PUBLIC_FLAG=1\n");
+    expect(run.status).toBe(0);
+  });
+
+  it("fails on a key without the NEXT_PUBLIC_ prefix, printing only line number and key", () => {
+    const run = check("NEXT_PUBLIC_SITE_KEY=synthetic-site-key\nDATABASE_URL=postgres://synthetic-secret-value\n");
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe("check-public-env: línea 2: clave DATABASE_URL sin prefijo NEXT_PUBLIC_\n");
+    expect(run.stderr + run.stdout).not.toContain("synthetic-secret-value");
+    expect(run.stderr + run.stdout).not.toContain("synthetic-site-key");
+  });
+
+  it("fails on an exported key without the prefix and reports every offending line", () => {
+    const run = check("export FOO=synthetic-secret-value\nNEXT_PUBLIC_OK=1\nBAR=synthetic-secret-value\n");
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(
+      "check-public-env: línea 1: clave FOO sin prefijo NEXT_PUBLIC_\n" +
+        "check-public-env: línea 3: clave BAR sin prefijo NEXT_PUBLIC_\n",
+    );
+    expect(run.stderr + run.stdout).not.toContain("synthetic-secret-value");
+  });
+
+  it("fails on a line that is not a KEY=value assignment without echoing its content", () => {
+    const run = check("NEXT_PUBLIC_OK=1\nsynthetic-pasted-secret\n");
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe("check-public-env: línea 2: no es una asignación CLAVE=valor\n");
+    expect(run.stderr + run.stdout).not.toContain("synthetic-pasted-secret");
+  });
+
+  it("fails closed when the file path is missing or unreadable", () => {
+    const missingArg = runScript("check-public-env.mjs", dir, {});
+    expect(missingArg.status).toBe(1);
+    expect(missingArg.stderr).toBe("check-public-env: falta la ruta del archivo\n");
+
+    const unreadable = runScript("check-public-env.mjs", dir, {}, [path.join(dir, "does-not-exist")]);
+    expect(unreadable.status).toBe(1);
+    expect(unreadable.stderr).toBe("check-public-env: no se pudo leer el archivo\n");
   });
 });

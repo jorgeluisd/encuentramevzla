@@ -6,7 +6,8 @@
 | T-1 | terminada | 729f6f1 | habilita AC-7..18 |
 | T-2 | terminada | f831e75 | AC-1, AC-2, AC-3, AC-4, AC-5 |
 | T-3 | terminada | 185db6c | AC-6 |
-| T-4 | terminada | (ver commit de T-4) | AC-20, AC-21 (parte script) |
+| T-4 | terminada | 2172795 | AC-20, AC-21 (parte script) |
+| T-5 | terminada | (ver commit de T-5) | AC-22 (parte script) |
 
 ## T-1 — Dependencia `yaml` en infra   estado: terminada
 TDD: OFF (config pura: alta de una devDependency, sin código de producción ni test propio; definido así en 04-plan)
@@ -126,7 +127,7 @@ Checks locales:
 - lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total"
 - tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra `Test Files 4 passed (4)` `Tests 52 passed` = 40 previos + 12 nuevos; core 286, db 20, web 61) (2026-10-23T03:12:17Z)
 
-Commit: ver `git log` (subject `feat(infra): add ci script to resolve the deploy ref`)
+Commit: 2172795 feat(infra): add ci script to resolve the deploy ref
 Decisiones menores:
 - Contrato del script: entradas `EVENT_NAME`, `INPUT_REF`, `GITHUB_SHA`, `GITHUB_OUTPUT` (solo `env`); salida `sha=<40 hex>` en `GITHUB_OUTPUT` y una línea `resolve-ref: <sha>` en stdout. T-10 debe pasar `EVENT_NAME: ${{ github.event_name }}` e `INPUT_REF: ${{ inputs.ref }}` por `env:`; `GITHUB_SHA`/`GITHUB_OUTPUT` los pone el runner.
 - `git` se invoca con `execFileSync` y argumentos en array (sin shell). Un SHA de 40 hex se verifica con `rev-parse --verify <sha>^{commit}`; un tag primero con `show-ref --verify refs/tags/<t>` y luego se pela a su commit (`^{commit}`), así un tag anotado devuelve el SHA del commit, no del objeto tag.
@@ -136,3 +137,32 @@ Decisiones menores:
 Notas para el verifier:
 - La línea 03:06:46Z es un fallo del fixture (config global de git), no RED; el RED de referencia es 03:07:01Z.
 - Ninguna línea del log de esta tarea (03:06:46Z a 03:12:17Z) tiene `WARN`.
+
+## T-5 — Script `check-public-env.mjs` (guarda de `.env.production`)   estado: terminada
+TDD: ON (script de CI; test con archivos `.env.production` temporales sintéticos en `tmpdir`, ejecutando el `.mjs` con `node`)
+Safety net: `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` → `Test Files 1 passed (1) Tests 12 passed (12)` (2026-10-23T03:14:45Z)
+Archivos tocados: [infra/scripts/ci/check-public-env.mjs, infra/test/ci-scripts.test.ts, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]   Desviaciones respecto al plan: ninguna. En el test, `runScript` gana un parámetro opcional `args` (default `[]`) para pasar la ruta por argv; los tests de resolve-ref no cambian.
+
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | passes with only NEXT_PUBLIC_ keys, comments and blank lines · fails on a key without the NEXT_PUBLIC_ prefix, printing only line number and key | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | FAIL (esqueleto `not implemented`, exit 2): "expected 2 to be +0" / "expected 2 to be 1" · `Tests 2 failed \| 12 passed (14)` | 2026-10-23T03:15:06Z |
+| GREEN | mismos 2 (aserción del 2º endurecida a stderr exacto antes de implementar) | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | PASS · `Tests 14 passed (14)` | 2026-10-23T03:15:25Z |
+| TRIANGULATE RED | fails on a line that is not a KEY=value assignment without echoing its content · fails closed when the file path is missing or unreadable | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | FAIL: "expected 'check-public-env: línea 2: clave synt…' to be 'check-public-env: línea 2: no es una …'" (eco del contenido como clave) y `TypeError [ERR_INVALID_ARG_TYPE]` sin ruta · `Tests 2 failed \| 15 passed (17)` | 2026-10-23T03:15:50Z |
+| GUARDA (sin RED) | fails on an exported key without the prefix and reports every offending line (`export FOO=…`) | (misma corrida) | PASS de entrada: el GREEN ya quitaba `export ` y acumulaba violaciones | 2026-10-23T03:15:50Z |
+| TRIANGULATE GREEN | archivo completo | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` | PASS · `Tests 17 passed (17)` | 2026-10-23T03:16:05Z |
+| REFACTOR | — (el GREEN de triangulación ya separa `readLines`/`violationOf`; sin cambios posteriores) | `pnpm test` | PASS · infra `Test Files 4 passed (4)` `Tests 57 passed (57)` | 2026-10-23T03:17:37Z |
+
+Checks locales:
+- typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total"
+- lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total"
+- tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 57 = 52 previos + 5 nuevos; core 286, db 20, web 61) (2026-10-23T03:17:37Z)
+
+Commit: ver `git log` (subject `feat(infra): add ci script to guard public env keys`)
+Decisiones menores:
+- Contrato: la ruta del archivo entra por argv (`node infra/scripts/ci/check-public-env.mjs apps/web/.env.production`), tal como lo invoca el job `checks` en 03-design.md; no hay otras entradas. Sin ruta o archivo ilegible → exit 1 con mensaje fijo.
+- Una línea cuenta como asignación solo si casa `^(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=`; cualquier otra línea no vacía ni comentario falla con "no es una asignación CLAVE=valor" sin imprimir su contenido (un secreto pegado sin `=` no se reproduce como si fuera clave). La clave solo se imprime cuando es un identificador válido.
+- Se reportan todas las líneas infractoras (una por línea de stderr, prefijo `check-public-env:`), no solo la primera; stdout queda vacío.
+Notas para el verifier:
+- Ninguna línea del log de esta tarea (03:14:45Z a 03:17:37Z) tiene `WARN`.
+- No se leyó ni se ejecutó el script sobre `apps/web/.env.production` real; eso queda para T-9.
