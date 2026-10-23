@@ -10,7 +10,8 @@
 | T-5 | terminada | f20fdb6 | AC-22 (parte script) |
 | T-6 | terminada | 3774382 | AC-14, AC-23 (parte script), AC-13 (validación de entradas del tar, parte script) |
 | T-7 | terminada | 84c4344 | AC-26, AC-27, AC-28, AC-29 |
-| T-8 | terminada | (este commit) | AC-34 (parte summary) |
+| T-8 | terminada | fd02a41 | AC-34 (parte summary) |
+| T-9 | terminada | (este commit) | AC-19, AC-24, AC-25, AC-33, AC-35 |
 
 ## T-1 — Dependencia `yaml` en infra   estado: terminada
 TDD: OFF (config pura: alta de una devDependency, sin código de producción ni test propio; definido así en 04-plan)
@@ -256,7 +257,7 @@ Checks locales:
 - lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total"
 - tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 97, core 286, db 20, web 61) (2026-10-23T03:41:43Z)
 
-Commit: (este commit) feat(infra): add ci script to write the deploy summary
+Commit: fd02a41 feat(infra): add ci script to write the deploy summary
 Decisiones menores:
 - Contrato: `node infra/scripts/ci/write-summary.mjs <ruta a cdk-outputs.json>` con `DEPLOY_SHA` y `GITHUB_STEP_SUMMARY` por entorno. T-11 debe pasar `DEPLOY_SHA: ${{ needs.resolve.outputs.sha }}` por `env:` (no `GITHUB_SHA`: en un dispatch con `ref` el SHA desplegado es el resuelto) y la ruta `infra/cdk-outputs.json` (o `cdk-outputs.json` con `working-directory: infra`).
 - Salida: agrega (append, no reemplaza) `## Deploy de producción`, `- SHA: \`<sha>\``, `- CloudFront: \`<dominio>\``. Nada en stdout; solo se lee `EvzlaStack.CloudFrontDomain`, el resto del JSON nunca se imprime ni se copia.
@@ -264,3 +265,35 @@ Decisiones menores:
 Notas para el verifier:
 - El caso de inyección se escribió junto con el resto antes del esqueleto (falló en el RED de 03:39:32Z por exit 2); la primera implementación lo dejó rojo a propósito (03:39:47Z) y el regex lo puso en verde (03:40:13Z).
 - Ninguna línea del log de esta tarea (03:38:54Z a 03:41:43Z) tiene `WARN`.
+
+## T-9 — Higiene del repo (`.gitignore`, `.env.production` versionado, CODEOWNERS, Dependabot)   estado: terminada
+TDD: ON para `infra/test/repo-hygiene.test.ts`; los archivos de config son config pura validada por ese test.
+Safety net: `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts` → `Test Files 1 passed (1) Tests 57 passed (57)` (2026-10-23T03:44:05Z)
+Archivos tocados: [.gitignore, apps/web/.env.production, .github/CODEOWNERS, .github/dependabot.yml, infra/test/repo-hygiene.test.ts, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]   Desviaciones respecto al plan: ninguna (Dependabot sigue AC-19 revisado y DUDA RESUELTA 5, que reemplaza el `weekly` del plan)
+
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | 15 tests de `repo-hygiene.test.ts` antes de tocar config | `pnpm --filter @evzla/infra test -- test/repo-hygiene.test.ts` | FAIL (comportamiento ausente): negación ausente en `.gitignore`, `.env.production` ignorado y sin trackear, CODEOWNERS solo `*`, `dependabot.yml` ENOENT · `Tests 9 failed \| 6 passed (15)` | 2026-10-23T03:45:23Z |
+| GREEN | mismos 15, con `.gitignore`, CODEOWNERS, `dependabot.yml` y `git add` del `.env.production` existente | `pnpm --filter @evzla/infra test -- test/repo-hygiene.test.ts` | PASS · `Tests 15 passed (15)` | 2026-10-23T03:45:48Z |
+| TRIANGULATE | escaneo de secretos con un archivo temporal no ignorado en `infra/` con la clave de ejemplo documentada de AWS (armada por partes con `printf`) | `pnpm --filter @evzla/infra test -- test/repo-hygiene.test.ts -t "secret scan"` | FAIL esperado: `expected [ 'infra/triangulate-secret.tmp' ] to deeply equal []` (solo la ruta, nunca el match) · `Tests 1 failed \| 14 skipped (15)` | 2026-10-23T03:46:06Z |
+| TRIANGULATE | archivo temporal borrado | `rm infra/triangulate-secret.tmp && pnpm --filter @evzla/infra test -- test/repo-hygiene.test.ts` | PASS · `Tests 15 passed (15)` | 2026-10-23T03:46:14Z |
+| REFACTOR | — (sin cambios tras el verde) | `pnpm test` | PASS · `exit=0` (infra 112 = 97 previos + 15 nuevos) | 2026-10-23T03:49:00Z |
+
+Checks locales:
+- typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total"
+- lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total"
+- tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 112, core 286, db 20, web 61) (2026-10-23T03:49:00Z)
+
+Commit: (este commit) chore(ci): add repo hygiene guards, codeowners and dependabot
+Decisiones menores:
+- `apps/web/.env.production` se versionó con `git add` tal cual; el agente nunca lo abrió, imprimió ni editó. El test lo lee en proceso pero solo afirma booleanos y conteos (1 línea no vacía; empieza con `NEXT_PUBLIC_TURNSTILE_SITE_KEY=`) y el exit code de `check-public-env.mjs`; ninguna aserción puede imprimir el valor.
+- `git check-ignore --no-index`: evalúa las reglas aunque el archivo esté trackeado (sin `--no-index` un archivo trackeado nunca figura como ignorado).
+- Escaneo AC-33 sobre `git ls-files --cached --others --exclude-standard` de `.github/`, `infra/` y el `.env.production` (excluye `node_modules` y `cdk.out`); los patrones se arman por partes como en `check-bundle.mjs` para que el test no se detecte a sí mismo; la falla lista solo rutas.
+- Dependabot: grupo único `github-actions` con `patterns: ["*"]`, prefijo `chore(ci)`; npm con `schedule.interval: monthly` (obligatorio en el esquema aunque el límite 0 anule los PRs de versión), grupo `npm-security` con `applies-to: security-updates`, prefijo `chore(deps)`.
+- CODEOWNERS: se mantiene `*` y se añaden `/.github/` e `/infra/` a `@jorgeluisd`, con un comentario del porqué.
+Notas para el verifier:
+- En el RED pasaron 6 tests que son guardas sobre estado previo (los tres `.env*` siguen ignorados, sin negación amplia, contenido de 1 línea y `check-public-env.mjs` en verde sobre el archivo ya existente).
+- La corrida 03:46:14Z encadena `rm` antes del runner; el exit code registrado es el de vitest (último comando).
+- Ninguna línea del log de esta tarea (03:44:05Z a 03:49:00Z) tiene `WARN`.
+- SHA pinning: GitHub exige acciones fijadas por SHA (`sha_pinning_required`). Esta tarea no agrega acciones; los PRs de Dependabot para `github-actions` actualizan SHA y comentario `# vX.Y.Z` cuando el workflow (T-10) los use así.

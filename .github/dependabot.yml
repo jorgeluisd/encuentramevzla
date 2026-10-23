@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: chore(ci)
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # Sin PRs de versión (límite 0): solo las security updates, agrupadas en un único PR.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
