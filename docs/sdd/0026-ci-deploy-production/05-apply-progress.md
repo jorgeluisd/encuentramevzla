@@ -135,3 +135,27 @@ Notas para el verifier:
 - Línea 2026-10-24T02:23:10Z (FAIL 3): no fue un RED de comportamiento; las aserciones pasaban y fallaba el `afterEach` (`ENOTEMPTY`) por el fixture de directorio con modo 0644. Se corrigió el fixture, no el script.
 - PoC del scratchpad de la revisión: `gnu.tgz`, `oldgnu-prefix.tgz`, `pax-then-L.tgz`, `paxThenL.tgz` y `paxsize.tgz` → `el tar tiene headers que tar podría leer distinto` (exit 1); `lonezero.tgz` → `corrupto o truncado` (exit 1). `lex.tgz` (destino léxico de symlinks, baja al backlog) sigue en exit 0 por el tar, pero lo rechaza el escaneo de la extracción ("symlink colgante o en ciclo"); `ustar.tgz` es el control legítimo (todo dentro de `.open-next/`, exit 0 en `--tar-archive`; extraído, el escaneo falla cerrado porque su directorio viene con modo 0644 y no se puede recorrer).
 - GNU tar del runner no se ejecutó localmente (bsdtar 3.7.4 local); los tests de `tar -tzf`/`tar -x` del sistema correrán con GNU tar en el CI.
+
+## T-19 — Contención de las rutas de `open-next.output.json` en `readOpenNextOutput`   estado: terminada
+TDD: ON (estricto)
+Safety net: `pnpm --filter @evzla/infra test -- --reporter=dot test/evzla-stack.test.ts` (único consumidor con test; no había test propio del módulo) → PASS `Tests 22 passed (22)` (2026-10-24T02:34:10Z)
+Archivos tocados: [infra/lib/open-next-output.ts, infra/test/open-next-output.test.ts (nuevo), docs/sdd/0026-ci-deploy-production/05-apply-progress.md]
+Desviaciones respecto al plan: ninguna. El test es nuevo y va en `infra/test/` (la convención de `infra`), con el nombre que sugería 07-security.
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | fixture válido (todo dentro); `../..` en el bundle del server, ruta absoluta en el de image y en `assets.from`, `.open-next/..` en revalidation, `..` en initialization, `../..` en `cache.from`, `assets.from` igual a `.open-next`; symlink que escapa (directorio de assets y ruta inexistente bajo un symlink); `dynamodb-cache.json` como symlink afuera; symlinks internos y `.open-next` alcanzado por un symlink pasan. Mensaje sin la ruta | `pnpm --filter @evzla/infra test -- --reporter=dot test/open-next-output.test.ts` | FAIL (razón: comportamiento ausente, no hay contención) · `Tests 9 failed \| 2 passed (11)` | 2026-10-24T02:34:15Z |
+| GREEN | ídem | ídem | PASS · `Tests 11 passed (11)` | 2026-10-24T02:34:52Z |
+| TRIANGULATE | symlink colgante como `cache.from` (no se puede resolver → se rechaza) | `pnpm --filter @evzla/infra test -- --reporter=dot test/open-next-output.test.ts -t "dangling"` | PASS · `Tests 1 passed \| 11 skipped (12)` | 2026-10-24T02:35:01Z |
+| REFACTOR | predicado `isConfined`; test propio + stack | `pnpm --filter @evzla/infra test -- --reporter=dot test/open-next-output.test.ts test/evzla-stack.test.ts` | PASS · `Tests 34 passed (34)` | 2026-10-24T02:35:24Z |
+Checks locales: typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total" · lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total" · tests ✔ `pnpm run test -- -- --reporter=dot` → "Tasks: 4 successful, 4 total" (infra 250, core 286, db 20, web 61) (2026-10-24T02:37:20Z)
+Commit: (este) fix(infra): confine open-next output paths to the bundle dir
+Decisiones menores:
+- Se exige estar estrictamente dentro de `.open-next` (no igual): `assets.from: ".open-next"` publicaría en el bucket público el bundle entero, código del server incluido.
+- Doble comparación: léxica (la ruta que usará CDK) y por `realpathSync.native` (la que leerá). Si la ruta no existe, se resuelve desde el ancestro existente más cercano; un symlink colgante se rechaza.
+- También se confina `initialization.cacheFile` (`dynamodb-cache.json`), que el synth lee como archivo.
+- El mensaje nombra el campo del json (`origins.default.bundle`, `origins.s3.copy (assets)`, …), nunca la ruta. El error previo "No existe <archivo>" sigue imprimiendo la ruta local de `open-next.output.json`: no viene del json y no se tocó.
+- Las rutas devueltas no cambian (siguen siendo el `path.join` léxico): `zip-bundle` necesita la ruta tal cual para conservar los symlinks de pnpm.
+Notas para el verifier:
+- La corrida RED de 2026-10-24T02:31:26Z (misma salida, 9 failed) fue anterior al safety net y al commit de T-18; la RED que cuenta es la de 02:34:15Z, después del safety net.
+- Línea 2026-10-24T02:36:38Z (`exit=1`, `WARN=no-tests-ran`): `pnpm test -- --reporter=dot` falló en turbo por el argumento, sin correr tests; se repitió como `pnpm run test -- -- --reporter=dot` (02:37:20Z).
