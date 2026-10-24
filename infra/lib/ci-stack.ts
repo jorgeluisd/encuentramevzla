@@ -8,7 +8,7 @@ export const GITHUB_SUB = "repo:jorgeluisd/encuentramevzla:environment:Productio
 
 // cfn-exec e image-publishing quedan fuera a propósito: el rol solo salta a los roles que el CLI usa.
 export const BOOTSTRAP_ROLE_ARNS: readonly string[] = ["deploy", "file-publishing", "lookup"].flatMap((role) =>
-  ["sa-east-1", "us-east-1"].map(
+  [CONTRACT.region, "us-east-1"].map(
     (region) => `arn:aws:iam::${CI_ACCOUNT}:role/cdk-hnb659fds-${role}-role-${CI_ACCOUNT}-${region}`,
   ),
 );

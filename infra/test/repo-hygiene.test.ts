@@ -113,8 +113,14 @@ function markdownSection(relativePath: string, heading: string): string {
   return content.slice(start, next < 0 ? undefined : next);
 }
 
+// Los greps afirman conceptos, no la redacción: ignoran el énfasis markdown y el ajuste de línea.
+function plainProse(markdown: string): string {
+  return markdown.replace(/\*\*|`/g, "").replace(/\s+/g, " ");
+}
+
 describe("deploy documentation (AC-30)", () => {
   const deploySection = markdownSection("docs/ARCHITECTURE.md", "## 11. Deploy");
+  const deployProse = plainProse(deploySection);
 
   it("reads only § 11 and yields nothing for a missing heading, so the greps fail closed", () => {
     expect(deploySection.trimStart().startsWith("## 11. Deploy")).toBe(true);
@@ -123,30 +129,30 @@ describe("deploy documentation (AC-30)", () => {
   });
 
   it.each([
-    ["manual migration over the SSM tunnel as evzla_owner", /túnel SSM, rol `evzla_owner`, OK explícito/],
-    ["migration before merging to main", /antes de mergear a `main`/],
-    ["approval of the Production environment", /environment \*\*`Production`\*\*/],
+    ["manual migration over the SSM tunnel as evzla_owner", /túnel SSM[^.]*evzla_owner[^.]*OK explícito/i],
+    ["migration before merging to main", /antes de mergear a main/i],
+    ["approval of the Production environment", /environment Production/],
     ["deploy of EvzlaStack", /cdk deploy EvzlaStack/],
-    ["smoke after the deploy", /\*\*Smoke\*\*/],
-    ["expand/contract in separate PRs", /expand\/contract\*\* en PR distintos/],
-    ["rollback by workflow_dispatch with ref", /`workflow_dispatch` desde `main` con el input \*\*`ref`\*\*/],
-    ["rollback only with a compatible schema", /no revierte el esquema de base\*\*: solo es seguro si el código viejo es compatible/],
+    ["smoke after the deploy", /smoke contra https:\/\/encuentramevzla\.com/i],
+    ["expand/contract in separate PRs", /expand\/contract[^.]*PR distint/i],
+    ["rollback by workflow_dispatch with ref", /workflow_dispatch desde main con el input ref/],
+    ["rollback only with a compatible schema", /no revierte el esquema[^.]*solo es seguro si el código viejo es compatible/i],
     ["manual deploy of EvzlaCiStack", /cdk --app "pnpm exec tsx bin\/evzla-ci\.ts" deploy EvzlaCiStack/],
-    ["residual cfn-exec risk", /`cfn-exec`, que tiene \*\*AdministratorAccess\*\*/],
+    ["residual cfn-exec risk", /cfn-exec[^.]*AdministratorAccess/],
   ])("ARCHITECTURE § 11 documents the %s", (_label, pattern) => {
-    expect(deploySection).toMatch(pattern);
+    expect(deployProse).toMatch(pattern);
   });
 
   it("README links the deploy section and the EvzlaCiStack command", () => {
-    const readme = readRepoFile("README.md");
+    const readme = plainProse(readRepoFile("README.md"));
     expect(readme).toContain("(docs/ARCHITECTURE.md#11-deploy)");
     expect(readme).toContain('pnpm exec cdk --app "pnpm exec tsx bin/evzla-ci.ts" deploy EvzlaCiStack');
   });
 
   it("db-prod-scripts skill states migration before merge and never contract with the app", () => {
-    const skill = readRepoFile(".claude/skills/db-prod-scripts.md");
-    expect(skill).toContain("**Migración antes del merge**");
-    expect(skill).toContain("**Nunca contract en el mismo PR que la app**");
+    const skill = plainProse(readRepoFile(".claude/skills/db-prod-scripts.md"));
+    expect(skill).toMatch(/Migración antes del merge/i);
+    expect(skill).toMatch(/Nunca contract en el mismo PR que la app/i);
   });
 
   it("leaves the pull request template free of deploy-pipeline content", () => {
@@ -156,30 +162,31 @@ describe("deploy documentation (AC-30)", () => {
 });
 
 describe("ADR-0011 (AC-31)", () => {
-  const adr = readRepoFile("adr/0011-ci-cd-github-actions-oidc.md");
-  const statusLine = adr.split(/\r?\n/).find((line) => line.startsWith("Fecha:")) ?? "";
+  const rawAdr = readRepoFile("adr/0011-ci-cd-github-actions-oidc.md");
+  const statusLine = plainProse(rawAdr.split(/\r?\n/).find((line) => line.startsWith("Fecha:")) ?? "");
+  const adr = plainProse(rawAdr);
 
   it("is ACEPTADO, citing the signature recorded in gates.md", () => {
-    expect(statusLine).toContain("Estado: **ACEPTADO**");
+    expect(statusLine).toMatch(/Estado: ACEPTADO/);
     expect(statusLine).not.toContain("PROPUESTO");
     expect(statusLine).toContain("2026-10-22");
     expect(adr).toContain("docs/sdd/0026-ci-deploy-production/gates.md");
   });
 
   it.each([
-    ["build without credentials in checks", /`checks`[^\n]*sin credenciales/],
+    ["build without credentials in checks", /checks[^.]*sin credenciales/],
     ["deploy from the artifact of the same run", /artifact del mismo run/],
     ["no own CDK bootstrap", /sin bootstrap propio/],
-    ["configure-aws-credentials v6", /configure-aws-credentials` v6/],
+    ["configure-aws-credentials v6", /configure-aws-credentials v6/],
     ["Production environment as a manual requirement", /requisito manual/],
-    ["residual cfn-exec risk", /\*\*Riesgo residual:\*\*[^\n]*`cfn-exec`/],
-    ["own AWS account as future mitigation", /Mitigación futura[^\n]*cuenta AWS propia/],
+    ["residual cfn-exec risk", /Riesgo residual:[^.]*cfn-exec/],
+    ["own AWS account as future mitigation", /Mitigación futura[^.]*cuenta AWS propia/],
   ])("describes the %s", (_label, pattern) => {
     expect(adr).toMatch(pattern);
   });
 });
 
-type DependabotGroup ={ patterns?: string[]; "applies-to"?: string };
+type DependabotGroup = { patterns?: string[]; "applies-to"?: string };
 type DependabotUpdate = {
   "package-ecosystem": string;
   directory: string;

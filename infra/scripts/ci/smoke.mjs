@@ -1,12 +1,12 @@
 import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { URL, fileURLToPath } from "node:url";
+import { cli } from "./cli.mjs";
 
 // fetch nativo de Node 22: no hay módulo node:* que lo exporte y el preset ESLint no declara globals de Node.
 const { fetch, AbortSignal } = globalThis;
 
-// Nunca el buscador ni /api: el smoke no debe dejar filas en search_log (AC-29).
-export const SMOKE_PATHS = ["/", "/admin"];
+const { fail } = cli("smoke");
 
 const ATTEMPTS = 5;
 const STABLE_TITLE = "<title>EncuéntrameVzla —";
@@ -45,7 +45,9 @@ async function checkAdmin(response, url) {
   return isTeamLogin ? { ok: true } : { ok: false, reason: "redirección inesperada" };
 }
 
+// Nunca el buscador ni /api: el smoke no debe dejar filas en search_log (AC-29).
 const CHECKS = { "/": checkHome, "/admin": checkAdmin };
+export const SMOKE_PATHS = Object.keys(CHECKS);
 
 async function attempt(baseUrl, smokePath, timeoutMs) {
   const url = new URL(smokePath, baseUrl);
@@ -70,10 +72,7 @@ async function smokePathWithRetries(baseUrl, smokePath, { retryDelayMs, timeoutM
 
 async function main() {
   const baseUrl = baseUrlFrom(process.argv[2]);
-  if (!baseUrl) {
-    process.stderr.write("smoke: falta la URL base http(s) del sitio\n");
-    process.exit(1);
-  }
+  if (!baseUrl) fail("falta la URL base http(s) del sitio");
   const options = {
     retryDelayMs: millisecondsFromEnv("SMOKE_RETRY_DELAY_MS", 10_000),
     timeoutMs: millisecondsFromEnv("SMOKE_REQUEST_TIMEOUT_MS", 10_000),

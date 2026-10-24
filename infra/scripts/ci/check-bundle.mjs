@@ -2,6 +2,7 @@ import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { gunzipSync } from "node:zlib";
+import { cli } from "./cli.mjs";
 
 const BUNDLE_DIR = ".open-next";
 
@@ -19,10 +20,7 @@ const EXTRACTABLE_TYPES = new Set([TAR_TYPE.file, TAR_TYPE.oldFile, TAR_TYPE.sym
 
 class CorruptTar extends Error {}
 
-function fail(messages) {
-  for (const message of messages) process.stderr.write(`check-bundle: ${message}\n`);
-  process.exit(1);
-}
+const { fail, readFileOrFail } = cli("check-bundle");
 
 function isBundleEntry(entry) {
   const segments = entry.split("/").filter((segment) => segment !== "");
@@ -34,12 +32,8 @@ function isBundleEntry(entry) {
 }
 
 function readArchive(archiveFile) {
-  if (!archiveFile) fail(["falta la ruta del tar"]);
-  try {
-    return gunzipSync(readFileSync(archiveFile));
-  } catch {
-    return fail(["no se pudo leer el tar"]);
-  }
+  if (!archiveFile) fail("falta la ruta del tar");
+  return readFileOrFail(archiveFile, "no se pudo leer el tar", gunzipSync);
 }
 
 function cString(buffer, offset, length) {
@@ -151,13 +145,13 @@ function parseTar(archive) {
     return tarMembers(archive);
   } catch (error) {
     if (!(error instanceof CorruptTar)) throw error;
-    return fail(["el tar está corrupto o truncado"]);
+    return fail("el tar está corrupto o truncado");
   }
 }
 
 function checkTarArchive(archiveFile) {
   const members = parseTar(readArchive(archiveFile));
-  if (members.length === 0) fail(["el tar no tiene entradas"]);
+  if (members.length === 0) fail("el tar no tiene entradas");
   const symlinkPaths = new Set(
     members.filter((member) => member.type === TAR_TYPE.symlink).map((member) => memberPath(member.name)),
   );
@@ -165,18 +159,18 @@ function checkTarArchive(archiveFile) {
     const violation = memberViolation(member, symlinkPaths);
     return violation === null ? [] : [`entrada ${index + 1} del tar${violation}`];
   });
-  if (violations.length > 0) fail(violations);
+  if (violations.length > 0) fail(...violations);
 }
 
 function bundleRoot(dir) {
-  if (!dir) fail(["falta la ruta del bundle"]);
+  if (!dir) fail("falta la ruta del bundle");
   let stats;
   try {
     stats = lstatSync(dir);
   } catch {
-    return fail(["el bundle no existe"]);
+    return fail("el bundle no existe");
   }
-  if (!stats.isDirectory()) fail(["la raíz del bundle no es un directorio"]);
+  if (!stats.isDirectory()) fail("la raíz del bundle no es un directorio");
   return realpathSync.native(dir);
 }
 
@@ -235,9 +229,9 @@ function violationsIn(root, dir) {
 
 function checkBundle(dir) {
   const root = bundleRoot(dir);
-  if (!hasOutputManifest(root)) fail(["falta open-next.output.json"]);
+  if (!hasOutputManifest(root)) fail("falta open-next.output.json");
   const violations = violationsIn(root, root);
-  if (violations.length > 0) fail(violations);
+  if (violations.length > 0) fail(...violations);
 }
 
 if (process.argv[2] === "--tar-archive") checkTarArchive(process.argv[3]);

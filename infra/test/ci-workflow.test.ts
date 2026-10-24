@@ -77,15 +77,6 @@ function stepRunning(jobName: string, command: string): Step {
 
 const allSteps = Object.values(jobs).flatMap((j) => j.steps ?? []);
 
-// Cubre también github.event.inputs.* e inputs dentro de funciones como format().
-const INPUTS_EXPRESSION = /\$\{\{(?:(?!\}\}).)*\binputs\./s;
-
-function runScriptsInterpolatingInputs(candidate: Workflow): string[] {
-  return Object.entries(candidate.jobs ?? {}).flatMap(([name, j]) =>
-    (j.steps ?? []).flatMap((step, index) => (INPUTS_EXPRESSION.test(step.run ?? "") ? [`${name}#${index}`] : [])),
-  );
-}
-
 describe("deploy-production workflow — triggers and permissions", () => {
   it("exists", () => {
     expect(existsSync(workflowPath)).toBe(true);
@@ -132,13 +123,9 @@ describe("deploy-production workflow — every job", () => {
     expect(job("deploy").permissions).toEqual({ contents: "read", "id-token": "write" });
   });
 
-  it("sets timeout-minutes on every job", () => {
-    for (const j of Object.values(jobs)) expect(j["timeout-minutes"]).toBeGreaterThan(0);
-  });
-
   it("checks out without persisting credentials", () => {
     const checkouts = allSteps.filter((step) => actionOf(step) === "actions/checkout");
-    expect(checkouts.length).toBeGreaterThanOrEqual(2);
+    expect(checkouts).toHaveLength(3);
     for (const step of checkouts) expect(step.with?.["persist-credentials"]).toBe(false);
   });
 
@@ -164,33 +151,6 @@ describe("deploy-production workflow — every job", () => {
     }
   });
 
-  it("never interpolates user inputs inside run scripts", () => {
-    expect(runScriptsInterpolatingInputs(workflow)).toEqual([]);
-  });
-
-  it("the inputs guard flags a synthetic workflow that interpolates inputs in run scripts", () => {
-    const injected: Workflow = {
-      jobs: {
-        build: {
-          steps: [
-            { run: "echo ok" },
-            { run: 'git checkout "${{ inputs.ref }}"' },
-            { env: { REF: "${{ inputs.ref }}" }, run: 'echo "$REF"' },
-            { run: "set -e\necho ${{inputs.ref}}" },
-          ],
-        },
-        ship: {
-          steps: [
-            { with: { ref: "${{ inputs.ref }}" } },
-            { run: "echo ${{ github.event.inputs.ref }}" },
-            { run: "echo ${{ format('{0}', inputs.ref) }}" },
-          ],
-        },
-      },
-    };
-    expect(runScriptsInterpolatingInputs(injected)).toEqual(["build#1", "build#3", "ship#1", "ship#2"]);
-  });
-
   it.each(["resolve", "checks", "deploy"])("%s names every step, without repeating a name", (name) => {
     const names = steps(name).map((step) => step.name?.trim() ?? "");
     expect(names.length).toBeGreaterThan(0);
@@ -198,6 +158,7 @@ describe("deploy-production workflow — every job", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
+  // Guarda única de inyección: más estricta que buscar `inputs.`, ninguna expresión llega al shell.
   it.each(["resolve", "checks", "deploy"])("%s has no expressions inside run scripts", (name) => {
     for (const step of steps(name)) expect(step.run ?? "").not.toContain("${{");
   });

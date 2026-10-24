@@ -1,14 +1,12 @@
 import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import process from "node:process";
+import { cli, SHA } from "./cli.mjs";
 
-const SHA = /^[0-9a-f]{40}$/;
 const TAG = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+const UPPERCASE_SHA = /^(?=.*[A-F])[0-9A-Fa-f]{40}$/;
 
-function fail(message) {
-  process.stderr.write(`resolve-ref: ${message}\n`);
-  process.exit(1);
-}
+const { fail } = cli("resolve-ref");
 
 function gitSucceeds(args) {
   try {
@@ -32,6 +30,7 @@ function commitOf(revision) {
 
 function resolveDispatchRef(ref) {
   if (SHA.test(ref)) return commitOf(ref) ?? fail("el commit no existe en el repositorio");
+  if (UPPERCASE_SHA.test(ref)) fail("el SHA debe ir en minúsculas");
   if (!TAG.test(ref)) fail("ref inválido");
   if (!gitSucceeds(["show-ref", "--verify", "--quiet", `refs/tags/${ref}`])) fail("el tag no existe");
   return commitOf(`refs/tags/${ref}`) ?? fail("el tag no apunta a un commit");

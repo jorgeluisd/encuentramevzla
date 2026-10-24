@@ -278,3 +278,32 @@ Decisiones menores:
 - Se rechaza toda entrada del tar cuya ruta pase por un symlink del mismo tar, aunque apunte adentro: tar la escribiría siguiendo el link.
 Notas para el verifier:
 - Los tests del tar del sistema corren `tar` local con `COPYFILE_DISABLE=1` (bsdtar en macOS, GNU tar en el runner); los fixtures sintéticos cubren pax y GNU long name/link con independencia del tar instalado.
+
+
+## T-17 — Helpers compartidos de `scripts/ci`, greps tolerantes y bajas baratas   estado: terminada
+TDD: guardas en verde antes y después (refactor pragmático); test nuevo solo donde hay comportamiento nuevo (SHA en mayúsculas) o invariante nuevo (imports de `scripts/ci`).
+Safety net: `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts test/ci-workflow.test.ts test/repo-hygiene.test.ts test/ci-stack.test.ts --reporter=dot` → PASS `Tests 184 passed (184)` (2026-10-24T00:47:16Z)
+Archivos tocados: [infra/scripts/ci/cli.mjs (nuevo), infra/scripts/ci/check-bundle.mjs, infra/scripts/ci/check-main-tip.mjs, infra/scripts/ci/check-public-env.mjs, infra/scripts/ci/resolve-ref.mjs, infra/scripts/ci/smoke.mjs, infra/scripts/ci/write-summary.mjs, infra/lib/ci-stack.ts, infra/test/ci-scripts.test.ts, infra/test/ci-workflow.test.ts, infra/test/repo-hygiene.test.ts, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]
+Desviaciones respecto al plan: `cli.mjs` exporta `cli(name)`, que devuelve `{ fail, readFileOrFail }` con el prefijo del script, en lugar de un `fail` suelto: cada script escribe `<script>: <mensaje>` y el stderr tenía que quedar idéntico. `fail(...messages)` es la única firma en los 6 scripts.
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | resolve-ref: SHA de 40 hex en mayúsculas → `resolve-ref: el SHA debe ir en minúsculas` (stderr exacto) | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts -t "uppercase 40-hex"` | FAIL (razón: comportamiento ausente, cae como tag: `el tag no existe`) · `Tests 1 failed \| 84 skipped (85)` | 2026-10-24T00:48:00Z |
+| TRIANGULATE | mayúsculas y mixto (`it.each`) | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts -t "40-hex SHA with a message about the case"` | PASS · `Tests 2 passed \| 84 skipped (86)` | 2026-10-24T00:48:22Z |
+| GREEN | greps de AC-30 con el doc re-envuelto y sin `**` (mutación temporal de `docs/ARCHITECTURE.md`, revertida con `git checkout`) | `pnpm --filter @evzla/infra test -- test/repo-hygiene.test.ts -t "AC-30" --reporter=dot` | PASS · `Tests 14 passed \| 23 skipped (37)` | 2026-10-24T00:50:32Z |
+| RED (mutación) | guarda de imports con `import { parse } from "yaml"` inyectado en `cli.mjs` (revertido) | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts -t "scripts/ci imports"` | FAIL (razón esperada: `expected 'yaml' to match /^node:\|^\.\/cli\.mjs$/`) · `Tests 1 failed \| 6 passed \| 86 skipped (93)` | 2026-10-24T00:51:28Z |
+| GREEN | guarda de imports (7 scripts) + SHA en mayúsculas | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts -t "scripts/ci imports\|40-hex SHA with a message about the case" --reporter=dot` | PASS · `Tests 9 passed \| 84 skipped (93)` | 2026-10-24T00:53:15Z |
+| REFACTOR | archivos tocados tras el refactor de los scripts y de los tests | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts test/ci-workflow.test.ts test/repo-hygiene.test.ts test/ci-stack.test.ts --reporter=dot` | PASS · `Tests 183 passed (183)` (184 − 3 redundantes + 2 nuevos; la guarda de imports se sumó después) | 2026-10-24T00:50:57Z |
+Checks locales: typecheck ✔ `pnpm typecheck` → "Tasks: 5 successful, 5 total" · lint ✔ `pnpm lint` → "Tasks: 5 successful, 5 total" · tests ✔ `pnpm test` → "Tasks: 4 successful, 4 total" (infra 218, core 286, db 20, web 61) (2026-10-24T00:53:02Z)
+Commit: (este) refactor(ci): share cli helpers and loosen doc greps
+Decisiones menores:
+- `readFileOrFail(file, message, parse)`: el `parse` corre dentro del mismo `try`, así `gunzipSync` (check-bundle) y `JSON.parse` (write-summary) fallan con el mismo mensaje que la lectura, como antes.
+- SHA en mayúsculas: mensaje específico en vez de normalizar a minúsculas. Normalizar cambiaría lo que se despliega respecto de lo que el humano escribió; el mensaje le dice qué corregir.
+- `SMOKE_PATHS = Object.keys(CHECKS)`: una ruta sin chequeo ya no puede existir (antes caía en el `catch` como `sin-respuesta`).
+- Guarda de inyección consolidada: queda solo "no expressions inside run scripts" por job (más estricta); se quitaron `runScriptsInterpolatingInputs`, su test sintético y "never interpolates user inputs". También se quitó "sets timeout-minutes on every job" (lo cubre el `it.each` por job, y otro test fija que los jobs son exactamente esos 3).
+- Checkouts: `toHaveLength(3)`, uno por job.
+- Greps de AC-30/31: `plainProse()` quita `**` y backticks y colapsa espacios; los patrones casan palabras clave dentro de la misma oración (`[^.]*`), con `i` donde la mayúscula es incidental. Se aplica también al README, a la skill `db-prod-scripts` y a la línea de estado del ADR.
+- Test nuevo de imports: cada `scripts/ci/*.mjs` importa solo `node:*` o `./cli.mjs` (antes el aislamiento de `resolve` no tenía guarda mecánica).
+Notas para el verifier:
+- Las corridas de 2026-10-24T00:48:12Z, 00:50:17Z y 00:51:17Z en el log van encadenadas a un `python3` que editó archivos: no son evidencia; se repitieron solas (00:48:22Z, 00:50:57Z, 00:53:15Z). La línea de `pnpm test` de 00:53:02Z tiene `WARN=full-suite-mid-cycle`: es el check local del cierre, no parte del ciclo.
+- Bajas de 07-review fuera de T-17 que no se tocaron: patrones AKIA/PEM duplicados (comentario sobre AC-33), `isolatedGitEnv` duplicado, `writeSummary` que reimplementa `runScript` y `expectedArns` espejado en ci-stack.test.ts.

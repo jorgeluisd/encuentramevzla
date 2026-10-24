@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -13,22 +13,37 @@ const scriptsDir = fileURLToPath(new URL("../scripts/ci/", import.meta.url));
 // La config global del desarrollador (firma de tags, hooks) no debe alterar los repos sintéticos.
 const isolatedGitEnv = { PATH: process.env.PATH ?? "", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
 
-type ScriptRun ={ status: number | null; stdout: string; stderr: string; output: string };
+type ScriptRun = { status: number | null; stdout: string; stderr: string; output: string };
 
 function runScript(script: string, cwd: string, env: Record<string, string>, args: string[] = []): ScriptRun {
   const outputDir = mkdtempSync(path.join(tmpdir(), "evzla-ci-out-"));
-  const outputFile = path.join(outputDir, "github-output");
-  writeFileSync(outputFile, "");
-  const result = spawnSync(process.execPath, [path.join(scriptsDir, script), ...args], {
-    cwd,
-    encoding: "utf8",
-    env: { ...isolatedGitEnv, GITHUB_OUTPUT: outputFile, ...env },
-    timeout: 30_000,
-  });
-  const output = readFileSync(outputFile, "utf8");
-  rmSync(outputDir, { recursive: true, force: true });
-  return { status: result.status, stdout: result.stdout, stderr: result.stderr, output };
+  try {
+    const outputFile = path.join(outputDir, "github-output");
+    writeFileSync(outputFile, "");
+    const result = spawnSync(process.execPath, [path.join(scriptsDir, script), ...args], {
+      cwd,
+      encoding: "utf8",
+      env: { ...isolatedGitEnv, GITHUB_OUTPUT: outputFile, ...env },
+      timeout: 30_000,
+    });
+    const output = readFileSync(outputFile, "utf8");
+    return { status: result.status, stdout: result.stdout, stderr: result.stderr, output };
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
 }
+
+describe("scripts/ci imports", () => {
+  const scripts = readdirSync(scriptsDir).filter((file) => file.endsWith(".mjs"));
+
+  // El job `resolve` corre sin `pnpm install`: solo node:* y el helper local compartido.
+  it.each(scripts)("%s imports only node:* modules or ./cli.mjs", (script) => {
+    const source = readFileSync(path.join(scriptsDir, script), "utf8");
+    const specifiers = [...source.matchAll(/^import\b[^;]*?from\s+"([^"]+)"/gm)].map((match) => match[1]);
+    expect(specifiers.length).toBeGreaterThan(0);
+    for (const specifier of specifiers) expect(specifier).toMatch(/^node:|^\.\/cli\.mjs$/);
+  });
+});
 
 describe("resolve-ref.mjs", () => {
   let repo: string;
@@ -117,6 +132,16 @@ describe("resolve-ref.mjs", () => {
     const run = resolve({ EVENT_NAME: "workflow_dispatch", INPUT_REF: "0".repeat(40) });
     expect(run.status).toBe(1);
     expect(run.stderr).toContain("no existe");
+    expect(run.output).toBe("");
+  });
+
+  it.each([
+    ["an uppercase", (sha: string) => sha.toUpperCase()],
+    ["a mixed-case", (sha: string) => sha.replace(/[a-f]/, (letter) => letter.toUpperCase())],
+  ])("rejects %s 40-hex SHA with a message about the case, not a missing tag", (_label, recase) => {
+    const run = resolve({ EVENT_NAME: "workflow_dispatch", INPUT_REF: recase(mainFirst) });
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe("resolve-ref: el SHA debe ir en minúsculas\n");
     expect(run.output).toBe("");
   });
 

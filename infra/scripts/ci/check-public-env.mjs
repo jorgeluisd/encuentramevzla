@@ -1,21 +1,14 @@
-import { readFileSync } from "node:fs";
 import process from "node:process";
+import { cli } from "./cli.mjs";
 
 const PUBLIC_PREFIX = "NEXT_PUBLIC_";
 const ASSIGNMENT = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
 
-function fail(messages) {
-  for (const message of messages) process.stderr.write(`check-public-env: ${message}\n`);
-  process.exit(1);
-}
+const { fail, readFileOrFail } = cli("check-public-env");
 
 function readLines(envFile) {
-  if (!envFile) fail(["falta la ruta del archivo"]);
-  try {
-    return readFileSync(envFile, "utf8").split(/\r?\n/);
-  } catch {
-    return fail(["no se pudo leer el archivo"]);
-  }
+  if (!envFile) fail("falta la ruta del archivo");
+  return readFileOrFail(envFile, "no se pudo leer el archivo").split(/\r?\n/);
 }
 
 function violationOf(rawLine, lineNumber) {
@@ -28,4 +21,4 @@ function violationOf(rawLine, lineNumber) {
 }
 
 const violations = readLines(process.argv[2]).flatMap((line, index) => violationOf(line, index + 1));
-if (violations.length > 0) fail(violations);
+if (violations.length > 0) fail(...violations);

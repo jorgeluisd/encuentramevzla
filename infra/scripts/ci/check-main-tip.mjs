@@ -1,12 +1,8 @@
 import { execFileSync } from "node:child_process";
 import process from "node:process";
+import { cli, SHA } from "./cli.mjs";
 
-const SHA = /^[0-9a-f]{40}$/;
-
-function fail(message) {
-  process.stderr.write(`check-main-tip: ${message}\n`);
-  process.exit(1);
-}
+const { fail } = cli("check-main-tip");
 
 function fetchMainTip() {
   try {

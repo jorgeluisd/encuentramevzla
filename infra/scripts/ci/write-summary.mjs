@@ -1,22 +1,16 @@
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync } from "node:fs";
 import process from "node:process";
+import { cli, SHA } from "./cli.mjs";
 
-const SHA = /^[0-9a-f]{40}$/;
 // Solo un hostname de CloudFront: cualquier otro valor podría colar texto de otros outputs al summary público.
 const CLOUDFRONT_DOMAIN = /^[a-z0-9]+\.cloudfront\.net$/;
 
-function fail(message) {
-  process.stderr.write(`write-summary: ${message}\n`);
-  process.exit(1);
-}
+const { fail, readFileOrFail } = cli("write-summary");
 
 function readCloudFrontDomain(outputsFile) {
-  let outputs;
-  try {
-    outputs = JSON.parse(readFileSync(outputsFile ?? "", "utf8"));
-  } catch {
-    return fail("no se pudo leer el archivo de outputs");
-  }
+  const outputs = readFileOrFail(outputsFile ?? "", "no se pudo leer el archivo de outputs", (buffer) =>
+    JSON.parse(buffer.toString("utf8")),
+  );
   const domain = outputs?.EvzlaStack?.CloudFrontDomain;
   if (typeof domain !== "string" || !CLOUDFRONT_DOMAIN.test(domain)) {
     return fail("falta EvzlaStack.CloudFrontDomain válido en el archivo de outputs");
