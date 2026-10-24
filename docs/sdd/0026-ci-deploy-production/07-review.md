@@ -50,3 +50,50 @@ DUDAS ABIERTAS
 1. download-artifact v8 / upload-artifact v7: ¿cambió entre majors el layout de extracción con `name` + `path` (el archivo directo en `path`, no en un subdirectorio)? El workflow asume `$RUNNER_TEMP/artifact/open-next.tgz`. Ningún test lo cubre; se verifica recién en el primer run.
 2. `tar -tzf` sin `-v` no muestra los destinos de hardlinks ni de symlinks. La guarda posterior al extract revisa symlinks, pero no hardlinks, y no sé si un symlink de directorio en el tar permite escribir fuera durante la extracción. Lo derivo al security-reviewer.
 3. El synth de `deploy` depende del binario `zip` (zip-bundle.ts) en `ubuntu-24.04-arm`; no está verificado en el diff.
+
+## Segunda revisión tras T-15..T-17 (2026-10-24)
+
+RESUMEN: alcance `git diff 930a46f..HEAD` (17e681c, 375a960, 3b7cebb). 7 hallazgos nuevos (alta 1 / media 0 / baja 6) · veredicto: CAMBIOS
+- De los 15 hallazgos de la primera pasada: 10 resueltos, 1 parcial, 4 abiertos por decisión (bajas que el implementer dejó fuera de T-17 a propósito).
+- `cli.mjs` es chico, depende solo de `node:*` y deja la firma única `fail(...messages)` en los 6 scripts, con el stderr idéntico al de antes. `check-main-tip.mjs` es correcto: compara `FETCH_HEAD` en un clon superficial, el mensaje es fijo y falla cerrado. Los comentarios nuevos explican un porqué. No hay deuda marcada (`TODO`, `any`, `eslint-disable`).
+- La alta está en el parser de headers del tar. Lo comprobé con tars armados a mano: `--tar-archive` da exit 0 y GNU tar 1.35 (ubuntu:24.04) o bsdtar los extraen fuera de `.open-next/`.
+
+ESTADO DE LOS HALLAZGOS DE LA PRIMERA PASADA
+| # | Hallazgo | Estado |
+|---|---|---|
+| Alta | upload-artifact v7 / download-artifact v8 sin justificar | Resuelto: ratificado en 03-design (DECISIONES TRAS REVISIÓN). La verificación de la ruta de descarga que 03-design asigna a T-16 no está en 05-apply-progress. La hice yo: el README al SHA `9000827c` dice "When downloading a single artifact (by name or ID), it will always be extracted directly to the specified path". Falta dejarlo registrado (baja B-7). |
+| Media | greps literales de AC-30/31 | Resuelto: `plainProse()` y palabras clave. Queda un residual (B-5). |
+| Media | `fail()` x4 con dos firmas, lectura y regex `SHA` duplicadas | Resuelto: `cli.mjs` (`cli(name)` → `{ fail, readFileOrFail }`, `SHA`). Desviación declarada. |
+| Media | tests redundantes en ci-workflow | Resuelto: queda solo "no expressions inside run scripts" por job. |
+| Baja | pasos sin `name:` | Resuelto, con test (nombres no vacíos y sin repetir). |
+| Baja | `SMOKE_PATHS` / `CHECKS` | Resuelto: `Object.keys(CHECKS)`. |
+| Baja | SHA en mayúsculas | Resuelto: mensaje específico, con test de mayúsculas y de mixto. |
+| Baja | AKIA/PEM copiados en el test | Abierto a propósito. Lo clasifico como baja aceptable: la copia en el test funciona como oráculo independiente. Falta el comentario sobre la divergencia de AC-33. Va al backlog. |
+| Baja | `isolatedGitEnv` duplicado · `writeSummary` reimplementa `runScript` (ci-scripts.test.ts:14, :977; repo-hygiene.test.ts:10) | Abierto a propósito. Baja, al backlog. Además, `writeSummary` no tiene el `try/finally` que ahora sí tiene `runScript`. |
+| Baja | `runScript` sin limpieza | Resuelto: `try/finally`. |
+| Baja | `type X ={` | Resuelto (no quedan casos en infra/). |
+| Baja | `expectedArns` espeja el `flatMap` (ci-stack.test.ts:72-76) | Abierto a propósito. Baja, al backlog. Ahora diverge un poco porque la implementación usa `CONTRACT.region` y el test el literal, pero AC-4 sigue pidiendo los 6 ARN literales. |
+| Baja | `>= 2` checkouts | Resuelto: `toHaveLength(3)`. |
+| Baja | `"sa-east-1"` literal en ci-stack.ts | Resuelto: `CONTRACT.region`. |
+| Baja | `SMOKE_REQUEST_TIMEOUT_MS` no registrado | Resuelto: ratificado en 03-design. |
+| Duda 2 | hardlinks y symlinks en el tar | Parcial: se rechazan hardlinks, destinos absolutos y destinos fuera, y la guarda por `realpath` funciona después del extract. Pero el parser no lee el tar como lo leen GNU tar y bsdtar (A-1). |
+| Duda 3 | binario `zip` | Resuelto: `command -v zip` antes del synth, con test. |
+
+HALLAZGOS NUEVOS
+| Sev | Archivo:línea | Hallazgo | Regla | Qué se espera |
+|---|---|---|---|---|
+| Alta | infra/scripts/ci/check-bundle.mjs:76-80, :82-87, :99-103 | `tarMembers` no lee los headers igual que el tar que extrae. Hay 3 casos reproducidos en los que `--tar-archive` da exit 0 y el extract escribe fuera de `.open-next/` (en `apps/web/`, que el scan posterior no revisa). (a) `headerName` usa el campo `prefix` (345) aunque el magic sea GNU (`ustar  \0`) o V7. GNU tar y libarchive solo lo usan con el magic POSIX `ustar\0` + `00`. Un header GNU con prefix `.open-next` y name `escaped.txt` se valida como `.open-next/escaped.txt` y se extrae como `escaped.txt`. (b) `applyMeta` da prioridad al último metadato. GNU tar y bsdtar dan prioridad a pax `path`/`linkpath` sobre `L`/`K` sin importar el orden: con `x{path=fuera}` y luego `L{.open-next/in}`, se valida `in` y se extrae `fuera`. (c) Se ignora el record pax `size`: con `x{size=0}` y un header de size 1024 cuyo body es otro header, el parser salta ese miembro y tar lo extrae. El paso existe para cerrar justamente el escape que un `checks` comprometido podría meter en el artifact. Reproducción en el scratchpad de la revisión (`mk.mjs`, `mk2.mjs`). | Fidelidad a T-16 ("rechaza … destino que sale de `.open-next/`"). Tests (§5): los fixtures (ci-scripts.test.ts:534-552) siempre llevan magic POSIX y sin conflictos entre metadatos, así que los tests de pax y GNU (:708, :725) pasarían con el parser mal. | Que falle cerrado ante todo lo que no reproduce fielmente: prefix solo con magic POSIX (y con magic GNU, rechazar un prefix no vacío o ignorarlo como hace tar); prioridad de pax sobre `L`/`K`, o rechazar que se combinen; rechazar (o respetar) los records pax `size` y cualquier otro fuera de una allowlist. Tests con esos 3 tars, ejecutados también contra el tar del sistema. Defensa adicional sugerida: después del extract, verificar que no apareció nada nuevo en `apps/web/` fuera de `.open-next/` (por ejemplo `git status --porcelain apps/web`). Derivar también al security-reviewer. |
+| Baja | infra/scripts/ci/check-bundle.mjs:123-126 | `linkStaysInBundle` es léxico: `.open-next/c -> .` más `.open-next/a -> c/../x` pasa `--tar-archive`, pero resuelve a `apps/web/x`. Hoy no se explota: ningún miembro puede escribir a través de `a` (:139) y el scan por `realpath` posterior lo rechaza ("symlink colgante o en ciclo"). Aun así, la guarda del tar no cumple lo que promete por sí sola. | Tests (§5) / fidelidad T-16 | Rechazar destinos de symlink cuyo camino pase por otro symlink del mismo tar (como ya hace :128-131 con los nombres), o documentar que depende del scan posterior. |
+| Baja | infra/test/ci-scripts.test.ts:40-45 | La guarda de imports solo reconoce `import … from "x"`: se le escapan `import "x"`, `export … from "x"` y `import("x")`. | Tests (§5) | Ampliar la regex a esas formas. |
+| Baja | infra/test/ci-scripts.test.ts:239-247 | `rmSync(offline)` va antes de las aserciones y fuera de `finally`: si `runScript` lanza, el directorio queda. Es la misma deuda que se corrigió en `runScript`. | Tests (§5) | `try/finally`, o crearlo en `beforeAll` dentro de `root`. |
+| Baja | infra/test/repo-hygiene.test.ts:132-153 | `[^.]*` como "misma oración" se corta con cualquier punto intermedio (`p. ej.`, `v6.3.0`, `encuentramevzla.com`): vuelve a acoplar el test a la redacción. Además, el uso de `/i` es irregular entre patrones. | Tests (§5) | Una ventana acotada (`[\s\S]{0,200}`) o el párrafo como unidad, y `/i` en todos. |
+| Baja | infra/test/ci-workflow.test.ts:334-337 | `not.toMatch(/nunca corren con acceso a AWS/)` aserta la ausencia de una frase histórica concreta, y el positivo prueba el texto de un comentario. | Tests (§5): sin tests acoplados a la redacción | Aceptable como guarda documental. Si se mantiene, que el positivo sea lo único que se exija. |
+| Baja | docs/sdd/0026-ci-deploy-production/05-apply-progress.md (T-16) | Falta la evidencia de la verificación de `download-artifact` v8 (inputs y ruta `path/<archivo>`) que 03-design asignó a T-16. | Fidelidad (§1) | Agregar una línea con la cita del README o `action.yml` al SHA fijado. |
+
+FIDELIDAD AL DISEÑO (segunda pasada)
+- Están las piezas de T-15..T-17. Desviaciones declaradas y razonables: `check-main-tip.mjs` en vez de lógica en `run:`, `--tar-archive` con headers en lugar de `tar -tv`, y `cli(name)` en lugar de un `fail` suelto. Ninguna sin declarar.
+TESTS
+- T-15: check-main-tip (punta, obsoleto, superficial, env inválido, origin inalcanzable) y workflow (orden, `if`, `env`, sin cache, `zip`, `name:`). Prueban comportamiento.
+- T-16: symlinks anidados, en cadena, colgantes o en ciclo y hardlinks, en directorio y en tar. Débil: los fixtures del tar no cubren las divergencias de parser (A-1).
+DUDA ABIERTA
+- El scan post-build de `checks` ahora rechaza hardlinks (`nlink > 1`). Si OpenNext copiara `node_modules` preservando hardlinks del store de pnpm, `checks` fallaría. Se ve en el primer PR, que falla cerrado.

@@ -266,7 +266,7 @@ TDD Cycle Evidence
 | RED | check-bundle sobre el bundle extraído: symlink que escapa por otro symlink interno, cadena cuyo último salto sale, colgante y ciclo, hardlinks | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts -t "check-bundle"` | FAIL (razón: comportamiento ausente, guarda léxica) · `Tests 4 failed \| 22 passed \| 42 skipped (68)` | 2026-10-23T04:43:05Z |
 | GREEN | ídem (`realpathSync.native` + `nlink > 1`) | ídem | PASS · `Tests 26 passed \| 42 skipped (68)` | 2026-10-23T04:43:43Z |
 | RED | `--tar-archive`: tipos, hardlinks, destinos de symlink, ruta a través de un symlink, GNU long name/link, pax, tar corrupto/truncado, tar del sistema; orden del workflow | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts test/ci-workflow.test.ts -t "tar"` | FAIL (razón: comportamiento ausente, el modo no existe) · `Tests 19 failed \| 5 passed \| 110 skipped (134)` | 2026-10-23T04:45:14Z |
-| GREEN | ídem | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts test/ci-workflow.test.ts` | PASS · `Tests 134 passed (134)` | 2026-10-23T04:46:44Z |
+| GREEN | ídem | `pnpm --filter @evzla/infra test -- --reporter=dot test/ci-workflow.test.ts test/ci-scripts.test.ts` | PASS · `Tests 135 passed (135)` (la corrida de 2026-10-23T04:46:44Z, 134 passed, fue encadenada a una edición y no cuenta como evidencia) | 2026-10-24T00:43:44Z |
 | TRIANGULATE | tar del sistema con nombres largos y con " -> " / " link to ", juzgando el destino real del link | `pnpm --filter @evzla/infra test -- --reporter=dot test/ci-workflow.test.ts test/ci-scripts.test.ts` | PASS · `Tests 135 passed (135)` | 2026-10-24T00:43:44Z |
 | REFACTOR | — (sin cambios tras el verde) | `pnpm typecheck && pnpm lint && pnpm test` | PASS · `exit=0` (infra 212) | 2026-10-24T00:45:25Z |
 Checks locales: typecheck ✔ "Tasks: 5 successful, 5 total" · lint ✔ "Tasks: 5 successful, 5 total" · tests ✔ "Tasks: 4 successful, 4 total" (infra 212, core 286, db 20, web 61)
@@ -276,6 +276,7 @@ Decisiones menores:
 - `realpathSync.native` (libc) en lugar de `realpathSync`: la versión JS normaliza `link/..` de forma léxica antes de seguir el link.
 - Los symlinks colgantes o en ciclo se rechazan (fail closed): el bundle real no los trae.
 - Se rechaza toda entrada del tar cuya ruta pase por un symlink del mismo tar, aunque apunte adentro: tar la escribiría siguiendo el link.
+- Ruta de descarga de `download-artifact` v8.0.2 (pendiente de 03-design): su README al SHA fijado dice que el artifact se extrae "directly to the specified path", así que `path/<archivo>` sigue valiendo (verificado en la segunda revisión del code-reviewer, 2026-10-24).
 Notas para el verifier:
 - Los tests del tar del sistema corren `tar` local con `COPYFILE_DISABLE=1` (bsdtar en macOS, GNU tar en el runner); los fixtures sintéticos cubren pax y GNU long name/link con independencia del tar instalado.
 

@@ -50,3 +50,42 @@ Lo que está bien (no se repite abajo): sin `${{ }}` en `run:` (input del dispat
 4. `apps/web/.env.production`: no lo leí (hook del repo). Un humano debe confirmar en GATE 2 que todos los valores son públicos.
 5. Concurrencia vs. aprobación: ¿GitHub reemplaza un run pendiente de aprobación cuando entra otro al grupo `deploy-production`? Si no lo hace, el escenario de fuera de orden (Bajo) es más probable.
 6. ¿El `sub` real usa el nombre del repo con las mayúsculas exactas (`jorgeluisd/encuentramevzla`)? Si no coincide, falla cerrado; ya está previsto verificarlo en el primer run.
+
+## Segunda revisión tras T-15..T-17 (2026-10-24)
+
+Alcance: `git diff 930a46f..HEAD` (17e681c, 375a960, 3b7cebb), más `infra/lib/open-next-output.ts`, que no está en el diff pero es quien consume el bundle. Sin AWS ni red; `apps/web/.env.production` no se leyó. Los diferenciales del tar se probaron con tarballs sintéticos contra `check-bundle.mjs --tar-archive` y contra bsdtar/libarchive 3.7.4 (local). El runner usa GNU tar 1.35, que según su código se comporta igual en los tres casos; falta confirmarlo en el runner.
+
+RESUMEN: 4 hallazgos nuevos (crítico 0 / alto 0 / medio 2 / bajo 2) · alto previo resuelto · riesgo residual: **requiere decisión** (los dos medios nuevos van a GATE 2 o vuelven como tareas).
+
+### Estado de los hallazgos de la primera pasada
+| Sev | Hallazgo | Estado |
+|---|---|---|
+| Alto | Cache de pnpm compartido `checks` → `deploy` | **Resuelto.** `deploy` no tiene `cache` y lleva `package-manager-cache: false` (`deploy-production.yml:127-131`); `pnpm/action-setup` no cachea. Test: `ci-workflow.test.ts:321`. |
+| Medio | `id-token: write` a nivel de job durante install + synth | **Aceptado → GATE 2.** El comentario ya es correcto (`:136-137`). |
+| Medio | Guarda léxica de symlinks / destinos de link en el tar | **Resuelto para el árbol extraído** (`realpathSync.native`, colgantes/ciclos, `nlink>1`; tests `ci-scripts.test.ts:400-451`). **El tar sigue abierto, parcialmente**: hay diferenciales de parser, ver N-1. |
+| Medio | Outputs de `EvzlaStack` en el log público | **Aceptado → GATE 2** (sin cambios: `:149`). |
+| Bajo | Trust por `environment:Production` para cualquier workflow | **Aceptado → GATE 2.** No hay guarda de higiene. |
+| Bajo | El rollback despliega infra y scripts del SHA viejo | **Aceptado → GATE 2.** `ARCHITECTURE.md` §Rollback (`:560-566`) sigue sin decir que se revierte la infra. |
+| Bajo | Run viejo aprobado tarde | **Resuelto para `push`** (`check-main-tip.mjs`, antes de la descarga; test `ci-workflow.test.ts:311`). `workflow_dispatch` queda fuera a propósito. |
+| Bajo | Artifact descargable 1 día | **Aceptado → GATE 2.** |
+| Bajo | `check-public-env` valida solo el prefijo | **Aceptado → GATE 2.** |
+
+### Hallazgos nuevos
+| Sev | Hallazgo | Archivo:línea | Vector | Mitigación requerida | Test que falta |
+|---|---|---|---|---|---|
+| Medio | **N-1 · Diferenciales entre el parser del tar y el tar que extrae.** (a) se ignora el registro pax `size`: con header `size=1024` + pax `size=0`, Node salta 2 bloques como cuerpo y tar los lee como headers → miembros **ocultos** al chequeo (PoC: `hidden-outside.txt` pasa con exit 0); (b) `prefix` (345) se concatena aunque el magic sea oldgnu (`ustar  \0`), y ahí tar lo ignora → `x-outside` pasa como `.open-next/x-outside`; (c) pax `path`/`linkpath` seguido de GNU `L`/`K`: Node aplica el último, tar da prioridad al pax → `outside-by-pax` pasa. El chequeo previo a la extracción deja de ser una frontera. Lo único que contiene el daño son los defaults de GNU tar (quita `../` y `/` del inicio, y difiere los symlinks absolutos o con `..`), que no tienen test: los miembros ocultos pueden escribir en cualquier ruta de `apps/web/**` fuera de `.open-next/`, y el escaneo posterior no la recorre. | `check-bundle.mjs:76-80` (prefix sin magic), `:82-87` (precedencia pax vs L/K), `:91-116` (pax `size` ignorado) | Dependencia comprometida en `checks` que manipula el tarball | Que el parser se niegue (fail closed) a lo que no interpreta igual que tar: pax con `size` (o respetarlo), cualquier pax fuera de `path`/`linkpath`, mezcla de pax con L/K en el mismo miembro, `prefix` no vacío fuera de magic `ustar\0` "00". Además, o en su lugar: extraer en un directorio vacío y escanear el árbol extraído **completo**, no solo `.open-next` | `ci-scripts.test.ts --tar-archive`: los 3 PoC (pax `size` desincronizado, oldgnu + prefix, pax `path` + `L`) fallan; un test de workflow fija que la extracción no deja nada fuera de `.open-next` |
+| Medio | **N-2 · Rutas de `open-next.output.json` sin confinar.** `readOpenNextOutput` hace `path.join(dirname(.open-next), rel)` con `bundle`/`from` tal cual vienen del JSON (que controla `checks`). `../../..` lleva synth a zipear o publicar cualquier ruta del runner: en Lambda, o en el bucket de assets, **que CloudFront sirve en público**. `check-bundle` escanea `.open-next` y synth consume lo que diga el JSON. No se verificó que la cadena hasta `/proc/<pid>/environ` (`ACTIONS_ID_TOKEN_REQUEST_TOKEN`) sea explotable. | `infra/lib/open-next-output.ts:56-57`, `:83-97` (fuera del diff) | Mismo atacante que N-1 | Rechazar en `readOpenNextOutput` toda ruta cuyo `realpath` salga de `.open-next` (absolutas, `..`, symlinks) | `open-next-output.test.ts`: `bundle: "../x"`, `from: "/etc"` y un symlink que salga del bundle → throw |
+| Bajo | N-3 · `goesThroughSymlink` compara rutas sin normalizar: con `.open-next//s/x` frente al symlink `.open-next/s` no detecta la escritura a través del link. Hoy queda contenido porque el destino tiene que pasar `linkStaysInBundle`, y GNU tar difiere los destinos con `..`. | `check-bundle.mjs:128-131` | Igual que N-1 | Rechazar segmentos vacíos en `isBundleEntry` (o normalizar antes) | `--tar-archive`: un nombre con `//` se rechaza |
+| Bajo | N-4 · `gunzipSync` sin `maxOutputLength`: una bomba gzip o un tar enorme agota la memoria del runner. Falla cerrado (solo DoS de un run que el atacante ya controla). | `check-bundle.mjs:34-37` | Igual que N-1 | Opcional: `maxOutputLength` con un techo del orden del bundle real | — |
+
+### Revisión de `check-main-tip` (sin hallazgos)
+- `git fetch` anónimo: el repo es público y `persist-credentials: false` deja el remoto sin token. Si el repo pasa a privado, falla cerrado (no despliega).
+- `FETCH_HEAD`: el fetch lo reescribe justo antes. `execFileSync` lanza si el fetch falla, así que nunca se lee el `FETCH_HEAD` que dejó `actions/checkout`. Corre antes de descargar y extraer el artifact, así que el tar no puede plantar nada en `.git/`.
+- Inyección: `EXPECTED_SHA` entra por `env`, se valida con `^[0-9a-f]{40}$` y se compara como string; `git` se llama con array de argumentos y sin shell. Ningún input del usuario llega a git.
+- TOCTOU entre el chequeo y `cdk deploy`: es benigno, porque un push posterior queda en cola en el grupo `deploy-production` y despliega después.
+- `cli.mjs` / imports: solo `node:*` y `./cli.mjs`, con guarda mecánica. Sin hallazgos.
+
+### Riesgo residual actualizado
+- **Requiere decisión (GATE 2):** N-1 y N-2 mantienen abierta la fila "bundle manipulado → credenciales". Hoy la frontera real son los defaults de GNU tar (sin test) y la confianza en el JSON de OpenNext. Contexto para decidir: el mismo atacante (dependencia comprometida en `checks`) ya controla el código de la app que se despliega en Lambda con su rol (acceso a RDS). N-1 y N-2 solo le añaden el salto a las credenciales de despliegue (`cfn-exec`, cuenta compartida). Si se aceptan, van a `gates.md` con N-3/N-4 al backlog.
+- **Sin cambios:** los riesgos que se mandaron a GATE 2 en "DECISIONES TRAS REVISIÓN" y las DUDAS 1-6 de la primera pasada (protección del environment, CODEOWNERS efectivo, SHAs de las acciones contra upstream, valores de `.env.production`).
+- **Resuelto:** el cache compartido ya no amplía la superficie del job con credenciales al árbol de `web`. Lo que queda es el árbol de `@evzla/infra` aceptado en GATE 1.

@@ -66,3 +66,63 @@ Ninguna.
 ## DUDAS ABIERTAS
 - Las líneas 04:20:56Z-04:31:02Z del log (`pnpm test --force`, `pnpm run test --force`) son de la sesión de T-14 y de esta verificación; no afectan la evidencia, pero ensucian el log.
 - No pude releer `apps/web/.env.production` ni correr el grep de secretos sobre ese archivo (bloqueado por hook/permisos); se confía en el test de higiene.
+
+## Re-verificación tras T-15..T-17 (2026-10-24)
+
+RESUMEN: FAIL (1 check: #9 audit, externo al diff) · 11 checks PASS/N/A
+sha verificado: 3b7cebb2ab261e5fbbe71bd9dfd669e88c0720c7 (diff `930a46f..HEAD`)
+
+| # | Check | Resultado | Última línea de salida |
+|---|---|---|---|
+| 1 | Typecheck (`pnpm typecheck --force`) | PASS | `Tasks: 5 successful, 5 total` · `Cached: 0 cached, 5 total` · EXIT=0 |
+| 2 | Lint + boundaries (`pnpm lint --force`) | PASS | `Tasks: 5 successful, 5 total` · `Cached: 0 cached, 5 total` · EXIT=0; ningún `boundaries/*` |
+| 3 | Tests (`pnpm run test --force -- --reporter=dot`) | PASS | core 286, db 20, web 61, infra 218 (6 archivos); `Tasks: 4 successful, 4 total` · EXIT=0; 0 `skip/only/todo` añadidos en el diff |
+| 4 | Integración | N/A | el diff no toca repos, esquema ni datos |
+| 5 | Evidencia TDD T-15..T-17 | PASS con nota | ver detalle |
+| 6 | Alcance | PASS | 12 archivos, todos declarados |
+| 7 | AC -> test | PASS | sin AC nuevos; las guardas de AC-30/31 siguen en verde |
+| 8 | Migraciones | N/A | sin migración |
+| 9 | Seguridad mecánica (`pnpm audit --audit-level=high`) | **FAIL** | `1 vulnerabilities found` · `Severity: 1 high` · EXIT=1 |
+| 10 | Invariantes | PASS | sin cambios en `packages/*` ni `apps/*` |
+| 11 | Convención de entrega | PASS | 3 commits `fix(ci)`/`fix(ci)`/`refactor(ci)`; 0 trailers IA/Co-Authored-By |
+| 12 | Configuración faltante | PASS | typecheck, lint, test, audit declarados y corridos; `pnpm build` no corrido (ver nota) |
+
+### Check 9: FAIL (advisory nuevo, no introducido por el diff)
+```
+high | body-parser vulnerable to Denial of Service via trailing bytes after a compressed request body
+Vulnerable versions >=2.0.0 <2.4.0 · Patched versions >=2.4.0
+Paths: apps/web > @opennextjs/aws@4.1.8 > express@5.3.0 > body-parser@2.3.0
+https://github.com/advisories/GHSA-27r3-jxmh-p828
+```
+Archivo/capa: `pnpm-lock.yaml` (transitiva de `@opennextjs/aws` en `apps/web`); `pnpm-lock.yaml` y `apps/web/package.json` NO están en `930a46f..HEAD`. En la primera pasada el audit dio `No known vulnerabilities found`: el advisory apareció después. Regla: audit con `high` = exit 1. Impacto específico: el job `checks` del workflow corre `pnpm audit` y bloquearía el primer deploy desde `main`. Recomendación: `pnpm.overrides` `body-parser@>=2.4.0` (o subir `@opennextjs/aws`) en un commit aparte, fuera de 0026, y re-ejecutar; o aceptación explícita en Gate 2 si el humano prefiere no tocar el lockfile aquí. Sin patrones de secretos (`sk-`, `eyJ…`, `AKIA…`, `postgres://u:p@`) en el diff; ningún `.env*` en el diff.
+
+### Check 5: evidencia TDD
+- T-15: safety net 04:34:49Z exit=0; RED `check-main-tip` 04:35:27Z exit=1 (`Tests 5 failed | 57 skipped (62)`) -> GREEN 04:35:38Z; TRIANGULATE 04:35:55Z; RED workflow 04:36:18Z exit=1 (`Tests 8 failed | 43 passed (51)`) -> GREEN 04:37:10Z (`Tests 115 passed (115)`); REFACTOR 04:38:43Z. Todos existen en el log, sin WARN.
+- T-16: RED 04:43:05Z exit=1 -> GREEN 04:43:43Z (`check-bundle`, `Tests 26 passed`); RED `tar` 04:45:14Z exit=1 (`Tests 19 failed`) -> GREEN; TRIANGULATE 00:43:44Z exit=0 (`Tests 135 passed (135)`); REFACTOR 00:45:25Z.
+- T-17: safety net 00:47:16Z (184 passed); RED 00:48:00Z exit=1 (`Tests 1 failed | 84 skipped (85)`) -> 00:48:22Z; RED de mutación 00:51:28Z exit=1 -> GREEN 00:53:15Z (`Tests 9 passed`); guardas verdes antes (00:47:16Z) y después (00:50:57Z, 183 passed).
+- Nota: el GREEN que la tabla de T-16 cita a 04:46:44Z es una llamada encadenada (`python3 - <<EOF … EOF pnpm --filter @evzla/infra test …`, `strict-tdd` §6); no se cuenta como evidencia. Cuenta el GREEN independiente 00:43:44Z sobre los mismos dos archivos (RED 04:45:14Z anterior). Lo mismo para 04:47:03Z (exit=1, encadenada), 00:48:12Z, 00:50:17Z y 00:51:17Z (python3 sin test, declaradas descartadas en el apply-progress). Recomendación editorial: citar 00:43:44Z como GREEN en la tabla de T-16.
+- WARN en T-15..T-17: ninguno `repo-cruzado`/`no-tests-ran`/`piped-output`/`interrupted`; `full-suite-mid-cycle` en 00:53:02Z (informativo, no citado como RED/GREEN).
+- INCONSISTENCIAS DEL HOOK: ninguna (ninguna línea `exit≠0` con resumen en verde).
+
+### Check 6: alcance `git diff --name-only 930a46f..HEAD`
+`.github/workflows/deploy-production.yml`, `infra/lib/ci-stack.ts`, `infra/scripts/ci/{check-bundle,check-main-tip,check-public-env,cli,resolve-ref,smoke,write-summary}.mjs`, `infra/test/{ci-scripts,ci-workflow,repo-hygiene}.test.ts`, `05-apply-progress.md`. Todos en T-15/T-16/T-17; desviaciones declaradas: `check-main-tip.mjs` nuevo (T-15), `--tar-archive` en lugar de `tar -tv` (T-16), `cli(name)` en lugar de `fail` suelto (T-17). Sin archivos sorpresa.
+
+### Hallazgos de la primera pasada asignados a T-15..T-17
+| Hallazgo | Estado | Evidencia |
+|---|---|---|
+| 07-security ALTO: cache de pnpm compartido | RESUELTO | `deploy-production.yml:126` comentario "Sin cache…" + `package-manager-cache: false` (l.131); `cache: pnpm` queda solo en `checks` (l.56); test de workflow verde |
+| 07-security BAJO: run obsoleto fuera de orden | RESUELTO | paso `Refuse stale run` (l.107) con `check-main-tip.mjs`; 7 tests |
+| 07-security MEDIO: symlinks léxicos / destinos en el tar | RESUELTO | `realpathSync.native` (check-bundle l.205), `nlink > 1` (l.220), `--tar-archive` (workflow l.119); 26+19 tests |
+| 07-review: duda `zip` | RESUELTO | paso `Check zip binary` `command -v zip` (l.134) antes de Synth |
+| `name:` en todos los pasos | RESUELTO | pasos listados con `- name:`; test por job |
+| Comentario de `id-token` | RESUELTO | l.137 describe que install/synth podrían pedir un token (riesgo aceptado) |
+| Medios/bajas de 07-review asignadas a T-17 | RESUELTO | `cli.mjs`, `SMOKE_PATHS`, `CONTRACT.region` (ci-stack l.11), SHA en mayúsculas, guarda de imports; las bajas no tocadas están listadas por el implementer |
+
+### GAPS
+`pnpm build` no se re-corrió (T-15..T-17 no tocan `apps/web` ni el build; la primera pasada lo aceptó). `<test:integration>`, `boundaries`, `prod_markers`: no aplican.
+
+### NOTAS PARA EL GATE 2
+1. Check 9 FAIL externo: decidir override/upgrade de `body-parser` (commit aparte) antes del primer run de `main`, o aceptar el bloqueo conocido del paso `Audit dependencies`.
+2. El chequeo de run obsoleto hace `git fetch` sin credenciales: funciona solo mientras el repo sea público (declarado).
+3. Riesgo `id-token: write` a nivel de job sigue aceptado explícitamente (comentario l.137).
+4. Pasos manuales 1 a 6 de 04-plan.md siguen pendientes.
