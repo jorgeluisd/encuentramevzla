@@ -16,6 +16,7 @@ const SECRET_PATTERNS = [
 const TAR_BLOCK = 512;
 const TAR_TYPE = { file: "0", oldFile: "\0", hardlink: "1", symlink: "2", directory: "5" };
 const TAR_META_TYPE = { longName: "L", longLink: "K", pax: "x" };
+const DATA_TYPES = new Set([TAR_TYPE.file, TAR_TYPE.oldFile, ...Object.values(TAR_META_TYPE)]);
 const EXTRACTABLE_TYPES = new Set([TAR_TYPE.file, TAR_TYPE.oldFile, TAR_TYPE.symlink, TAR_TYPE.directory]);
 const TAR_MAGIC = { posix: "ustar\x0000", gnu: "ustar  \0" };
 const PAX_NAME_RECORDS = new Map([
@@ -63,20 +64,22 @@ function hasValidChecksum(header) {
   return octal(header, 148, 8) === sum;
 }
 
+// tar solo lee la longitud como dígitos decimales; con otra forma descarta el header pax entero.
 function paxRecords(body) {
-  const records = {};
+  const records = new Map();
   let offset = 0;
   while (offset < body.length) {
     const space = body.indexOf(0x20, offset);
-    const length = Number(body.subarray(offset, space).toString("utf8"));
-    const end = offset + length;
-    if (space === -1 || !Number.isInteger(length) || length <= 0 || end > body.length || body[end - 1] !== 0x0a) {
-      throw new CorruptTar();
-    }
+    const lengthText = space === -1 ? "" : body.subarray(offset, space).toString("latin1");
+    if (!/^[1-9][0-9]*$/.test(lengthText)) throw new CorruptTar();
+    const end = offset + Number(lengthText);
+    if (end > body.length || body[end - 1] !== 0x0a) throw new CorruptTar();
     const record = body.subarray(space + 1, end - 1).toString("utf8");
     const separator = record.indexOf("=");
     if (separator === -1) throw new CorruptTar();
-    records[record.slice(0, separator)] = record.slice(separator + 1);
+    // tar corta claves y valores en el primer NUL (C string).
+    if (record.includes("\0")) throw new AmbiguousTar();
+    records.set(record.slice(0, separator), record.slice(separator + 1));
     offset = end;
   }
   return records;
@@ -106,7 +109,7 @@ function applyMeta(pending, type, body) {
   if (type === TAR_META_TYPE.longName) return withName(pending, type, "name", cString(body, 0, body.length));
   if (type === TAR_META_TYPE.longLink) return withName(pending, type, "linkname", cString(body, 0, body.length));
   let next = withName(pending, type, "pax", true);
-  for (const [key, value] of Object.entries(paxRecords(body))) {
+  for (const [key, value] of paxRecords(body)) {
     if (isInertPaxKey(key)) continue;
     const record = PAX_NAME_RECORDS.get(key);
     if (record === undefined || value === "") throw new AmbiguousTar();
@@ -141,6 +144,8 @@ function tarMembers(archive) {
     const body = archive.subarray(bodyStart, bodyStart + size);
     offset = bodyStart + Math.ceil(size / TAR_BLOCK) * TAR_BLOCK;
     const type = String.fromCharCode(header[156] ?? 0);
+    // tar ignora `size` en directorios y symlinks: lo que este parser saltaría como cuerpo, tar lo lee como headers.
+    if (size !== 0 && !DATA_TYPES.has(type)) throw new AmbiguousTar();
     if (Object.values(TAR_META_TYPE).includes(type)) {
       pending = applyMeta(pending, type, body);
       continue;

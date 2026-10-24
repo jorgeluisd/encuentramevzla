@@ -42,15 +42,15 @@ describe("readOpenNextOutput", () => {
     output.additionalProps[prop] = { ...output.additionalProps[prop], bundle };
   };
 
-  const expectRejected = (): void => {
+  const expectRejected = (field: string): void => {
     let message = "";
     try {
       readOpenNextOutput(openNextDir);
     } catch (error) {
       message = (error as Error).message;
     }
-    expect(message).toContain(OUTSIDE);
-    expect(message).not.toMatch(/etc|outside|\.\./);
+    expect(message).toBe(`${OUTSIDE} (${field}).`);
+    expect(message).not.toContain(workDir);
   };
 
   beforeEach(() => {
@@ -75,41 +75,57 @@ describe("readOpenNextOutput", () => {
   });
 
   it.each([
-    ["the server bundle with ../..", setBundle("default", "../../outside")],
-    ["the image bundle as an absolute path", setBundle("imageOptimizer", "/etc")],
-    ["the revalidation bundle through .open-next/..", setProp("revalidationFunction", ".open-next/../outside")],
-    ["the initialization bundle with ..", setProp("initializationFunction", "../outside")],
-    ["assets.from as an absolute path", (output: Output) => (copyEntry(output, true).from = "/etc")],
-    ["cache.from with ../..", (output: Output) => (copyEntry(output, false).from = ".open-next/../../..")],
-    ["assets.from as .open-next itself", (output: Output) => (copyEntry(output, true).from = ".open-next")],
-  ])("rejects %s without printing the path", (_label, edit) => {
+    ["the server bundle with ../..", setBundle("default", "../../outside"), "origins.default.bundle"],
+    ["the image bundle as an absolute path", setBundle("imageOptimizer", "/etc"), "origins.imageOptimizer.bundle"],
+    [
+      "the revalidation bundle through .open-next/..",
+      setProp("revalidationFunction", ".open-next/../outside"),
+      "additionalProps.revalidationFunction.bundle",
+    ],
+    [
+      "the initialization bundle with ..",
+      setProp("initializationFunction", "../outside"),
+      "additionalProps.initializationFunction.bundle",
+    ],
+    ["assets.from as an absolute path", (output: Output) => (copyEntry(output, true).from = "/etc"), "origins.s3.copy (assets)"],
+    [
+      "cache.from with ../..",
+      (output: Output) => (copyEntry(output, false).from = ".open-next/../../.."),
+      "origins.s3.copy (cache)",
+    ],
+    [
+      "assets.from as .open-next itself",
+      (output: Output) => (copyEntry(output, true).from = ".open-next"),
+      "origins.s3.copy (assets)",
+    ],
+  ])("rejects %s naming the field, without printing the path", (_label, edit, field) => {
     editOutput(edit);
-    expectRejected();
+    expectRejected(field);
   });
 
   it("rejects a path that leaves .open-next through a symlink, even when the rest of it does not exist", () => {
     rmSync(path.join(openNextDir, "assets"), { recursive: true });
     symlinkSync(outside, path.join(openNextDir, "assets"));
-    expectRejected();
+    expectRejected("origins.s3.copy (assets)");
 
     rmSync(path.join(openNextDir, "assets"));
     mkdirSync(path.join(openNextDir, "assets"));
     symlinkSync(outside, path.join(openNextDir, "escape"));
     editOutput(setBundle("default", ".open-next/escape/missing/default"));
-    expectRejected();
+    expectRejected("origins.default.bundle");
   });
 
   it("rejects a dangling symlink, whose target cannot be confined", () => {
     symlinkSync(path.join(outside, "not-yet"), path.join(openNextDir, "later"));
     editOutput((output) => (copyEntry(output, false).from = ".open-next/later"));
-    expectRejected();
+    expectRejected("origins.s3.copy (cache)");
   });
 
   it("rejects an initialization cache file that is a symlink out of .open-next", () => {
     const cacheFile = path.join(openNextDir, "dynamodb-provider/dynamodb-cache.json");
     rmSync(cacheFile);
     symlinkSync(path.join(outside, "dynamodb-cache.json"), cacheFile);
-    expectRejected();
+    expectRejected("dynamodb-cache.json");
   });
 
   it("accepts symlinks that stay inside .open-next and an .open-next reached through a symlink", () => {

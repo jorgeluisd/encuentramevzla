@@ -1,5 +1,15 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -596,7 +606,8 @@ describe("check-bundle.mjs", () => {
 
     const systemTar = (): string => {
       const archive = path.join(workDir, "system.tgz");
-      execFileSync("tar", ["-C", workDir, "-czf", archive, ".open-next"], {
+      // --no-xattrs es el default de GNU tar en el runner; bsdtar escribe SCHILY.xattr binarios, con NUL.
+      execFileSync("tar", ["--no-xattrs", "-C", workDir, "-czf", archive, ".open-next"], {
         env: { PATH: process.env.PATH ?? "", COPYFILE_DISABLE: "1" },
       });
       return archive;
@@ -799,6 +810,80 @@ describe("check-bundle.mjs", () => {
         expectAmbiguous([pax({ size: "0" }), member({ name: ".open-next/a", body: bodyHiding("escaped-size.txt") })], "escaped-size.txt");
       });
 
+      const paxWithLength = (format: (length: number) => string | undefined): Buffer => {
+        for (let padding = 0; padding < 20; padding += 1) {
+          const rest = ` path=.open-next/${"i".repeat(padding)}.txt\n`;
+          for (let length = rest.length + 1; length <= rest.length + 6; length += 1) {
+            const text = format(length);
+            if (text !== undefined && text.length + rest.length === length) {
+              return member({ name: "PaxHeader", type: "x", body: `${text}${rest}` });
+            }
+          }
+        }
+        throw new Error("no record length fits the format");
+      };
+
+      it.each([
+        ["hexadecimal", (length: number) => `0x${length.toString(16)}`, true],
+        ["a signed number", (length: number) => `+${length}`, true],
+        ["an exponent", (length: number) => (length % 10 === 0 ? `${length / 10}e1` : undefined), true],
+        ["a zero-padded number", (length: number) => `0${length}`, false],
+      ])("fails closed on a pax record length written as %s, which tar does not read as a record", (_label, format, tarIgnoresIt) => {
+        const archive = writeArchive([...base, paxWithLength(format), member({ name: "escaped-length.txt", body: "x" })]);
+        if (tarIgnoresIt) {
+          expect(spawnSync("tar", ["-tzf", archive], { encoding: "utf8" }).stdout.split("\n")).toContain("escaped-length.txt");
+        }
+        const run = check(["--tar-archive", archive]);
+        expect(run.stderr).toBe("check-bundle: el tar está corrupto o truncado\n");
+        expect(run.status).toBe(1);
+      });
+
+      it("fails closed on a NUL inside a pax path, where tar cuts the name", () => {
+        expectAmbiguous([pax({ path: ".open-next/ok\0zzz" }), file(".open-next/stub")], ".open-next/ok");
+      });
+
+      it("fails closed on a NUL inside a pax linkpath, where tar cuts the target", () => {
+        const members = [pax({ linkpath: "..\0/.open-next/x" }), symlink(".open-next/l", "ok")];
+        const extracted = path.join(workDir, "extracted");
+        mkdirSync(extracted);
+        execFileSync("tar", ["-xzf", writeArchive([...base, ...members]), "-C", extracted]);
+        expect(readlinkSync(path.join(extracted, ".open-next/l"))).toBe("..");
+        expectAmbiguous(members);
+      });
+
+      it("fails closed on a NUL inside a pax key, even under an inert prefix", () => {
+        expectAmbiguous([pax({ "SCHILY.xattr.user.x\0": "1" }), file(".open-next/stub")]);
+      });
+
+      it("keeps the last of repeated pax records in one header, as tar does", () => {
+        const repeated = (first: string, last: string): Buffer =>
+          member({ name: "PaxHeader", type: "x", body: paxRecord("path", first) + paxRecord("path", last) });
+        const lastInside = writeArchive([...base, repeated("escaped-first.txt", ".open-next/last"), file(".open-next/stub")]);
+        expect(systemTarLists(lastInside, ".open-next/last")).toBe(true);
+        const inside = check(["--tar-archive", lastInside]);
+        expect(inside.stderr).toBe("");
+        expect(inside.status).toBe(0);
+
+        const lastOutside = checkArchive([...base, repeated(".open-next/first", "escaped-last.txt"), file(".open-next/stub")]);
+        expect(lastOutside.stderr).toBe("check-bundle: entrada 3 del tar fuera de .open-next/\n");
+        expect(lastOutside.status).toBe(1);
+      });
+
+      it("fails closed on a __proto__ pax key instead of dropping it", () => {
+        expectAmbiguous([pax({ ["__proto__"]: "x" }), file(".open-next/stub")]);
+      });
+
+      it.each([
+        ["a directory", (body: Buffer) => member({ name: ".open-next/d/", type: "5", body }), "escaped-dir.txt"],
+        ["a symlink", (body: Buffer) => member({ name: ".open-next/s", type: "2", linkname: "d", body }), "escaped-symlink.txt"],
+      ])("fails closed on %s with a size, whose body tar reads as headers", (_label, carrier, escapedName) => {
+        expectAmbiguous([carrier(bodyHiding(escapedName))], escapedName);
+      });
+
+      it("fails closed on a hardlink with a size, before judging the hardlink", () => {
+        expectAmbiguous([member({ name: ".open-next/h", type: "1", linkname: ".open-next/open-next.output.json", body: "x" })]);
+      });
+
       it.each([["hdrcharset", "BINARY"], ["GNU.sparse.size", "0"], ["path", ""]])(
         "fails closed on the pax record %s=%s, outside what the parser reproduces",
         (key, value) => {
@@ -813,6 +898,7 @@ describe("check-bundle.mjs", () => {
           "a pax size that hides a member",
           () => [pax({ size: "0" }), member({ name: ".open-next/a", body: bodyHiding("escaped.txt") })],
         ],
+        ["a directory with a size", () => [member({ name: ".open-next/d/", type: "5", body: bodyHiding("escaped.txt") })]],
       ])("the scan of a fresh extraction catches what the system tar writes outside .open-next/ from %s", (_label, members) => {
         const archive = writeArchive([...base, ...members()]);
         const extracted = path.join(workDir, "extracted");

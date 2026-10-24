@@ -19,6 +19,12 @@ Detalle de T-1 a T-8 archivado en `05-apply-progress-T1-T8.md`; de T-9 a T-14, e
 | T-12 | terminada | b5a0c27 | AC-30 (docs) |
 | T-13 | terminada | 9bf0e44 (ADR) + b105bf8 (greps) | AC-30 (greps), AC-31 |
 | T-14 | terminada | commit `docs(sdd)` de este registro | barrido: todos |
+| T-15 | terminada | 17e681c | correcciones 1: alto de cache (07-security), run obsoleto, `name:` y `zip` (07-review); refuerza AC-11, AC-15 |
+| T-16 | terminada | 375a960 | correcciones 1: medio de symlinks (07-security), duda 2 (07-review); refuerza AC-13, AC-14, AC-23 |
+| T-17 | terminada | 3b7cebb | correcciones 1: medios y bajas de 07-review; refuerza AC-30, AC-31 |
+| T-18 | terminada | 41ed10e | correcciones 2: N-1 (07-security) y alta de 07-review; refuerza AC-13, AC-23 |
+| T-19 | terminada | d2d3612 | correcciones 2: N-2 (07-security); refuerza AC-13 |
+| T-20 | terminada | `fix(ci)` de esta tarea (hash en su sección) | correcciones 3: media de 07-review, N-5, N-6, N-7 (07-security), bajas de `cache.from` y de esta tabla; refuerza AC-13, AC-23 |
 
 Commits previos a T-1 en la rama (artefactos del pipeline, no tareas): 001f3c8 (diseño), 9685aa7 (firma de ADR y alcance de Dependabot).
 
@@ -159,3 +165,29 @@ Decisiones menores:
 Notas para el verifier:
 - La corrida RED de 2026-10-24T02:31:26Z (misma salida, 9 failed) fue anterior al safety net y al commit de T-18; la RED que cuenta es la de 02:34:15Z, después del safety net.
 - Línea 2026-10-24T02:36:38Z (`exit=1`, `WARN=no-tests-ran`): `pnpm test -- --reporter=dot` falló en turbo por el argumento, sin correr tests; se repitió como `pnpm run test -- -- --reporter=dot` (02:37:20Z).
+
+## T-20 — Registros pax estrictos, NUL, `size` en miembros que no son archivo y claves sin prototipo   estado: terminada
+TDD: ON (estricto)
+Safety net: `pnpm --filter @evzla/infra test -- --reporter=dot test/ci-scripts.test.ts test/open-next-output.test.ts` → PASS `Tests 125 passed (125)` (2026-10-24T03:36:15Z)
+Archivos tocados: [infra/scripts/ci/check-bundle.mjs, infra/test/ci-scripts.test.ts, infra/test/open-next-output.test.ts, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]
+Desviaciones respecto al plan: ninguna de archivos. El helper `systemTar` de los tests pasa `--no-xattrs` (ver decisiones).
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | `--tar-archive`: longitud pax hexadecimal, con signo, con exponente y con cero inicial; NUL en `path`, en `linkpath` y en la clave (bajo prefijo inerte); clave `__proto__`; directorio, symlink y hardlink con `size` ≠ 0. Los de longitud y de `size` verifican antes con `tar -tzf` del sistema que el miembro escapa; el de `path` con NUL, que tar corta el nombre; el de `linkpath`, que tar extrae `l -> ..` | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts -t "headers that tar reads differently"` | FAIL (razón: comportamiento ausente, el parser los acepta: stderr vacío o `hardlink no permitido`) · `Tests 11 failed \| 13 passed \| 101 skipped (125)` | 2026-10-24T03:38:46Z |
+| GREEN | ídem + todo check-bundle (incluye los tests con el tar del sistema) | `pnpm --filter @evzla/infra test -- --reporter=dot test/ci-scripts.test.ts -t "check-bundle"` | PASS · `Tests 75 passed \| 50 skipped (125)` | 2026-10-24T03:40:25Z |
+| TRIANGULATE | pax `path` repetido en un mismo header: gana el último, como en tar (con el `Map`), dentro pasa y fuera se rechaza | `pnpm --filter @evzla/infra test -- --reporter=dot test/ci-scripts.test.ts -t "repeated pax records"` | PASS · `Tests 1 passed \| 125 skipped (126)` | 2026-10-24T03:40:39Z |
+| RED (mutación) | `open-next-output.test.ts`: `expectRejected(field)` aserta el mensaje exacto con el campo y `not.toContain(workDir)`; mutación temporal de `open-next-output.ts` que agrega la ruta al mensaje (revertida con `git checkout`) | `pnpm --filter @evzla/infra test -- test/open-next-output.test.ts` | FAIL (razón esperada: el mensaje trae la ruta) · `Tests 10 failed \| 2 passed (12)` | 2026-10-24T03:41:16Z |
+| GREEN | ídem, sin la mutación | `pnpm --filter @evzla/infra test -- --reporter=dot test/open-next-output.test.ts` | PASS · `Tests 12 passed (12)` | 2026-10-24T03:41:28Z |
+| REFACTOR | nombres de los casos de longitud; los dos archivos tocados | `pnpm --filter @evzla/infra test -- --reporter=dot test/ci-scripts.test.ts test/open-next-output.test.ts` | PASS · `Tests 138 passed (138)` | 2026-10-24T03:42:08Z |
+Checks locales: typecheck ✔ · lint ✔ · tests ✔ `pnpm typecheck && pnpm lint && pnpm run test -- -- --reporter=dot` → "Tasks: 5 successful, 5 total" · "Tasks: 5 successful, 5 total" · "Tasks: 4 successful, 4 total" (infra 263, core 286, db 20, web 61) (2026-10-24T03:44:05Z)
+Commit: (este) fix(ci): reject ambiguous pax records and sized non-file tar members
+Decisiones menores:
+- Longitud pax con otra forma que `/^[1-9][0-9]*$/` → `el tar está corrupto o truncado` (mismo camino que el resto de registros mal formados: tar descarta el header pax). NUL en la clave o el valor → `el tar tiene headers que tar podría leer distinto` (el registro es válido, pero tar lo corta en el NUL). Los registros van a un `Map`: `__proto__` cae en la regla general de clave fuera de la lista; con claves repetidas gana el último, como en tar.
+- Un miembro con `size` ≠ 0 que no es `0`, `\0` ni metadato (`L`, `K`, `x`) → `podría leer distinto`, antes de mirar su tipo. Por eso el tipo `7` con cuerpo y el header global `g` con registros ahora dan ese mensaje en vez de `tipo de entrada no permitido` / `fuera de .open-next/` (siguen fallando cerrado). Con `size` 0 los mensajes no cambian.
+- El NUL se rechaza también en los valores de `SCHILY.xattr.*`. bsdtar de macOS escribe `SCHILY.xattr.com.apple.provenance` con bytes binarios (NUL incluido), así que el helper `systemTar` de los tests pasa `--no-xattrs`: es el default de GNU tar, el que corre `tar -czf` en el runner. Un tar armado en macOS sin esa opción ahora falla cerrado (no es un camino de producción).
+- `open-next-output.test.ts`: la aserción exacta (`toBe`) es la que detecta el caso `cache.from` con `.open-next/../../..`. Con la mutación, la ruta impresa era el padre del tmpdir, que no contiene `workDir`.
+Notas para el verifier:
+- La corrida de 2026-10-24T03:39:28Z (FAIL 3) no fue un RED de comportamiento. Los 3 tests con el tar del sistema fallaban por los xattrs con NUL de bsdtar (ver decisiones). Se corrigió el fixture (`--no-xattrs`), no el script.
+- PoC de los revisores contra `--tar-archive` (regenerados desde `r3/scripts/mk.mjs`, `tarpoc3/gen/mk3.mjs` y `mk4.mjs`): `hex` → corrupto; `nul`, `paxNulName`, `paxNulLink`, `dotdotNul`, `paxProto`, `dirSize`, `symSize`, `chain`, `contig7` y `globalPax` → `podría leer distinto`; `sparseS` → `tipo de entrada no permitido`. Siguen en exit 0: `doubleSlash` (N-3, backlog), `paxDup` (gana el último en los dos lados) y `paxXattr` (inertes).
+- GNU tar del runner no se ejecutó localmente (bsdtar 3.5.3, libarchive 3.7.4). bsdtar también ignora `size` en directorios y symlinks, y los preconditions de `tar -tzf` se cumplieron con él.
