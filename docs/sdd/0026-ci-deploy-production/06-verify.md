@@ -126,3 +126,34 @@ Archivo/capa: `pnpm-lock.yaml` (transitiva de `@opennextjs/aws` en `apps/web`); 
 2. El chequeo de run obsoleto hace `git fetch` sin credenciales: funciona solo mientras el repo sea público (declarado).
 3. Riesgo `id-token: write` a nivel de job sigue aceptado explícitamente (comentario l.137).
 4. Pasos manuales 1 a 6 de 04-plan.md siguen pendientes.
+
+## Tercera verificación tras T-18..T-19 (2026-10-24)
+RESUMEN: PASS con 1 FAIL externo conocido (check 9, body-parser; fuera del diff)
+sha verificado: d2d3612e73a1120cacca951c6502970c7a88f56e (diff `0b1254b..HEAD`)
+
+| # | Check | Resultado | Última línea de salida |
+|---|---|---|---|
+| 1 | Typecheck | PASS | `turbo run typecheck --force`: `Tasks: 5 successful, 5 total` `Cached: 0 cached`, exit 0 |
+| 2 | Lint + boundaries | PASS | `turbo run lint --force`: `Tasks: 5 successful, 5 total` `Cached: 0 cached`, exit 0; sin `boundaries/*` |
+| 3 | Tests | PASS | core 286, db 20, web 61, infra 250 (7 archivos), exit 0; turbo repitió logs en caché (`FULL TURBO`, mismo hash de entradas); sin `.only/.skip/.todo` nuevos en el diff |
+| 4 | Integración | N/A | el diff no toca repos, esquema ni migraciones |
+| 5 | Evidencia TDD | PASS | T-18 y T-19: todos los timestamps de las tablas existen en `tdd-evidence.log`; RED (02:16:41Z, 02:20:50Z, 02:28:57Z, 02:34:15Z, exit=1 con tests fallando) anterior a GREEN (02:18:42Z, 02:22:22Z, 02:29:47Z, 02:34:52Z) |
+| 6 | Alcance | PASS | archivos del diff: workflow, `check-bundle.mjs`, `open-next-output.ts`, 3 tests de infra, 2 apply-progress; coinciden con los previstos de T-18/T-19 más las desviaciones declaradas (rotación `05-apply-progress-T9-T14.md`, `open-next-output.test.ts` nuevo) |
+| 7 | Criterios AC | PASS | sin AC nuevos; las correcciones son de hardening cubiertas por los tests citados |
+| 8 | Migraciones | N/A | no hay |
+| 9 | Seguridad mecánica | FAIL externo conocido | `pnpm audit --audit-level=high` exit 1: `body-parser@2.3.0` (GHSA-27r3-jxmh-p828, high) vía `@opennextjs/aws > express@5.3.0`; fuera del diff; el arreglo espera la regla de madurez de 72h hasta 2026-10-25T11:39Z. Grep de secretos en el diff: limpio; sin `.env*` |
+| 10 | Invariantes | PASS | sin cambios en dominio ni en el flujo de búsqueda |
+| 11 | Convención de entrega | PASS | 2 commits `fix(ci)`/`fix(infra)`, sin trailers de IA |
+| 12 | Configuración | PASS | typecheck, lint y test declarados |
+
+Runner: los tres jobs del workflow usan `runs-on: ubuntu-24.04-arm` (Linux, GNU coreutils), así que `mv -T` (l.129) es válido.
+
+GAPS de configuración del proyecto: ninguno nuevo.
+
+INCONSISTENCIAS DEL HOOK: ninguna. Línea 2026-10-24T02:19:34Z (`exit=!0`, `WARN=resultado-inferido-por-ausencia-de-PostToolUse`) es un RED sin salida; no se cuenta, el RED válido es 02:20:50Z. Línea 02:31:26Z (RED previo al safety net) y 02:36:38Z (`no-tests-ran`) tampoco se cuentan.
+
+NOTAS PARA EL GATE 2
+1. Check 9 sigue siendo el único bloqueo; ya conocido y externo.
+2. GNU tar del runner no se probó localmente (bsdtar 3.7.4); los tests con `tar -tzf`/`tar -x` del sistema correrán con GNU tar en el CI.
+3. El TRIANGULATE de T-18 (02:24:02Z) y el de T-19 (02:35:01Z) pasaron sin RED propio; son triangulación, no cuentan como ciclo.
+4. Pendientes manuales 1 a 6 de 04-plan.md y la nota de `git fetch` sin credenciales (repo público) siguen vigentes.
