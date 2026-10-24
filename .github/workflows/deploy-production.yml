@@ -117,9 +117,18 @@ jobs:
           path: ${{ runner.temp }}/artifact
       - name: Check tarball entries
         run: node infra/scripts/ci/check-bundle.mjs --tar-archive "$RUNNER_TEMP/artifact/open-next.tgz"
+      # Sin -p: el directorio tiene que nacer vacío para que el escaneo vea todo lo que tar escribió.
+      - name: Create extraction dir
+        run: mkdir "$RUNNER_TEMP/extracted"
       - name: Extract bundle
-        run: tar -xzf "$RUNNER_TEMP/artifact/open-next.tgz" --no-same-owner -C apps/web
-      - name: Scan extracted bundle
+        run: tar -xzf "$RUNNER_TEMP/artifact/open-next.tgz" --no-same-owner -C "$RUNNER_TEMP/extracted"
+      - name: Scan extracted tree
+        run: node infra/scripts/ci/check-bundle.mjs --extracted-root "$RUNNER_TEMP/extracted"
+      # -T: si apps/web/.open-next ya existiera, falla en vez de anidar el bundle dentro.
+      - name: Move bundle into app
+        run: mv -T "$RUNNER_TEMP/extracted/.open-next" apps/web/.open-next
+      # Un symlink absoluto hacia el directorio temporal pasaba el escaneo anterior y aquí quedaría colgante.
+      - name: Scan moved bundle
         run: node infra/scripts/ci/check-bundle.mjs apps/web/.open-next
       - name: Setup pnpm
         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0

@@ -529,12 +529,22 @@ describe("check-bundle.mjs", () => {
   });
 
   describe("--tar-archive", () => {
-    type TarMember = { name: string; type?: string; linkname?: string; body?: string };
+    const POSIX_MAGIC = "ustar\x0000";
+    const GNU_MAGIC = "ustar  \0";
 
-    const tarHeader = (name: string, type: string, size: number, linkname: string): Buffer => {
+    type HeaderFormat = { magic?: string; prefix?: string };
+    type TarMember = HeaderFormat & { name: string; type?: string; linkname?: string; body?: string | Buffer };
+
+    const tarHeader = (
+      name: string,
+      type: string,
+      size: number,
+      linkname: string,
+      { magic = POSIX_MAGIC, prefix = "" }: HeaderFormat = {},
+    ): Buffer => {
       const header = Buffer.alloc(512);
       header.write(name, 0, 100, "utf8");
-      header.write("0000644\0", 100);
+      header.write(type === "5" ? "0000755\0" : "0000644\0", 100);
       header.write("0000000\0", 108);
       header.write("0000000\0", 116);
       header.write(`${size.toString(8).padStart(11, "0")}\0`, 124);
@@ -542,21 +552,21 @@ describe("check-bundle.mjs", () => {
       header.write(" ".repeat(8), 148);
       header.write(type, 156);
       header.write(linkname, 157, 100, "utf8");
-      header.write("ustar\0", 257);
-      header.write("00", 263);
+      header.write(magic, 257, 8, "latin1");
+      header.write(prefix, 345, 155, "utf8");
       const checksum = header.reduce((sum, byte) => sum + byte, 0);
       header.write(`${checksum.toString(8).padStart(6, "0")}\0 `, 148);
       return header;
     };
 
-    const member = ({ name, type = "0", linkname = "", body = "" }: TarMember): Buffer => {
-      const data = Buffer.from(body);
+    const member = ({ name, type = "0", linkname = "", body = "", ...format }: TarMember): Buffer => {
+      const data = typeof body === "string" ? Buffer.from(body) : body;
       const padding = Buffer.alloc((512 - (data.length % 512)) % 512);
-      return Buffer.concat([tarHeader(name, type, data.length, linkname), data, padding]);
+      return Buffer.concat([tarHeader(name, type, data.length, linkname, format), data, padding]);
     };
 
     const gnuLong = (type: "L" | "K", value: string): Buffer =>
-      member({ name: "././@LongLink", type, body: `${value}\0` });
+      member({ name: "././@LongLink", type, body: `${value}\0`, magic: GNU_MAGIC });
 
     const paxRecord = (key: string, value: string): string => {
       const rest = ` ${key}=${value}\n`;
@@ -738,6 +748,100 @@ describe("check-bundle.mjs", () => {
       );
     });
 
+    describe("headers that tar reads differently than a naive parser", () => {
+      const AMBIGUOUS = "check-bundle: el tar tiene headers que tar podría leer distinto\n";
+      const base = [directory(".open-next/"), file(".open-next/open-next.output.json")];
+      const bodyHiding = (name: string): Buffer => Buffer.concat([tarHeader(name, "0", 0, ""), Buffer.alloc(512)]);
+
+      // El fixture solo prueba algo si el tar del sistema de verdad saca el miembro fuera de .open-next/.
+      const systemTarLists = (archive: string, name: string): boolean =>
+        execFileSync("tar", ["-tzf", archive], { encoding: "utf8" }).split("\n").includes(name);
+
+      const expectAmbiguous = (members: Buffer[], escapedName?: string): void => {
+        const archive = writeArchive([...base, ...members]);
+        if (escapedName) expect(systemTarLists(archive, escapedName)).toBe(true);
+        const run = check(["--tar-archive", archive]);
+        expect(run.stderr).toBe(AMBIGUOUS);
+        expect(run.status).toBe(1);
+      };
+
+      it("fails closed on a non-empty prefix under GNU magic, which tar ignores", () => {
+        expectAmbiguous([member({ name: "escaped.txt", magic: GNU_MAGIC, prefix: ".open-next", body: "x" })], "escaped.txt");
+      });
+
+      it("reads the prefix only under POSIX ustar magic with version 00 and rejects any other magic", () => {
+        const posix = checkArchive([...base, member({ name: "a.js", prefix: ".open-next", body: "x" })]);
+        expect(posix.stderr).toBe("");
+        expect(posix.status).toBe(0);
+        const gnu = checkArchive([...base, member({ name: ".open-next/b.js", magic: GNU_MAGIC, body: "x" })]);
+        expect(gnu.stderr).toBe("");
+        expect(gnu.status).toBe(0);
+
+        expectAmbiguous([member({ name: "a.js", magic: "ustar\0  ", prefix: ".open-next" })]);
+        expectAmbiguous([member({ name: ".open-next/v7.js", magic: "\0".repeat(8) })]);
+      });
+
+      it("fails closed when a pax path and a GNU long name describe the same member, in either order", () => {
+        expectAmbiguous(
+          [pax({ path: "escaped-pax.txt" }), gnuLong("L", ".open-next/inside.txt"), member({ name: ".open-next/stub", body: "x" })],
+          "escaped-pax.txt",
+        );
+        expectAmbiguous([gnuLong("L", ".open-next/inside.txt"), pax({ path: "escaped-pax.txt" }), file(".open-next/stub")]);
+        expectAmbiguous([pax({ linkpath: "../../outside" }), gnuLong("K", "ok"), symlink(".open-next/l", "ok")]);
+      });
+
+      it("fails closed on repeated metadata headers for the same member", () => {
+        expectAmbiguous([gnuLong("L", ".open-next/a"), gnuLong("L", "outside"), file(".open-next/stub")]);
+        expectAmbiguous([pax({ path: ".open-next/a" }), pax({ path: "outside" }), file(".open-next/stub")]);
+      });
+
+      it("fails closed on a pax size record that would hide a member inside another one's body", () => {
+        expectAmbiguous([pax({ size: "0" }), member({ name: ".open-next/a", body: bodyHiding("escaped-size.txt") })], "escaped-size.txt");
+      });
+
+      it.each([["hdrcharset", "BINARY"], ["GNU.sparse.size", "0"], ["path", ""]])(
+        "fails closed on the pax record %s=%s, outside what the parser reproduces",
+        (key, value) => {
+          expectAmbiguous([pax({ [key]: value }), file(".open-next/stub")]);
+        },
+      );
+
+      it.each([
+        ["a prefix under GNU magic", () => [member({ name: "escaped.txt", magic: GNU_MAGIC, prefix: ".open-next" })]],
+        ["a pax path before a GNU long name", () => [pax({ path: "escaped.txt" }), gnuLong("L", ".open-next/in"), file(".open-next/s")]],
+        [
+          "a pax size that hides a member",
+          () => [pax({ size: "0" }), member({ name: ".open-next/a", body: bodyHiding("escaped.txt") })],
+        ],
+      ])("the scan of a fresh extraction catches what the system tar writes outside .open-next/ from %s", (_label, members) => {
+        const archive = writeArchive([...base, ...members()]);
+        const extracted = path.join(workDir, "extracted");
+        mkdirSync(extracted);
+        execFileSync("tar", ["-xzf", archive, "-C", extracted]);
+        const run = check(["--extracted-root", extracted]);
+        expect(run.stderr).toBe("check-bundle: la extracción dejó entradas fuera de .open-next/\n");
+        expect(run.status).toBe(1);
+      });
+
+      it("accepts the pax records tar writes for times, owners and xattrs", () => {
+        const run = checkArchive([
+          ...base,
+          pax({ mtime: "1792807896.25", "LIBARCHIVE.xattr.com.apple.provenance": "AQ", "SCHILY.xattr.user.x": "" }),
+          file(".open-next/a.js"),
+          pax({ atime: "1", ctime: "1", uid: "0", gid: "0", uname: "runner", gname: "runner", path: ".open-next/b.js" }),
+          file(".open-next/stub"),
+        ]);
+        expect(run.stderr).toBe("");
+        expect(run.status).toBe(0);
+      });
+    });
+
+    it("fails closed on data after a lone zero block, which tar never reads", () => {
+      const run = checkArchive([file(".open-next/a.js"), Buffer.alloc(512), file("escaped-zero.txt")]);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe("check-bundle: el tar está corrupto o truncado\n");
+    });
+
     it("fails closed on a missing argument, an unreadable file or something that is not gzip", () => {
       const noFile = check(["--tar-archive"]);
       expect(noFile.status).toBe(1);
@@ -775,6 +879,62 @@ describe("check-bundle.mjs", () => {
       const noEnd = check(["--tar-archive", writeArchive([file(".open-next/a.js")], Buffer.alloc(0))]);
       expect(noEnd.status).toBe(1);
       expect(noEnd.stderr).toBe("check-bundle: el tar está corrupto o truncado\n");
+    });
+  });
+
+  describe("--extracted-root", () => {
+    const OUTSIDE = "check-bundle: la extracción dejó entradas fuera de .open-next/\n";
+    const checkRoot = (): ScriptRun => check(["--extracted-root", workDir]);
+
+    it("passes when the extraction holds only a clean .open-next directory", () => {
+      const run = checkRoot();
+      expect(run.stderr).toBe("");
+      expect(run.status).toBe(0);
+    });
+
+    it.each([
+      ["a file", () => writeFileSync(path.join(workDir, "escaped.txt"), "x")],
+      ["a directory", () => mkdirSync(path.join(workDir, "apps"))],
+      ["a symlink", () => symlinkSync(".open-next", path.join(workDir, "alias"))],
+      ["a hidden file", () => writeFileSync(path.join(workDir, ".npmrc"), "x")],
+    ])("fails closed on %s next to .open-next, without printing its name", (_label, plant) => {
+      plant();
+      const run = checkRoot();
+      expect(run.stderr).toBe(OUTSIDE);
+      expect(run.status).toBe(1);
+    });
+
+    it("scans the extracted .open-next like the bundle check, and rejects it missing or as a symlink", () => {
+      write("leak.txt", syntheticPemHeader);
+      const dirty = checkRoot();
+      expect(dirty.status).toBe(1);
+      expect(dirty.stderr).toBe('check-bundle: "leak.txt": contenido con patrón de secreto\n');
+
+      rmSync(bundle, { recursive: true });
+      const missing = checkRoot();
+      expect(missing.status).toBe(1);
+      expect(missing.stderr).toBe("check-bundle: el bundle no existe\n");
+
+      const real = path.join(tmpdir(), `evzla-real-bundle-${process.pid}`);
+      mkdirSync(real, { recursive: true });
+      try {
+        symlinkSync(real, bundle);
+        const linked = checkRoot();
+        expect(linked.status).toBe(1);
+        expect(linked.stderr).toBe("check-bundle: la raíz del bundle no es un directorio\n");
+      } finally {
+        rmSync(real, { recursive: true, force: true });
+      }
+    });
+
+    it("fails closed without an extraction directory", () => {
+      const noArg = check(["--extracted-root"]);
+      expect(noArg.status).toBe(1);
+      expect(noArg.stderr).toBe("check-bundle: falta la ruta de la extracción\n");
+
+      const missing = check(["--extracted-root", path.join(workDir, "missing")]);
+      expect(missing.status).toBe(1);
+      expect(missing.stderr).toBe("check-bundle: no se pudo leer la extracción\n");
     });
   });
 

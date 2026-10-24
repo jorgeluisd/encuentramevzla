@@ -17,8 +17,17 @@ const TAR_BLOCK = 512;
 const TAR_TYPE = { file: "0", oldFile: "\0", hardlink: "1", symlink: "2", directory: "5" };
 const TAR_META_TYPE = { longName: "L", longLink: "K", pax: "x" };
 const EXTRACTABLE_TYPES = new Set([TAR_TYPE.file, TAR_TYPE.oldFile, TAR_TYPE.symlink, TAR_TYPE.directory]);
+const TAR_MAGIC = { posix: "ustar\x0000", gnu: "ustar  \0" };
+const PAX_NAME_RECORDS = new Map([
+  ["path", { source: TAR_META_TYPE.longName, field: "name" }],
+  ["linkpath", { source: TAR_META_TYPE.longLink, field: "linkname" }],
+]);
+const PAX_INERT_KEYS = new Set(["mtime", "atime", "ctime", "uid", "gid", "uname", "gname"]);
+const PAX_INERT_PREFIXES = ["LIBARCHIVE.xattr.", "SCHILY.xattr."];
 
 class CorruptTar extends Error {}
+// Lo que tar podría leer distinto que este parser se rechaza en vez de imitarlo.
+class AmbiguousTar extends Error {}
 
 const { fail, readFileOrFail } = cli("check-bundle");
 
@@ -73,29 +82,59 @@ function paxRecords(body) {
   return records;
 }
 
+function isInertPaxKey(key) {
+  return PAX_INERT_KEYS.has(key) || PAX_INERT_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
+// tar usa `prefix` solo con magic POSIX ustar "00"; con magic GNU tar lo ignora, así que uno no vacío se rechaza.
 function headerName(header) {
   const name = cString(header, 0, 100);
   const prefix = cString(header, 345, 155);
-  return prefix ? `${prefix}/${name}` : name;
+  const magic = header.toString("latin1", 257, 265);
+  if (magic === TAR_MAGIC.posix) return prefix ? `${prefix}/${name}` : name;
+  if (magic === TAR_MAGIC.gnu && prefix === "") return name;
+  throw new AmbiguousTar();
 }
 
+function withName(pending, source, field, value) {
+  if (pending.sources.has(source) || pending[field] !== undefined) throw new AmbiguousTar();
+  return { ...pending, sources: new Set([...pending.sources, source]), [field]: value };
+}
+
+// GNU tar y bsdtar dan prioridad a pax sobre L/K sin importar el orden: un miembro con ambos se rechaza.
 function applyMeta(pending, type, body) {
-  if (type === TAR_META_TYPE.longName) return { ...pending, name: cString(body, 0, body.length) };
-  if (type === TAR_META_TYPE.longLink) return { ...pending, linkname: cString(body, 0, body.length) };
-  const records = paxRecords(body);
-  return { name: records.path ?? pending.name, linkname: records.linkpath ?? pending.linkname };
+  if (type === TAR_META_TYPE.longName) return withName(pending, type, "name", cString(body, 0, body.length));
+  if (type === TAR_META_TYPE.longLink) return withName(pending, type, "linkname", cString(body, 0, body.length));
+  let next = withName(pending, type, "pax", true);
+  for (const [key, value] of Object.entries(paxRecords(body))) {
+    if (isInertPaxKey(key)) continue;
+    const record = PAX_NAME_RECORDS.get(key);
+    if (record === undefined || value === "") throw new AmbiguousTar();
+    next = withName(next, record.source, record.field, value);
+  }
+  return next;
+}
+
+function isZero(buffer) {
+  return buffer.every((byte) => byte === 0);
 }
 
 // Se leen los headers del tar en vez de parsear `tar -tv`: ese texto es ambiguo con nombres que contienen
 // " -> " o " link to ", depende del locale y difiere entre GNU tar y bsdtar.
 function tarMembers(archive) {
   const members = [];
-  let pending = {};
+  const noMeta = { sources: new Set() };
+  let pending = noMeta;
   let offset = 0;
   while (offset + TAR_BLOCK <= archive.length) {
     const header = archive.subarray(offset, offset + TAR_BLOCK);
-    if (header.every((byte) => byte === 0)) return members;
+    // tar deja de leer en el primer bloque de ceros: lo que venga después no se valida ni se extrae.
+    if (isZero(header)) {
+      if (!isZero(archive.subarray(offset))) throw new CorruptTar();
+      return members;
+    }
     if (!hasValidChecksum(header)) throw new CorruptTar();
+    const name = headerName(header);
     const size = octal(header, 124, 12);
     const bodyStart = offset + TAR_BLOCK;
     if (bodyStart + size > archive.length) throw new CorruptTar();
@@ -108,10 +147,10 @@ function tarMembers(archive) {
     }
     members.push({
       type,
-      name: pending.name ?? headerName(header),
+      name: pending.name ?? name,
       linkname: pending.linkname ?? cString(header, 157, 100),
     });
-    pending = {};
+    pending = noMeta;
   }
   throw new CorruptTar();
 }
@@ -144,6 +183,7 @@ function parseTar(archive) {
   try {
     return tarMembers(archive);
   } catch (error) {
+    if (error instanceof AmbiguousTar) return fail("el tar tiene headers que tar podría leer distinto");
     if (!(error instanceof CorruptTar)) throw error;
     return fail("el tar está corrupto o truncado");
   }
@@ -234,5 +274,23 @@ function checkBundle(dir) {
   if (violations.length > 0) fail(...violations);
 }
 
-if (process.argv[2] === "--tar-archive") checkTarArchive(process.argv[3]);
+// No depende del parser del tar: lo que tar haya escrito fuera de .open-next/ queda a la vista.
+function checkExtractedRoot(dir) {
+  if (!dir) fail("falta la ruta de la extracción");
+  let entries;
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return fail("no se pudo leer la extracción");
+  }
+  if (entries.some((entry) => entry !== BUNDLE_DIR)) fail(`la extracción dejó entradas fuera de ${BUNDLE_DIR}/`);
+  checkBundle(path.join(dir, BUNDLE_DIR));
+}
+
+const MODES = new Map([
+  ["--tar-archive", checkTarArchive],
+  ["--extracted-root", checkExtractedRoot],
+]);
+const mode = MODES.get(process.argv[2]);
+if (mode) mode(process.argv[3]);
 else checkBundle(process.argv[2]);

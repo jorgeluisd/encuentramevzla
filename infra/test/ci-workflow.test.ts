@@ -252,7 +252,10 @@ describe("deploy-production workflow — checks job", () => {
 describe("deploy-production workflow — deploy job", () => {
   const DEPLOY_ROLE_ARN = "arn:aws:iam::934106163170:role/evzla-github-deploy";
   const TAR_CHECK = 'node infra/scripts/ci/check-bundle.mjs --tar-archive "$RUNNER_TEMP/artifact/open-next.tgz"';
-  const TAR_EXTRACT = 'tar -xzf "$RUNNER_TEMP/artifact/open-next.tgz" --no-same-owner -C apps/web';
+  const EXTRACT_DIR = 'mkdir "$RUNNER_TEMP/extracted"';
+  const TAR_EXTRACT = 'tar -xzf "$RUNNER_TEMP/artifact/open-next.tgz" --no-same-owner -C "$RUNNER_TEMP/extracted"';
+  const EXTRACTED_CHECK = 'node infra/scripts/ci/check-bundle.mjs --extracted-root "$RUNNER_TEMP/extracted"';
+  const MOVE_BUNDLE = 'mv -T "$RUNNER_TEMP/extracted/.open-next" apps/web/.open-next';
   const BUNDLE_CHECK = "node infra/scripts/ci/check-bundle.mjs apps/web/.open-next";
   const INFRA_INSTALL = "pnpm install --frozen-lockfile --filter @evzla/infra...";
   const SYNTH = "pnpm exec cdk synth --ci --quiet";
@@ -287,7 +290,10 @@ describe("deploy-production workflow — deploy job", () => {
       MAIN_TIP_CHECK,
       "actions/download-artifact",
       TAR_CHECK,
+      EXTRACT_DIR,
       TAR_EXTRACT,
+      EXTRACTED_CHECK,
+      MOVE_BUNDLE,
       BUNDLE_CHECK,
       "pnpm/action-setup",
       "actions/setup-node",
@@ -343,14 +349,15 @@ describe("deploy-production workflow — deploy job", () => {
     });
   });
 
-  it("validates the tar headers before extracting and scans the extracted bundle after", () => {
-    const checked = indexOf((step) => step.run?.trim() === TAR_CHECK);
-    const extracted = indexOf((step) => step.run?.includes("tar -x") ?? false);
-    const scanned = indexOf((step) => step.run?.trim() === BUNDLE_CHECK);
-    expect(checked).toBeGreaterThan(-1);
-    expect(checked).toBeLessThan(extracted);
-    expect(extracted).toBeLessThan(scanned);
-    expect(scanned).toBeLessThan(credentialsIndex());
+  it("validates the tar headers, extracts into a fresh empty dir, scans all of it, moves .open-next into the app and rescans it there", () => {
+    const order = [TAR_CHECK, EXTRACT_DIR, TAR_EXTRACT, EXTRACTED_CHECK, MOVE_BUNDLE, BUNDLE_CHECK].map((command) =>
+      indexOf((step) => step.run?.trim() === command),
+    );
+    expect(order.every((index) => index > -1)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(order.at(-1)).toBeLessThan(credentialsIndex());
+    const extractions = deploySteps().filter((step) => /\btar\b[^\n]*-x/.test(step.run ?? ""));
+    expect(extractions.map((step) => step.run?.trim())).toEqual([TAR_EXTRACT]);
   });
 
   it("assumes the deploy role through OIDC only, never with access keys", () => {
