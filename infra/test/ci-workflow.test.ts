@@ -290,8 +290,7 @@ describe("deploy-production workflow — checks job", () => {
 
 describe("deploy-production workflow — deploy job", () => {
   const DEPLOY_ROLE_ARN = "arn:aws:iam::934106163170:role/evzla-github-deploy";
-  const TAR_LIST = 'tar -tzf "$RUNNER_TEMP/artifact/open-next.tgz" > "$RUNNER_TEMP/open-next.entries"';
-  const TAR_CHECK = 'node infra/scripts/ci/check-bundle.mjs --tar-entries "$RUNNER_TEMP/open-next.entries"';
+  const TAR_CHECK = 'node infra/scripts/ci/check-bundle.mjs --tar-archive "$RUNNER_TEMP/artifact/open-next.tgz"';
   const TAR_EXTRACT = 'tar -xzf "$RUNNER_TEMP/artifact/open-next.tgz" --no-same-owner -C apps/web';
   const BUNDLE_CHECK = "node infra/scripts/ci/check-bundle.mjs apps/web/.open-next";
   const INFRA_INSTALL = "pnpm install --frozen-lockfile --filter @evzla/infra...";
@@ -326,7 +325,6 @@ describe("deploy-production workflow — deploy job", () => {
       "actions/checkout",
       MAIN_TIP_CHECK,
       "actions/download-artifact",
-      TAR_LIST,
       TAR_CHECK,
       TAR_EXTRACT,
       BUNDLE_CHECK,
@@ -384,13 +382,11 @@ describe("deploy-production workflow — deploy job", () => {
     });
   });
 
-  it("validates the tar entries before extracting and scans the extracted bundle after", () => {
-    const listed = indexOf((step) => step.run?.trim() === TAR_LIST);
+  it("validates the tar headers before extracting and scans the extracted bundle after", () => {
     const checked = indexOf((step) => step.run?.trim() === TAR_CHECK);
     const extracted = indexOf((step) => step.run?.includes("tar -x") ?? false);
     const scanned = indexOf((step) => step.run?.trim() === BUNDLE_CHECK);
-    expect(listed).toBeGreaterThan(-1);
-    expect(listed).toBeLessThan(checked);
+    expect(checked).toBeGreaterThan(-1);
     expect(checked).toBeLessThan(extracted);
     expect(extracted).toBeLessThan(scanned);
     expect(scanned).toBeLessThan(credentialsIndex());

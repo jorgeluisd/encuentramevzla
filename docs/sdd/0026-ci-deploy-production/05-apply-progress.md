@@ -254,3 +254,27 @@ Decisiones menores:
 - El comentario de synth ahora dice que no hay claves STS pero el job tiene `id-token: write` y install/synth podrían pedir un token OIDC (riesgo aceptado que va a GATE 2).
 Notas para el verifier:
 - El fetch del chequeo corre sin credenciales (`persist-credentials: false`): funciona porque el repo es público. Si el repo pasara a privado, este paso fallaría cerrado.
+
+
+## T-16 — Symlinks por `realpath` y validación del tar por headers   estado: terminada
+TDD: ON (estricto)
+Safety net: `pnpm --filter @evzla/infra test -- test/ci-workflow.test.ts test/ci-scripts.test.ts` → PASS `Tests 115 passed (115)` (2026-10-23T04:41:32Z)
+Archivos tocados: [infra/scripts/ci/check-bundle.mjs, .github/workflows/deploy-production.yml, infra/test/ci-scripts.test.ts, infra/test/ci-workflow.test.ts, docs/sdd/0026-ci-deploy-production/05-apply-progress.md]
+Desviaciones respecto al plan: el plan pedía listar el tar en modo verboso (`tar -tvzf`) y validar ese texto. En su lugar `--tar-entries` se reemplaza por `--tar-archive`: el script lee los headers del tar (ustar, GNU long name/link y pax `path`/`linkpath`) con `node:zlib`, sin dependencias. El texto de `tar -tv` es ambiguo con nombres que contienen " -> " o " link to ", depende del locale y difiere entre GNU tar y bsdtar. El workflow pierde el paso "List bundle tarball".
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+| RED | check-bundle sobre el bundle extraído: symlink que escapa por otro symlink interno, cadena cuyo último salto sale, colgante y ciclo, hardlinks | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts -t "check-bundle"` | FAIL (razón: comportamiento ausente, guarda léxica) · `Tests 4 failed \| 22 passed \| 42 skipped (68)` | 2026-10-23T04:43:05Z |
+| GREEN | ídem (`realpathSync.native` + `nlink > 1`) | ídem | PASS · `Tests 26 passed \| 42 skipped (68)` | 2026-10-23T04:43:43Z |
+| RED | `--tar-archive`: tipos, hardlinks, destinos de symlink, ruta a través de un symlink, GNU long name/link, pax, tar corrupto/truncado, tar del sistema; orden del workflow | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts test/ci-workflow.test.ts -t "tar"` | FAIL (razón: comportamiento ausente, el modo no existe) · `Tests 19 failed \| 5 passed \| 110 skipped (134)` | 2026-10-23T04:45:14Z |
+| GREEN | ídem | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts test/ci-workflow.test.ts` | PASS · `Tests 134 passed (134)` | 2026-10-23T04:46:44Z |
+| TRIANGULATE | tar del sistema con nombres largos y con " -> " / " link to ", juzgando el destino real del link | `pnpm --filter @evzla/infra test -- --reporter=dot test/ci-workflow.test.ts test/ci-scripts.test.ts` | PASS · `Tests 135 passed (135)` | 2026-10-24T00:43:44Z |
+| REFACTOR | — (sin cambios tras el verde) | `pnpm typecheck && pnpm lint && pnpm test` | PASS · `exit=0` (infra 212) | 2026-10-24T00:45:25Z |
+Checks locales: typecheck ✔ "Tasks: 5 successful, 5 total" · lint ✔ "Tasks: 5 successful, 5 total" · tests ✔ "Tasks: 4 successful, 4 total" (infra 212, core 286, db 20, web 61)
+Commit: (este) fix(ci): validate tar headers and real symlink targets in check-bundle
+Decisiones menores:
+- Las corridas FAIL de 2026-10-23T04:47:03Z y 2026-10-24T00:13:41Z del TRIANGULATE no fueron un RED del script, sino un fixture mal armado: `link("server-functions/evil -> default/index.mjs", "../../outside")` deja el symlink dentro del directorio `evil -> default/`, así que el destino cae en `.open-next/outside`, dentro del bundle. Se corrigió el fixture a `../../../outside`; el script no cambió.
+- `realpathSync.native` (libc) en lugar de `realpathSync`: la versión JS normaliza `link/..` de forma léxica antes de seguir el link.
+- Los symlinks colgantes o en ciclo se rechazan (fail closed): el bundle real no los trae.
+- Se rechaza toda entrada del tar cuya ruta pase por un symlink del mismo tar, aunque apunte adentro: tar la escribiría siguiendo el link.
+Notas para el verifier:
+- Los tests del tar del sistema corren `tar` local con `COPYFILE_DISABLE=1` (bsdtar en macOS, GNU tar en el runner); los fixtures sintéticos cubren pax y GNU long name/link con independencia del tar instalado.

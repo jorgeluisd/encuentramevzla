@@ -1,10 +1,11 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 const scriptsDir = fileURLToPath(new URL("../scripts/ci/", import.meta.url));
@@ -347,7 +348,8 @@ describe("check-bundle.mjs", () => {
   });
 
   it("fails on a symlink pointing outside the bundle by absolute path or by ../..", () => {
-    link("server-functions/default/host", "/etc/hostname");
+    writeFileSync(path.join(workDir, "outside.txt"), "x");
+    link("server-functions/default/host", path.join(workDir, "outside.txt"));
     link("server-functions/up", "../..");
     const run = check();
     expect(run.status).toBe(1);
@@ -376,6 +378,53 @@ describe("check-bundle.mjs", () => {
     const run = check();
     expect(run.status).toBe(1);
     expect(run.stderr).toBe('check-bundle: "server-functions/sibling": symlink fuera del bundle\n');
+  });
+
+  it("fails on a symlink that escapes through another internal symlink, judged by its real target", () => {
+    link("a/up", "..");
+    link("a/out", "up/..");
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe('check-bundle: "a/out": symlink fuera del bundle\n');
+  });
+
+  it("fails on every link of a chain whose last hop leaves the bundle", () => {
+    writeFileSync(path.join(workDir, "outside.txt"), "x");
+    link("server-functions/first", "second");
+    link("server-functions/second", "../../outside.txt");
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(
+      'check-bundle: "server-functions/first": symlink fuera del bundle\n' +
+        'check-bundle: "server-functions/second": symlink fuera del bundle\n',
+    );
+  });
+
+  it("fails closed on a dangling symlink and on a symlink cycle, even inside the bundle", () => {
+    link("server-functions/default/ghost", "missing.js");
+    link("server-functions/ping", "pong");
+    link("server-functions/pong", "ping");
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(
+      'check-bundle: "server-functions/default/ghost": symlink colgante o en ciclo\n' +
+        'check-bundle: "server-functions/ping": symlink colgante o en ciclo\n' +
+        'check-bundle: "server-functions/pong": symlink colgante o en ciclo\n',
+    );
+  });
+
+  it("fails on hardlinked files, inside the bundle or shared with a file outside it", () => {
+    mkdirSync(path.join(bundle, "assets"));
+    linkSync(path.join(bundle, "server-functions/default/index.mjs"), path.join(bundle, "assets/copy.mjs"));
+    writeFileSync(path.join(workDir, "outside.txt"), "x");
+    linkSync(path.join(workDir, "outside.txt"), path.join(bundle, "server-functions/out.txt"));
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(
+      'check-bundle: "assets/copy.mjs": hardlink no permitido\n' +
+        'check-bundle: "server-functions/default/index.mjs": hardlink no permitido\n' +
+        'check-bundle: "server-functions/out.txt": hardlink no permitido\n',
+    );
   });
 
   it("does not descend into an internal symlink loop", () => {
@@ -454,21 +503,104 @@ describe("check-bundle.mjs", () => {
     expect(linked.stderr).toBe("check-bundle: la raíz del bundle no es un directorio\n");
   });
 
-  describe("--tar-entries", () => {
-    const checkEntries = (listing: string): ScriptRun => {
-      const listFile = path.join(workDir, "entries.txt");
-      writeFileSync(listFile, listing);
-      return check(["--tar-entries", listFile]);
+  describe("--tar-archive", () => {
+    type TarMember = { name: string; type?: string; linkname?: string; body?: string };
+
+    const tarHeader = (name: string, type: string, size: number, linkname: string): Buffer => {
+      const header = Buffer.alloc(512);
+      header.write(name, 0, 100, "utf8");
+      header.write("0000644\0", 100);
+      header.write("0000000\0", 108);
+      header.write("0000000\0", 116);
+      header.write(`${size.toString(8).padStart(11, "0")}\0`, 124);
+      header.write("00000000000\0", 136);
+      header.write(" ".repeat(8), 148);
+      header.write(type, 156);
+      header.write(linkname, 157, 100, "utf8");
+      header.write("ustar\0", 257);
+      header.write("00", 263);
+      const checksum = header.reduce((sum, byte) => sum + byte, 0);
+      header.write(`${checksum.toString(8).padStart(6, "0")}\0 `, 148);
+      return header;
     };
 
-    it("passes when every entry is under .open-next/", () => {
-      const run = checkEntries(".open-next/\n.open-next/open-next.output.json\n.open-next/server-functions/default/index.mjs\n");
+    const member = ({ name, type = "0", linkname = "", body = "" }: TarMember): Buffer => {
+      const data = Buffer.from(body);
+      const padding = Buffer.alloc((512 - (data.length % 512)) % 512);
+      return Buffer.concat([tarHeader(name, type, data.length, linkname), data, padding]);
+    };
+
+    const gnuLong = (type: "L" | "K", value: string): Buffer =>
+      member({ name: "././@LongLink", type, body: `${value}\0` });
+
+    const paxRecord = (key: string, value: string): string => {
+      const rest = ` ${key}=${value}\n`;
+      let length = rest.length;
+      while (`${length}${rest}`.length !== length) length = `${length}${rest}`.length;
+      return `${length}${rest}`;
+    };
+
+    const pax = (records: Record<string, string>): Buffer =>
+      member({
+        name: "PaxHeader",
+        type: "x",
+        body: Object.entries(records)
+          .map(([key, value]) => paxRecord(key, value))
+          .join(""),
+      });
+
+    const END_OF_ARCHIVE = Buffer.alloc(1024);
+
+    const writeArchive = (members: Buffer[], end: Buffer = END_OF_ARCHIVE): string => {
+      const archive = path.join(workDir, "open-next.tgz");
+      writeFileSync(archive, gzipSync(Buffer.concat([...members, end])));
+      return archive;
+    };
+
+    const checkArchive = (members: Buffer[]): ScriptRun => check(["--tar-archive", writeArchive(members)]);
+
+    const systemTar = (): string => {
+      const archive = path.join(workDir, "system.tgz");
+      execFileSync("tar", ["-C", workDir, "-czf", archive, ".open-next"], {
+        env: { PATH: process.env.PATH ?? "", COPYFILE_DISABLE: "1" },
+      });
+      return archive;
+    };
+
+    const directory = (name: string): Buffer => member({ name, type: "5" });
+    const file = (name: string): Buffer => member({ name, body: "export {};\n" });
+    const symlink = (name: string, linkname: string): Buffer => member({ name, type: "2", linkname });
+
+    it("passes on the system tar of a bundle with pnpm-style relative symlinks", () => {
+      write("server-functions/default/node_modules/.pnpm/next@1.0.0/node_modules/next/index.js", "export {};\n");
+      link("server-functions/default/node_modules/next", ".pnpm/next@1.0.0/node_modules/next");
+      link("server-functions/default/node_modules/.pnpm/next@1.0.0/node_modules/dep", "../../dep@2.0.0/node_modules/dep");
+      write("server-functions/default/node_modules/.pnpm/dep@2.0.0/node_modules/dep/index.js", "export {};\n");
+      const run = check(["--tar-archive", systemTar()]);
       expect(run.stderr).toBe("");
       expect(run.status).toBe(0);
     });
 
-    it("rejects absolute paths, .. segments and entries outside .open-next/, by line number only", () => {
-      const run = checkEntries(
+    it("reads long names and names with ' -> ' or ' link to ' from the system tar, judging the real link target", () => {
+      write(`${"n".repeat(70)}/${"m".repeat(70)}/a -> b link to c.js`, "export {};\n");
+      link("server-functions/arrow -> x", "default/index.mjs");
+      expect(check(["--tar-archive", systemTar()]).status).toBe(0);
+
+      link("server-functions/evil -> default/index.mjs", "../../../outside");
+      const run = check(["--tar-archive", systemTar()]);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toMatch(/^check-bundle: entrada \d+ del tar: symlink fuera de \.open-next\/\n$/);
+    });
+
+    it("rejects the hardlink entry that the system tar writes for a hardlinked file", () => {
+      linkSync(path.join(bundle, "server-functions/default/index.mjs"), path.join(bundle, "twin.mjs"));
+      const run = check(["--tar-archive", systemTar()]);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toMatch(/^check-bundle: entrada \d+ del tar: hardlink no permitido\n$/);
+    });
+
+    it("rejects absolute paths, .. segments and names outside .open-next/, by entry number only", () => {
+      const run = checkArchive(
         [
           ".open-next/ok.js",
           "/etc/passwd",
@@ -478,27 +610,146 @@ describe("check-bundle.mjs", () => {
           "..",
           ".open-next-evil/x",
           ".open-next/a/../../b",
-        ].join("\n") + "\n",
+        ].map(file),
       );
       expect(run.status).toBe(1);
       expect(run.stderr).toBe(
-        [2, 3, 4, 5, 6, 7, 8].map((line) => `check-bundle: entrada ${line} del tar fuera de .open-next/\n`).join(""),
+        [2, 3, 4, 5, 6, 7, 8].map((entry) => `check-bundle: entrada ${entry} del tar fuera de .open-next/\n`).join(""),
       );
       expect(run.stderr).not.toContain("passwd");
     });
 
-    it("fails closed on an empty listing or an unreadable listing file", () => {
-      const empty = checkEntries("\n");
-      expect(empty.status).toBe(1);
-      expect(empty.stderr).toBe("check-bundle: el tar no tiene entradas\n");
+    it("accepts relative symlinks that stay inside .open-next/ and directory entries", () => {
+      const run = checkArchive([
+        directory(".open-next/"),
+        file(".open-next/server/x.js"),
+        symlink(".open-next/ok", "server/x.js"),
+        symlink(".open-next/n/m", "../ok"),
+        symlink(".open-next/self", "."),
+      ]);
+      expect(run.stderr).toBe("");
+      expect(run.status).toBe(0);
+    });
 
-      const unreadable = check(["--tar-entries", path.join(workDir, "missing.txt")]);
-      expect(unreadable.status).toBe(1);
-      expect(unreadable.stderr).toBe("check-bundle: no se pudo leer la lista de entradas del tar\n");
+    it("rejects symlinks with an absolute, empty or escaping target, without printing it", () => {
+      const run = checkArchive([
+        symlink(".open-next/a", "/etc/passwd"),
+        symlink(".open-next/b", "../outside"),
+        symlink(".open-next/c/d", "../../.open-next-evil"),
+        symlink(".open-next/e", ""),
+        symlink(".open-next/f", ".."),
+      ]);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe(
+        [1, 2, 3, 4, 5].map((entry) => `check-bundle: entrada ${entry} del tar: symlink fuera de .open-next/\n`).join(""),
+      );
+      expect(run.stderr).not.toContain("passwd");
+    });
 
-      const noFile = check(["--tar-entries"]);
+    it("rejects hardlink entries even when their target is inside .open-next/", () => {
+      const run = checkArchive([file(".open-next/a.js"), member({ name: ".open-next/b.js", type: "1", linkname: ".open-next/a.js" })]);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe("check-bundle: entrada 2 del tar: hardlink no permitido\n");
+    });
+
+    it("rejects any entry whose path goes through a symlink entry, before or after it", () => {
+      const run = checkArchive([
+        file(".open-next/early/x.js"),
+        symlink(".open-next/early", "sub"),
+        symlink(".open-next/late", "sub"),
+        file(".open-next/late/y.js"),
+        file(".open-next/lateral.js"),
+      ]);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe(
+        "check-bundle: entrada 1 del tar: ruta a través de un symlink\n" +
+          "check-bundle: entrada 4 del tar: ruta a través de un symlink\n",
+      );
+    });
+
+    it.each([
+      ["a character device", "3"],
+      ["a block device", "4"],
+      ["a fifo", "6"],
+      ["a contiguous file", "7"],
+      ["a global pax header", "g"],
+      ["an unknown type", "Z"],
+    ])("rejects %s entry", (_label, type) => {
+      const run = checkArchive([file(".open-next/a.js"), member({ name: ".open-next/dev", type })]);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe("check-bundle: entrada 2 del tar: tipo de entrada no permitido\n");
+    });
+
+    it("honors GNU long names and long link names instead of the truncated header", () => {
+      const deep = `.open-next/${"d".repeat(120)}/index.js`;
+      const run = checkArchive([
+        gnuLong("L", deep),
+        file(".open-next/short"),
+        gnuLong("L", "../evil"),
+        file(".open-next/hidden"),
+        gnuLong("K", "/etc/passwd"),
+        symlink(".open-next/l", "ok"),
+      ]);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe(
+        "check-bundle: entrada 2 del tar fuera de .open-next/\n" +
+          "check-bundle: entrada 3 del tar: symlink fuera de .open-next/\n",
+      );
+    });
+
+    it("honors pax path and linkpath records instead of the header fields", () => {
+      const run = checkArchive([
+        pax({ path: `.open-next/${"p".repeat(150)}.js` }),
+        file(".open-next/short"),
+        pax({ path: "/etc/passwd" }),
+        file(".open-next/hidden"),
+        pax({ linkpath: "../../outside" }),
+        symlink(".open-next/l", "ok"),
+      ]);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe(
+        "check-bundle: entrada 2 del tar fuera de .open-next/\n" +
+          "check-bundle: entrada 3 del tar: symlink fuera de .open-next/\n",
+      );
+    });
+
+    it("fails closed on a missing argument, an unreadable file or something that is not gzip", () => {
+      const noFile = check(["--tar-archive"]);
       expect(noFile.status).toBe(1);
-      expect(noFile.stderr).toBe("check-bundle: falta la ruta de la lista de entradas del tar\n");
+      expect(noFile.stderr).toBe("check-bundle: falta la ruta del tar\n");
+
+      const missing = check(["--tar-archive", path.join(workDir, "missing.tgz")]);
+      expect(missing.status).toBe(1);
+      expect(missing.stderr).toBe("check-bundle: no se pudo leer el tar\n");
+
+      const plain = path.join(workDir, "plain.tgz");
+      writeFileSync(plain, "not gzip");
+      const notGzip = check(["--tar-archive", plain]);
+      expect(notGzip.status).toBe(1);
+      expect(notGzip.stderr).toBe("check-bundle: no se pudo leer el tar\n");
+    });
+
+    it("fails closed on an empty archive", () => {
+      const run = checkArchive([]);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe("check-bundle: el tar no tiene entradas\n");
+    });
+
+    it("fails closed on a bad header checksum, a truncated body or a missing end of archive", () => {
+      const tampered = file(".open-next/a.js");
+      tampered.write("x", 0);
+      const badChecksum = checkArchive([tampered]);
+      expect(badChecksum.status).toBe(1);
+      expect(badChecksum.stderr).toBe("check-bundle: el tar está corrupto o truncado\n");
+
+      const truncatedBody = member({ name: ".open-next/big.js", body: "x".repeat(2000) }).subarray(0, 1024);
+      const truncated = check(["--tar-archive", writeArchive([truncatedBody], Buffer.alloc(0))]);
+      expect(truncated.status).toBe(1);
+      expect(truncated.stderr).toBe("check-bundle: el tar está corrupto o truncado\n");
+
+      const noEnd = check(["--tar-archive", writeArchive([file(".open-next/a.js")], Buffer.alloc(0))]);
+      expect(noEnd.status).toBe(1);
+      expect(noEnd.stderr).toBe("check-bundle: el tar está corrupto o truncado\n");
     });
   });
 

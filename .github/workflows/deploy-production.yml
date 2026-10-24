@@ -115,10 +115,8 @@ jobs:
         with:
           name: open-next-${{ github.run_id }}
           path: ${{ runner.temp }}/artifact
-      - name: List bundle tarball
-        run: tar -tzf "$RUNNER_TEMP/artifact/open-next.tgz" > "$RUNNER_TEMP/open-next.entries"
       - name: Check tarball entries
-        run: node infra/scripts/ci/check-bundle.mjs --tar-entries "$RUNNER_TEMP/open-next.entries"
+        run: node infra/scripts/ci/check-bundle.mjs --tar-archive "$RUNNER_TEMP/artifact/open-next.tgz"
       - name: Extract bundle
         run: tar -xzf "$RUNNER_TEMP/artifact/open-next.tgz" --no-same-owner -C apps/web
       - name: Scan extracted bundle
