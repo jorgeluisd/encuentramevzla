@@ -9,7 +9,7 @@
 - Orden migraciones (a mano) → merge → deploy documentado. Fuera: migraciones automáticas, deploy de Blockealo, re-bootstrap, cuenta AWS propia.
 - Cada AC indica verificación: [CDK] assertions, [STATIC] parseo de YAML/archivos, [SMOKE], [MANUAL].
 
-ESTADO: borrador
+ESTADO: implementada (c0f30fd)
 
 ## OBJETIVO · ACTORES
 Desplegar producción de forma reproducible desde un SHA conocido, con checks obligatorios, sin claves AWS de larga vida y sin que código de terceros instalado por `pnpm install` corra con credenciales AWS.

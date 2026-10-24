@@ -565,6 +565,10 @@ flowchart LR
 **no revierte el esquema de base**: solo es seguro si el código viejo es compatible con el esquema que
 está hoy en producción.
 
+Tampoco revierte solo la app: el deploy del SHA viejo despliega el `EvzlaStack` completo (infra) y corre los
+scripts de `infra/scripts/ci/` de ese SHA, es decir, también revierte cambios de infraestructura y los
+guardas del CI hechos desde entonces. Antes de un rollback, revisar `git diff <sha-viejo>..main -- infra/ .github/`.
+
 ### Migraciones → app
 
 - El CI **nunca** migra ni tiene acceso a la RDS.
