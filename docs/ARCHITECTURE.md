@@ -519,7 +519,7 @@ credenciales temporales por **OIDC**: no hay access keys de AWS en GitHub.
 
 ```mermaid
 flowchart LR
-    M["Migración de base<br/>(a mano, si hace falta)"] --> PR["PR a main<br/>resolve + checks"]
+    M["Migración de base<br/>(a mano, si hace falta)"] --> PR["PR a develop o main<br/>resolve + checks"]
     PR --> MG["Merge a main"]
     MG --> C["resolve + checks + build"]
     C --> A{"Aprobación<br/>environment Production"}
@@ -527,7 +527,7 @@ flowchart LR
     D --> S["smoke / · /admin · /servicios · 404"]
 ```
 
-1. **PR a `main`** → jobs `resolve` y `checks`: `pnpm install --frozen-lockfile`, validación de
+1. **PR a `develop` o a `main`** → jobs `resolve` y `checks`: `pnpm install --frozen-lockfile`, validación de
    `apps/web/.env.production` (solo variables públicas), `pnpm lint`, `pnpm typecheck`, `pnpm test`,
    `pnpm audit --audit-level=high`, `build:aws` y validación del bundle de OpenNext. En un PR no se sube
    artifact, no hay `id-token` y el job `deploy` se omite.

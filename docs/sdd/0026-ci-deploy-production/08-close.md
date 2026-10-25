@@ -42,7 +42,7 @@ Nuevos, origen riesgo residual / pendientes operativos (no son código de esta f
 - OP-2 Hecho: releases #122 y #125 a `main`.
 - OP-3 Hecho salvo el paso 6 (opcional): `EvzlaCiStack` desplegado a mano el 2026-10-25 (output `DeployRoleArn` igual al literal del workflow); environment `Production` con reviewer `jorgeluisd` y solo `main`; primera corrida aprobada con el `sub` correcto. Pendiente opcional: `workflow_dispatch` con `ref` inválido.
 - OP-4 Resuelto en el runner: el bundle real no trae hardlinks y GNU tar pasó `--tar-archive` y `--extracted-root`. Sigue vigente: el `git fetch` sin credenciales de `check-main-tip` depende de que el repo sea público.
-- OP-5 El workflow solo corre en PRs a `main`: los PRs a `develop` no tienen CI y un cambio en `infra/scripts/ci/` se prueba recién en el release.
+- OP-5 Hecho: `resolve` y `checks` corren también en PRs a `develop`; `deploy` sigue limitado a push a `main`.
 - OP-6 Dependabot `github-actions` con `target-branch: develop` (#126); `npm` sin `target-branch` para no perder las security updates.
 - Mitigación futura: cuenta AWS propia (ADR-0011).
 
@@ -50,5 +50,4 @@ Nuevos, origen riesgo residual / pendientes operativos (no son código de esta f
 Guardadas en Engram desde la sesión principal: bundle como tarball por symlinks pnpm, parser de tar fail-closed frente a GNU tar, excepción 72 h de body-parser, `.env.production` copiado al bundle, primer deploy exitoso.
 
 ## PRÓXIMO PASO SUGERIDO
-1. Evaluar correr `checks` también en PRs a `develop` (OP-5).
-2. Opcional: paso 6 de `04-plan.md`.
+1. Opcional: paso 6 de `04-plan.md`.
