@@ -130,9 +130,9 @@ La privacidad de los pacientes es un **requisito innegociable** del diseño:
 
 **En producción en AWS** (`sa-east-1`) desde el **9 de octubre de 2026**, desplegado desde `main`;
 Supabase y Vercel quedaron dados de baja ese día (ver [ADR-0010](adr/0010-migracion-supabase-vercel-a-aws.md)).
-Calidad: typecheck 5/5 paquetes · **630 tests** (core 286 · db 20 · web 61 · infra 263) · `build` y
+Calidad: typecheck 5/5 paquetes · **636 tests** (core 286 · db 20 · web 61 · infra 269) · `build` y
 `build:aws` OK. Specs `0001`–`0025` · migraciones SQL `0001`–`0020` · ADRs `0001`–`0011`. Deploy por GitHub Actions + OIDC
-(feature `0026`, PR #120 en `develop`, `c0f30fd`; ver `docs/ARCHITECTURE.md` §11).
+(feature `0026`, primer deploy por CI el 2026-10-25; ver `docs/ARCHITECTURE.md` §11).
 
 **Implementado:**
 - **Buscador público** mobile-first: nombres agrupados por hospital (opción "abierta", consentida por la
@@ -149,9 +149,8 @@ Calidad: typecheck 5/5 paquetes · **630 tests** (core 286 · db 20 · web 61 ·
 - **Cola de revisión humana** (`/admin/review`) + **ejecución de la fusión** de pacientes.
 
 **Pendiente:**
-- **Deploy CI/CD (0026):** pasos operativos antes del primer deploy: (1) release `develop` → `main`;
-  (2) pasos manuales de `docs/sdd/0026-ci-deploy-production/04-plan.md`.
-  Deuda de hardening/tests de baja severidad en `docs/sdd/0026-ci-deploy-production/08-close.md`.
+- **Deploy CI/CD (0026):** deuda de hardening/tests de baja severidad en
+  `docs/sdd/0026-ci-deploy-production/08-close.md`.
 - **Base de datos:** versionar en el repo los roles `evzla_*`, sus grants y `purge_search_log()` (hoy
   solo en los scripts de la migración, `draft/aws-migration/`).
 - **Opcional:** Service Worker PWA · extraer `@evzla/infrastructure` · undo de fusión · CSV en ingesta ·
