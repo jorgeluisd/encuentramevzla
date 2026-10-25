@@ -546,6 +546,10 @@ flowchart LR
    desplegada, aunque no la base: si la base falla, la página igual responde 200 con la lista vacía.
    Nunca toca el buscador ni `/api` (no deja filas en `search_log` ni manda correos). Si falla, el job queda
    en rojo; **no hay rollback automático**.
+6. **Después del release**: el PR `develop` → `main` se mergea con **merge commit**, así que `develop`
+   queda un commit (el merge) detrás de `main`. En vez de un PR de vuelta, se avanza `develop` por
+   fast-forward: `git fetch origin && git push origin origin/main:develop`. Git rechaza el push si no es
+   fast-forward; requiere el bypass de admin del ruleset de `develop` y no cambia archivos.
 
 ### Rol OIDC y sus límites
 
