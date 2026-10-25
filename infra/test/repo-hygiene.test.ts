@@ -190,6 +190,7 @@ type DependabotGroup = { patterns?: string[]; "applies-to"?: string };
 type DependabotUpdate = {
   "package-ecosystem": string;
   directory: string;
+  "target-branch"?: string;
   schedule?: { interval?: string };
   "open-pull-requests-limit"?: number;
   groups?: Record<string, DependabotGroup>;
@@ -211,6 +212,7 @@ describe("dependabot.yml", () => {
   it("updates github-actions monthly at the root in a single group covering every action", () => {
     const actions = updateFor("github-actions");
     expect(actions?.directory).toBe("/");
+    expect(actions?.["target-branch"]).toBe("develop");
     expect(actions?.schedule?.interval).toBe("monthly");
     expect(actions?.["commit-message"]?.prefix).toBe("chore(ci)");
     const groups = Object.values(actions?.groups ?? {});
@@ -222,6 +224,8 @@ describe("dependabot.yml", () => {
     const npm = updateFor("npm");
     expect(npm?.directory).toBe("/");
     expect(npm?.["open-pull-requests-limit"]).toBe(0);
+    // Con target-branch las security updates de npm dejarían de abrirse.
+    expect(npm?.["target-branch"]).toBeUndefined();
     const securityGroups = Object.values(npm?.groups ?? {}).filter((group) => group["applies-to"] === "security-updates");
     expect(securityGroups).toHaveLength(1);
     expect(securityGroups[0]?.patterns).toEqual(["*"]);
