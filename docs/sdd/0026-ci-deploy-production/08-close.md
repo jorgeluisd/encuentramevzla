@@ -24,7 +24,7 @@ No se movió: `docs/sdd/0026-ci-deploy-production/` queda en su lugar (ADR-0011 
 ## BACKLOG
 Vive en la sección "Pendiente" de `README.md` (el repo no tiene archivo de backlog); el detalle va aquí. Cerrados por este PR: ninguno del backlog previo.
 
-Nuevos, origen revisión/seguridad (todos baja salvo indicación; no bloquean):
+Nuevos, origen revisión/seguridad (todos baja salvo indicación; no bloquean). **Cerrados B-1..B-12 por 0028** (`docs/sdd/0028-ci-hardening-backlog/`); B-10 sin cambio de código: la evidencia ya estaba en `05-apply-progress.md` y los deploys por CI la confirmaron.
 - B-1 N-3 (07-security): `goesThroughSymlink` no normaliza; `.open-next//s/x` evade la detección. Contenido hoy por `linkStaysInBundle` y los scans post-extracción. Fix: rechazar segmentos vacíos en `isBundleEntry`. PoC `doubleSlash` sigue en exit 0.
 - B-2 N-4: `gunzipSync` sin `maxOutputLength` (DoS de memoria en el runner; falla cerrado).
 - B-3 Destino léxico de symlinks en el tar (`check-bundle.mjs` `linkStaysInBundle`): `c -> .` + `a -> c/../x` pasa `--tar-archive`; hoy lo rechaza el scan por `realpath`. Rechazar destinos que pasen por otro symlink del tar, o documentar la dependencia.
@@ -50,6 +50,5 @@ Nuevos, origen riesgo residual / pendientes operativos (no son código de esta f
 Guardadas en Engram desde la sesión principal: bundle como tarball por symlinks pnpm, parser de tar fail-closed frente a GNU tar, excepción 72 h de body-parser, `.env.production` copiado al bundle, primer deploy exitoso.
 
 ## PRÓXIMO PASO SUGERIDO
-1. Tanda de higiene con B-1..B-12 (una sola feature pequeña, TDD).
-2. Evaluar correr `checks` también en PRs a `develop` (OP-5).
-3. Opcional: paso 6 de `04-plan.md`.
+1. Evaluar correr `checks` también en PRs a `develop` (OP-5).
+2. Opcional: paso 6 de `04-plan.md`.

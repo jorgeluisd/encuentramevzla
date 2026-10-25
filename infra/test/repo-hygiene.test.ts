@@ -4,10 +4,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { isolatedGitEnv } from "./support/git-env.js";
 
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const publicEnvFile = "apps/web/.env.production";
-const isolatedGitEnv = { PATH: process.env.PATH ?? "", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
 
 function git(...args: string[]): { status: number | null; stdout: string } {
   const result = spawnSync("git", args, { cwd: repoRoot, encoding: "utf8", env: isolatedGitEnv });
@@ -72,7 +72,9 @@ describe("apps/web/.env.production", () => {
 });
 
 describe("secret scan", () => {
-  // Los patrones se arman por partes para que este archivo no se detecte a sí mismo.
+  // Los patrones se arman por partes para que este archivo no se detecte a sí mismo. No se importan de
+  // check-bundle.mjs a propósito: allí el nombre de la secret key de AWS exige un valor asignado (el AWS SDK
+  // del bundle lo menciona), y en el repo cualquier mención ya es sospechosa.
   const secretPatterns = [
     new RegExp("AKIA" + "[0-9A-Z]{16}"),
     new RegExp("aws_secret" + "_access_key", "i"),
@@ -129,16 +131,16 @@ describe("deploy documentation (AC-30)", () => {
   });
 
   it.each([
-    ["manual migration over the SSM tunnel as evzla_owner", /túnel SSM[^.]*evzla_owner[^.]*OK explícito/i],
+    ["manual migration over the SSM tunnel as evzla_owner", /túnel SSM[\s\S]{0,200}?evzla_owner[\s\S]{0,200}?OK explícito/i],
     ["migration before merging to main", /antes de mergear a main/i],
     ["approval of the Production environment", /environment Production/],
     ["deploy of EvzlaStack", /cdk deploy EvzlaStack/],
     ["smoke after the deploy", /smoke contra https:\/\/encuentramevzla\.com/i],
-    ["expand/contract in separate PRs", /expand\/contract[^.]*PR distint/i],
+    ["expand/contract in separate PRs", /expand\/contract[\s\S]{0,200}?PR distint/i],
     ["rollback by workflow_dispatch with ref", /workflow_dispatch desde main con el input ref/],
-    ["rollback only with a compatible schema", /no revierte el esquema[^.]*solo es seguro si el código viejo es compatible/i],
+    ["rollback only with a compatible schema", /no revierte el esquema[\s\S]{0,200}?solo es seguro si el código viejo es compatible/i],
     ["manual deploy of EvzlaCiStack", /cdk --app "pnpm exec tsx bin\/evzla-ci\.ts" deploy EvzlaCiStack/],
-    ["residual cfn-exec risk", /cfn-exec[^.]*AdministratorAccess/],
+    ["residual cfn-exec risk", /cfn-exec[\s\S]{0,200}?AdministratorAccess/],
   ])("ARCHITECTURE § 11 documents the %s", (_label, pattern) => {
     expect(deployProse).toMatch(pattern);
   });
@@ -174,13 +176,13 @@ describe("ADR-0011 (AC-31)", () => {
   });
 
   it.each([
-    ["build without credentials in checks", /checks[^.]*sin credenciales/],
+    ["build without credentials in checks", /checks[\s\S]{0,200}?sin credenciales/],
     ["deploy from the artifact of the same run", /artifact del mismo run/],
     ["no own CDK bootstrap", /sin bootstrap propio/],
     ["configure-aws-credentials v6", /configure-aws-credentials v6/],
     ["Production environment as a manual requirement", /requisito manual/],
-    ["residual cfn-exec risk", /Riesgo residual:[^.]*cfn-exec/],
-    ["own AWS account as future mitigation", /Mitigación futura[^.]*cuenta AWS propia/],
+    ["residual cfn-exec risk", /Riesgo residual:[\s\S]{0,200}?cfn-exec/],
+    ["own AWS account as future mitigation", /Mitigación futura[\s\S]{0,200}?cuenta AWS propia/],
   ])("describes the %s", (_label, pattern) => {
     expect(adr).toMatch(pattern);
   });
