@@ -69,11 +69,14 @@ describe("EvzlaCiStack", () => {
   });
 
   it("allows only sts:AssumeRole on the six cdk bootstrap roles of both regions", () => {
-    const expectedArns = ["deploy", "file-publishing", "lookup"].flatMap((role) =>
-      ["sa-east-1", "us-east-1"].map(
-        (region) => `arn:aws:iam::934106163170:role/cdk-hnb659fds-${role}-role-934106163170-${region}`,
-      ),
-    );
+    const expectedArns = [
+      "arn:aws:iam::934106163170:role/cdk-hnb659fds-deploy-role-934106163170-sa-east-1",
+      "arn:aws:iam::934106163170:role/cdk-hnb659fds-deploy-role-934106163170-us-east-1",
+      "arn:aws:iam::934106163170:role/cdk-hnb659fds-file-publishing-role-934106163170-sa-east-1",
+      "arn:aws:iam::934106163170:role/cdk-hnb659fds-file-publishing-role-934106163170-us-east-1",
+      "arn:aws:iam::934106163170:role/cdk-hnb659fds-lookup-role-934106163170-sa-east-1",
+      "arn:aws:iam::934106163170:role/cdk-hnb659fds-lookup-role-934106163170-us-east-1",
+    ];
     const policies = Object.values(resources).filter((r) => r.Type === "AWS::IAM::Policy");
     expect(policies).toHaveLength(1);
     expect(deployRole().Properties).not.toHaveProperty("ManagedPolicyArns");
