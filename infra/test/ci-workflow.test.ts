@@ -82,9 +82,10 @@ describe("deploy-production workflow — triggers and permissions", () => {
     expect(existsSync(workflowPath)).toBe(true);
   });
 
-  it("triggers only on PR to main, push to main and manual dispatch with an optional ref", () => {
+  // Los PRs a develop también corren resolve y checks; deploy sigue limitado a push a main.
+  it("triggers only on PR to main or develop, push to main and manual dispatch with an optional ref", () => {
     expect(workflow.on).toEqual({
-      pull_request: { branches: ["main"] },
+      pull_request: { branches: ["main", "develop"] },
       push: { branches: ["main"] },
       workflow_dispatch: {
         inputs: { ref: { description: expect.any(String), type: "string", required: false, default: "" } },
