@@ -4,3 +4,7 @@
 
 # Dueño global por defecto
 *       @jorgeluisd
+
+# CI/CD e infraestructura: un cambio aquí puede desplegar a producción
+/.github/ @jorgeluisd
+/infra/   @jorgeluisd

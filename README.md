@@ -27,6 +27,18 @@ pnpm dev            # arranca apps en modo desarrollo (turbo)
 Scripts raíz (turbo): `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 Bundle para AWS Lambda (OpenNext): `pnpm --filter @evzla/web build:aws` → `apps/web/.open-next/`.
 
+## Deploy
+
+Producción se despliega desde GitHub Actions con OIDC (sin access keys): cada PR a `main` corre los
+checks; el merge a `main` vuelve a correrlos, construye el bundle, espera la aprobación del environment
+`Production`, despliega `EvzlaStack` y hace un smoke de `/` y `/admin`. El rollback es un
+`workflow_dispatch` con `ref` (SHA o tag ancestro de `main`) y no revierte el esquema. **Migraciones →
+app:** las migraciones de base se aplican a mano en producción, compatibles con el código que está
+corriendo (expand/contract), antes de mergear a `main`; el CI nunca migra. El rol del CI (`EvzlaCiStack`)
+se despliega a mano una sola vez desde `infra/`:
+`pnpm exec cdk --app "pnpm exec tsx bin/evzla-ci.ts" deploy EvzlaCiStack`.
+Detalle en [docs/ARCHITECTURE.md § 11. Deploy](docs/ARCHITECTURE.md#11-deploy).
+
 ## Arquitectura y estructura
 
 **Onion + Screaming Architecture.** Código en **inglés**, comentarios cortos en **español**,
@@ -118,8 +130,9 @@ La privacidad de los pacientes es un **requisito innegociable** del diseño:
 
 **En producción en AWS** (`sa-east-1`) desde el **9 de octubre de 2026**, desplegado desde `main`;
 Supabase y Vercel quedaron dados de baja ese día (ver [ADR-0010](adr/0010-migracion-supabase-vercel-a-aws.md)).
-Calidad: typecheck 5/5 paquetes · **395 tests** (core 286 · db 20 · web 61 · infra 28) · `build` y
-`build:aws` OK. Specs `0001`–`0025` · migraciones SQL `0001`–`0020` · ADRs `0001`–`0010`.
+Calidad: typecheck 5/5 paquetes · **630 tests** (core 286 · db 20 · web 61 · infra 263) · `build` y
+`build:aws` OK. Specs `0001`–`0025` · migraciones SQL `0001`–`0020` · ADRs `0001`–`0011`. Deploy por GitHub Actions + OIDC
+(feature `0026`, PR #120 en `develop`, `c0f30fd`; ver `docs/ARCHITECTURE.md` §11).
 
 **Implementado:**
 - **Buscador público** mobile-first: nombres agrupados por hospital (opción "abierta", consentida por la
@@ -136,6 +149,9 @@ Calidad: typecheck 5/5 paquetes · **395 tests** (core 286 · db 20 · web 61 ·
 - **Cola de revisión humana** (`/admin/review`) + **ejecución de la fusión** de pacientes.
 
 **Pendiente:**
+- **Deploy CI/CD (0026):** pasos operativos antes del primer deploy: (1) release `develop` → `main`;
+  (2) pasos manuales de `docs/sdd/0026-ci-deploy-production/04-plan.md`.
+  Deuda de hardening/tests de baja severidad en `docs/sdd/0026-ci-deploy-production/08-close.md`.
 - **Base de datos:** versionar en el repo los roles `evzla_*`, sus grants y `purge_search_log()` (hoy
   solo en los scripts de la migración, `draft/aws-migration/`).
 - **Opcional:** Service Worker PWA · extraer `@evzla/infrastructure` · undo de fusión · CSV en ingesta ·

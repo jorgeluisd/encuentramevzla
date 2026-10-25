@@ -507,3 +507,82 @@ toca. El RPC `search_patient` **jamás** lee de este schema.
 
 > Nota: existe una excepción documentada (ADR-0003) — el buscador hoy **sí** muestra la ubicación de
 > menores y fallecidos, por decisión humana explícita del dueño del dato.
+
+---
+
+## 11. Deploy
+
+Producción se despliega **solo** desde GitHub Actions (`.github/workflows/deploy-production.yml`) con
+credenciales temporales por **OIDC**: no hay access keys de AWS en GitHub.
+
+### Flujo
+
+```mermaid
+flowchart LR
+    M["Migración de base<br/>(a mano, si hace falta)"] --> PR["PR a main<br/>resolve + checks"]
+    PR --> MG["Merge a main"]
+    MG --> C["resolve + checks + build"]
+    C --> A{"Aprobación<br/>environment Production"}
+    A --> D["deploy (cdk deploy EvzlaStack)"]
+    D --> S["smoke / y /admin"]
+```
+
+1. **PR a `main`** → jobs `resolve` y `checks`: `pnpm install --frozen-lockfile`, validación de
+   `apps/web/.env.production` (solo variables públicas), `pnpm lint`, `pnpm typecheck`, `pnpm test`,
+   `pnpm audit --audit-level=high`, `build:aws` y validación del bundle de OpenNext. En un PR no se sube
+   artifact, no hay `id-token` y el job `deploy` se omite.
+2. **Merge a `main`** (`push`) → los mismos `checks` sobre el SHA mergeado; además empaquetan
+   `apps/web/.open-next` en un tarball y lo suben como artifact del run (retención 1 día).
+3. **Aprobación**: el job `deploy` usa el environment **`Production`**, que exige al reviewer y solo
+   admite la rama `main`. Sin aprobación no hay deploy.
+4. **Deploy**: descarga el artifact de **ese mismo run**, revalida el bundle, instala solo
+   `@evzla/infra`, corre `cdk synth` **antes** de pedir credenciales, asume el rol OIDC y ejecuta
+   `cdk deploy EvzlaStack` (más las stacks de las que depende, sin cambios si no los hay) con
+   `--require-approval never`. Un solo deploy a la vez (`concurrency: deploy-production`, sin cancelar el
+   que está en curso). Escribe un resumen con el SHA desplegado.
+5. **Smoke** contra `https://encuentramevzla.com`: `/` responde 200 con el título del sitio y `/admin`
+   redirige a `/admin/login`. Nunca toca el buscador ni `/api` (no deja filas en `search_log`). Si falla,
+   el job queda en rojo; **no hay rollback automático**.
+
+### Rol OIDC y sus límites
+
+- Rol IAM **`evzla-github-deploy`** (stack `EvzlaCiStack`, cuenta `934106163170`), sesión máxima de 1 hora.
+- Trust con `StringEquals` literal: `aud = sts.amazonaws.com` y
+  `sub = repo:jorgeluisd/encuentramevzla:environment:Production`. Un PR, otra rama, otro repo o un
+  environment con otro nombre no pueden asumirlo.
+- Su única política es `sts:AssumeRole` sobre los roles del bootstrap de CDK `deploy`, `file-publishing`
+  y `lookup` (`sa-east-1` y `us-east-1`). No asume `cfn-exec` ni `image-publishing` directamente.
+- `id-token: write` solo existe en el job `deploy`; el resto del workflow tiene `contents: read`. Las
+  acciones van fijadas por SHA y el input del dispatch nunca se interpola en un script.
+- `EvzlaCiStack` **no** lo despliega el CI: se despliega a mano, una vez, desde `infra/`:
+  `pnpm exec cdk --app "pnpm exec tsx bin/evzla-ci.ts" deploy EvzlaCiStack` (con `diff` antes).
+
+### Rollback
+
+`workflow_dispatch` desde `main` con el input **`ref`**: un SHA de 40 hex o un tag que sea ancestro de
+`origin/main` (vacío = el commit actual). `resolve` lo valida (si no existe o no es ancestro, falla ahí),
+`checks` recompila desde ese ref y sube su artifact, y el deploy pide la **misma aprobación**. El rollback
+**no revierte el esquema de base**: solo es seguro si el código viejo es compatible con el esquema que
+está hoy en producción.
+
+Tampoco revierte solo la app: el deploy del SHA viejo despliega el `EvzlaStack` completo (infra) y corre los
+scripts de `infra/scripts/ci/` de ese SHA, es decir, también revierte cambios de infraestructura y los
+guardas del CI hechos desde entonces. Antes de un rollback, revisar `git diff <sha-viejo>..main -- infra/ .github/`.
+
+### Migraciones → app
+
+- El CI **nunca** migra ni tiene acceso a la RDS.
+- Las migraciones de base se aplican **a mano** en producción (túnel SSM, rol `evzla_owner`, OK explícito
+  del dueño) **antes de mergear a `main`**, y deben ser compatibles con el código que está corriendo.
+- Patrón **expand/contract** en PR distintos: primero la migración aditiva (expand), después el PR de la
+  app que la usa; el contract (borrar o restringir) va en un PR posterior, cuando ningún código
+  desplegado ni ningún SHA de rollback razonable lo necesite. Nunca contract en el mismo PR que la app.
+- Detalle operativo en `.claude/skills/db-prod-scripts.md`.
+
+### Riesgo residual aceptado
+
+La cuenta AWS es compartida (Blockealo). El rol `deploy` del bootstrap de CDK pasa a CloudFormation el
+rol `cfn-exec`, que tiene **AdministratorAccess**: un job aprobado y malicioso podría actuar sobre toda la
+cuenta. Controles: reviewer obligatorio en `Production` y solo rama `main`, CODEOWNERS, acciones fijadas
+por SHA y un rol OIDC que solo salta a los roles del bootstrap. Mitigación futura: cuenta AWS propia en
+Organizations (ver ADR-0011).
