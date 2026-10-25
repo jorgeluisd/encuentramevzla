@@ -37,6 +37,10 @@ git log -1 --format='%B' | grep -iE 'co-authored-by|claude-session|anthropic|cla
   git switch -c <tipo>/<descripcion-corta>   # p. ej. feat/buscador-nombres
   ```
 - Nombres de rama en inglés, kebab-case, con prefijo de tipo: `feat/…`, `fix/…`, `chore/…`, `docs/…`.
+- **Release**: PR `develop` → `main` con **merge commit** (nunca squash ni rebase: generan commits nuevos y
+  las ramas divergen). Tras el merge, `develop` se avanza por fast-forward, sin PR de vuelta:
+  `git fetch origin && git push origin origin/main:develop` (con confirmación del usuario; usa el bypass
+  de admin del ruleset).
 
 ## 3. Dos preguntas OBLIGATORIAS al agente
 

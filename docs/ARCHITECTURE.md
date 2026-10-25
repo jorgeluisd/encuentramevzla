@@ -519,7 +519,7 @@ credenciales temporales por **OIDC**: no hay access keys de AWS en GitHub.
 
 ```mermaid
 flowchart LR
-    M["Migración de base<br/>(a mano, si hace falta)"] --> PR["PR a main<br/>resolve + checks"]
+    M["Migración de base<br/>(a mano, si hace falta)"] --> PR["PR a develop o main<br/>resolve + checks"]
     PR --> MG["Merge a main"]
     MG --> C["resolve + checks + build"]
     C --> A{"Aprobación<br/>environment Production"}
@@ -527,7 +527,7 @@ flowchart LR
     D --> S["smoke / · /admin · /servicios · 404"]
 ```
 
-1. **PR a `main`** → jobs `resolve` y `checks`: `pnpm install --frozen-lockfile`, validación de
+1. **PR a `develop` o a `main`** → jobs `resolve` y `checks`: `pnpm install --frozen-lockfile`, validación de
    `apps/web/.env.production` (solo variables públicas), `pnpm lint`, `pnpm typecheck`, `pnpm test`,
    `pnpm audit --audit-level=high`, `build:aws` y validación del bundle de OpenNext. En un PR no se sube
    artifact, no hay `id-token` y el job `deploy` se omite.
@@ -546,6 +546,10 @@ flowchart LR
    desplegada, aunque no la base: si la base falla, la página igual responde 200 con la lista vacía.
    Nunca toca el buscador ni `/api` (no deja filas en `search_log` ni manda correos). Si falla, el job queda
    en rojo; **no hay rollback automático**.
+6. **Después del release**: el PR `develop` → `main` se mergea con **merge commit**, así que `develop`
+   queda un commit (el merge) detrás de `main`. En vez de un PR de vuelta, se avanza `develop` por
+   fast-forward: `git fetch origin && git push origin origin/main:develop`. Git rechaza el push si no es
+   fast-forward; requiere el bypass de admin del ruleset de `develop` y no cambia archivos.
 
 ### Rol OIDC y sus límites
 

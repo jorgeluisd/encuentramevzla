@@ -29,7 +29,7 @@ Bundle para AWS Lambda (OpenNext): `pnpm --filter @evzla/web build:aws` → `app
 
 ## Deploy
 
-Producción se despliega desde GitHub Actions con OIDC (sin access keys): cada PR a `main` corre los
+Producción se despliega desde GitHub Actions con OIDC (sin access keys): cada PR a `develop` o a `main` corre los
 checks; el merge a `main` vuelve a correrlos, construye el bundle, espera la aprobación del environment
 `Production`, despliega `EvzlaStack` y hace un smoke de `/`, `/admin`, `/servicios` y una ruta 404. El rollback es un
 `workflow_dispatch` con `ref` (SHA o tag ancestro de `main`) y no revierte el esquema. **Migraciones →
