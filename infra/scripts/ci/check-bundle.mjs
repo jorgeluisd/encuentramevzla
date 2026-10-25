@@ -2,9 +2,10 @@ import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { gunzipSync } from "node:zlib";
-import { cli } from "./cli.mjs";
+import { cli, publicEnvViolations } from "./cli.mjs";
 
 const BUNDLE_DIR = ".open-next";
+const PUBLIC_ENV_FILE = ".env.production";
 
 // Los patrones se arman por partes para que este archivo no case con el escaneo de secretos del repo.
 const SECRET_PATTERNS = [
@@ -232,6 +233,16 @@ function isForbiddenName(name) {
   return lower === ".env" || lower.startsWith(".env.") || lower.endsWith(".pem") || lower.endsWith(".key");
 }
 
+// Next.js copia el .env.production versionado a la función del servidor; solo pasa si todo es NEXT_PUBLIC_.
+function nameViolation(entry, full, label) {
+  if (entry.isFile() && entry.name === PUBLIC_ENV_FILE) {
+    return publicEnvViolations(readFileSync(full, "utf8")).length > 0
+      ? [`${label}: .env con claves que no son NEXT_PUBLIC_`]
+      : [];
+  }
+  return isForbiddenName(entry.name) ? [`${label}: nombre de archivo prohibido`] : [];
+}
+
 function isInside(root, target) {
   const relative = path.relative(root, target);
   return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
@@ -259,7 +270,8 @@ function violationOf(root, dir, entry) {
   const label = JSON.stringify(path.relative(root, full));
   if (entry.isDirectory()) return violationsIn(root, full);
   if (!entry.isFile() && !entry.isSymbolicLink()) return [`${label}: tipo de archivo no permitido`];
-  if (isForbiddenName(entry.name)) return [`${label}: nombre de archivo prohibido`];
+  const badName = nameViolation(entry, full, label);
+  if (badName.length > 0) return badName;
   if (entry.isSymbolicLink()) return symlinkViolation(root, full, label);
   // Un hardlink comparte inodo con un archivo que puede estar fuera del bundle; pnpm no los deja en .open-next.
   if (lstatSync(full).nlink > 1) return [`${label}: hardlink no permitido`];

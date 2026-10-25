@@ -370,6 +370,41 @@ describe("check-bundle.mjs", () => {
     expect(run.stderr + run.stdout).not.toContain("synthetic-secret-value");
   });
 
+  // Next.js copia el .env.production versionado dentro de la función del servidor.
+  it("passes on a .env.production with only NEXT_PUBLIC_ keys", () => {
+    write("server-functions/default/apps/web/.env.production", "# público\nNEXT_PUBLIC_SITE_KEY=synthetic-public\n");
+    const run = check();
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
+  });
+
+  it.each([
+    ["a non-public key", "NEXT_PUBLIC_SITE_KEY=ok\nDB_PASSWORD=synthetic-secret-value\n"],
+    ["a line that is not an assignment", "synthetic-secret-value\n"],
+  ])("fails on a .env.production with %s, listing only its path", (_label, contents) => {
+    write("server-functions/default/apps/web/.env.production", contents);
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(
+      'check-bundle: "server-functions/default/apps/web/.env.production": .env con claves que no son NEXT_PUBLIC_\n',
+    );
+    expect(run.stderr + run.stdout).not.toContain("synthetic-secret-value");
+  });
+
+  it.each([".env.production.local", ".ENV.PRODUCTION"])("still forbids %s", (name) => {
+    write(`server-functions/default/${name}`, "NEXT_PUBLIC_SITE_KEY=ok\n");
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(`check-bundle: "server-functions/default/${name}": nombre de archivo prohibido\n`);
+  });
+
+  it("still forbids a .env.production symlink", () => {
+    link("server-functions/default/.env.production", "index.mjs");
+    const run = check();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe('check-bundle: "server-functions/default/.env.production": nombre de archivo prohibido\n');
+  });
+
   it.each([
     ["an AWS access key id", () => `const k = "${syntheticAccessKeyId}";`],
     ["a private key PEM header", () => `${syntheticPemHeader}\nsynthetic-body\n`],
