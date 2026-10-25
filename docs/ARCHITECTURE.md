@@ -524,7 +524,7 @@ flowchart LR
     MG --> C["resolve + checks + build"]
     C --> A{"Aprobación<br/>environment Production"}
     A --> D["deploy (cdk deploy EvzlaStack)"]
-    D --> S["smoke / y /admin"]
+    D --> S["smoke / · /admin · /servicios · 404"]
 ```
 
 1. **PR a `main`** → jobs `resolve` y `checks`: `pnpm install --frozen-lockfile`, validación de
@@ -540,9 +540,12 @@ flowchart LR
    `cdk deploy EvzlaStack` (más las stacks de las que depende, sin cambios si no los hay) con
    `--require-approval never`. Un solo deploy a la vez (`concurrency: deploy-production`, sin cancelar el
    que está en curso). Escribe un resumen con el SHA desplegado.
-5. **Smoke** contra `https://encuentramevzla.com`: `/` responde 200 con el título del sitio y `/admin`
-   redirige a `/admin/login`. Nunca toca el buscador ni `/api` (no deja filas en `search_log`). Si falla,
-   el job queda en rojo; **no hay rollback automático**.
+5. **Smoke** contra `https://encuentramevzla.com`: `/` responde 200 con el título del sitio, `/admin`
+   redirige a `/admin/login`, `/servicios` responde 200 con su texto estable y `/__smoke-no-existe` da 404.
+   `/` sale de la caché de CloudFront; `/servicios` (`force-dynamic`) es el chequeo que prueba la Lambda
+   desplegada, aunque no la base: si la base falla, la página igual responde 200 con la lista vacía.
+   Nunca toca el buscador ni `/api` (no deja filas en `search_log` ni manda correos). Si falla, el job queda
+   en rojo; **no hay rollback automático**.
 
 ### Rol OIDC y sus límites
 

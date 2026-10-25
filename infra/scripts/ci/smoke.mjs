@@ -11,6 +11,7 @@ const { fail } = cli("smoke");
 const ATTEMPTS = 5;
 const STABLE_TITLE = "<title>EncuéntrameVzla —";
 const ADMIN_LOGIN_PATH = "/admin/login";
+const SERVICES_TEXT = "Ayuda gratuita tras el sismo";
 
 function millisecondsFromEnv(name, fallback) {
   const value = Number(process.env[name]);
@@ -27,13 +28,24 @@ function baseUrlFrom(arg) {
   return url.protocol === "https:" || url.protocol === "http:" ? url : undefined;
 }
 
-async function checkHome(response) {
-  if (response.status !== 200) {
-    await response.body?.cancel();
-    return { ok: false };
-  }
-  const body = await response.text();
-  return body.includes(STABLE_TITLE) ? { ok: true } : { ok: false, reason: "título ausente" };
+function pageContaining(text, missingReason) {
+  return async (response) => {
+    if (response.status !== 200) {
+      await response.body?.cancel();
+      return { ok: false };
+    }
+    const body = await response.text();
+    return body.includes(text) ? { ok: true } : { ok: false, reason: missingReason };
+  };
+}
+
+const checkHome = pageContaining(STABLE_TITLE, "título ausente");
+// `/` sale de la caché de CloudFront; /servicios es force-dynamic y se renderiza en la Lambda desplegada.
+const checkServices = pageContaining(SERVICES_TEXT, "texto ausente");
+
+async function checkNotFound(response) {
+  await response.body?.cancel();
+  return { ok: response.status === 404 };
 }
 
 async function checkAdmin(response, url) {
@@ -45,8 +57,13 @@ async function checkAdmin(response, url) {
   return isTeamLogin ? { ok: true } : { ok: false, reason: "redirección inesperada" };
 }
 
-// Nunca el buscador ni /api: el smoke no debe dejar filas en search_log (AC-29).
-const CHECKS = { "/": checkHome, "/admin": checkAdmin };
+// Nunca el buscador ni /api: el smoke no debe dejar filas en search_log ni mandar correos.
+const CHECKS = {
+  "/": checkHome,
+  "/admin": checkAdmin,
+  "/servicios": checkServices,
+  "/__smoke-no-existe": checkNotFound,
+};
 export const SMOKE_PATHS = Object.keys(CHECKS);
 
 async function attempt(baseUrl, smokePath, timeoutMs) {
