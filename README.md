@@ -130,7 +130,7 @@ La privacidad de los pacientes es un **requisito innegociable** del diseño:
 
 **En producción en AWS** (`sa-east-1`) desde el **9 de octubre de 2026**, desplegado desde `main`;
 Supabase y Vercel quedaron dados de baja ese día (ver [ADR-0010](adr/0010-migracion-supabase-vercel-a-aws.md)).
-Calidad: typecheck 5/5 paquetes · **638 tests** (core 286 · db 20 · web 61 · infra 271) · `build` y
+Calidad: typecheck 5/5 paquetes · **643 tests** (core 286 · db 20 · web 61 · infra 276) · `build` y
 `build:aws` OK. Specs `0001`–`0025` · migraciones SQL `0001`–`0020` · ADRs `0001`–`0011`. Deploy por GitHub Actions + OIDC
 (feature `0026`, primer deploy por CI el 2026-10-25; ver `docs/ARCHITECTURE.md` §11).
 

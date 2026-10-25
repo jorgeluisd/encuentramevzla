@@ -15,14 +15,17 @@ const SECRET_PATTERNS = [
 ];
 
 const TAR_BLOCK = 512;
+// El bundle real pesa ~32 MB; el tope evita que un gzip malicioso agote la memoria del runner.
+const MAX_TAR_BYTES = 512 * 1024 * 1024;
 const TAR_TYPE = { file: "0", oldFile: "\0", hardlink: "1", symlink: "2", directory: "5" };
 const TAR_META_TYPE = { longName: "L", longLink: "K", pax: "x" };
 const DATA_TYPES = new Set([TAR_TYPE.file, TAR_TYPE.oldFile, ...Object.values(TAR_META_TYPE)]);
 const EXTRACTABLE_TYPES = new Set([TAR_TYPE.file, TAR_TYPE.oldFile, TAR_TYPE.symlink, TAR_TYPE.directory]);
 const TAR_MAGIC = { posix: "ustar\x0000", gnu: "ustar  \0" };
+// Cada registro pax de nombre choca con el header GNU que fija el mismo campo.
 const PAX_NAME_RECORDS = new Map([
-  ["path", { source: TAR_META_TYPE.longName, field: "name" }],
-  ["linkpath", { source: TAR_META_TYPE.longLink, field: "linkname" }],
+  ["path", { conflictsWith: TAR_META_TYPE.longName, field: "name" }],
+  ["linkpath", { conflictsWith: TAR_META_TYPE.longLink, field: "linkname" }],
 ]);
 const PAX_INERT_KEYS = new Set(["mtime", "atime", "ctime", "uid", "gid", "uname", "gname"]);
 const PAX_INERT_PREFIXES = ["LIBARCHIVE.xattr.", "SCHILY.xattr."];
@@ -44,7 +47,9 @@ function isBundleEntry(entry) {
 
 function readArchive(archiveFile) {
   if (!archiveFile) fail("falta la ruta del tar");
-  return readFileOrFail(archiveFile, "no se pudo leer el tar", gunzipSync);
+  return readFileOrFail(archiveFile, "no se pudo leer el tar", (gzip) =>
+    gunzipSync(gzip, { maxOutputLength: MAX_TAR_BYTES }),
+  );
 }
 
 function cString(buffer, offset, length) {
@@ -100,21 +105,26 @@ function headerName(header) {
   throw new AmbiguousTar();
 }
 
+function withSource(pending, source) {
+  if (pending.sources.has(source)) throw new AmbiguousTar();
+  return { ...pending, sources: new Set([...pending.sources, source]) };
+}
+
 function withName(pending, source, field, value) {
-  if (pending.sources.has(source) || pending[field] !== undefined) throw new AmbiguousTar();
-  return { ...pending, sources: new Set([...pending.sources, source]), [field]: value };
+  if (pending[field] !== undefined) throw new AmbiguousTar();
+  return { ...withSource(pending, source), [field]: value };
 }
 
 // GNU tar y bsdtar dan prioridad a pax sobre L/K sin importar el orden: un miembro con ambos se rechaza.
 function applyMeta(pending, type, body) {
   if (type === TAR_META_TYPE.longName) return withName(pending, type, "name", cString(body, 0, body.length));
   if (type === TAR_META_TYPE.longLink) return withName(pending, type, "linkname", cString(body, 0, body.length));
-  let next = withName(pending, type, "pax", true);
+  let next = withSource(pending, type);
   for (const [key, value] of paxRecords(body)) {
     if (isInertPaxKey(key)) continue;
     const record = PAX_NAME_RECORDS.get(key);
     if (record === undefined || value === "") throw new AmbiguousTar();
-    next = withName(next, record.source, record.field, value);
+    next = withName(next, record.conflictsWith, record.field, value);
   }
   return next;
 }
@@ -170,6 +180,23 @@ function linkStaysInBundle(member) {
   return isBundleEntry(path.posix.join(path.posix.dirname(memberPath(member.name)), member.linkname));
 }
 
+// GNU tar escribe los directorios con "/" final; cualquier otro segmento vacío es ambiguo.
+function hasEmptySegment(name) {
+  return memberPath(name).split("/").includes("");
+}
+
+// Sin normalizar: "c/../x" pasa por c aunque el resultado léxico quede dentro del bundle.
+function targetGoesThroughSymlink(member, symlinkPaths) {
+  const segments = [...path.posix.dirname(memberPath(member.name)).split("/"), ...member.linkname.split("/")];
+  const resolved = [];
+  return segments.slice(0, -1).some((segment) => {
+    if (segment === "" || segment === ".") return false;
+    if (segment === "..") resolved.pop();
+    else resolved.push(segment);
+    return symlinkPaths.has(resolved.join("/"));
+  });
+}
+
 function goesThroughSymlink(name, symlinkPaths) {
   const segments = memberPath(name).split("/");
   return segments.some((_, index) => index > 0 && symlinkPaths.has(segments.slice(0, index).join("/")));
@@ -177,9 +204,13 @@ function goesThroughSymlink(name, symlinkPaths) {
 
 function memberViolation(member, symlinkPaths) {
   if (!isBundleEntry(member.name)) return ` fuera de ${BUNDLE_DIR}/`;
+  if (hasEmptySegment(member.name)) return ": ruta con segmentos vacíos";
   if (member.type === TAR_TYPE.hardlink) return ": hardlink no permitido";
   if (!EXTRACTABLE_TYPES.has(member.type)) return ": tipo de entrada no permitido";
   if (member.type === TAR_TYPE.symlink && !linkStaysInBundle(member)) return `: symlink fuera de ${BUNDLE_DIR}/`;
+  if (member.type === TAR_TYPE.symlink && targetGoesThroughSymlink(member, symlinkPaths)) {
+    return ": destino a través de un symlink";
+  }
   // tar escribiría ese miembro siguiendo el symlink extraído antes; aunque apunte adentro, no hay motivo legítimo.
   if (goesThroughSymlink(member.name, symlinkPaths)) return ": ruta a través de un symlink";
   return null;

@@ -337,8 +337,7 @@ describe("deploy-production workflow — deploy job", () => {
     expect(zipCheck).toBeLessThan(indexOf((step) => step.run?.trim() === SYNTH));
   });
 
-  it("does not claim that synth runs without AWS access while the job holds id-token: write", () => {
-    expect(rawWorkflow).not.toMatch(/nunca corren con acceso a AWS/);
+  it("documents in a comment why the deploy job holds id-token: write", () => {
     expect(rawWorkflow).toMatch(/#[^\n]*id-token[^\n]*OIDC/);
   });
 

@@ -17,11 +17,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { isolatedGitEnv } from "./support/git-env.js";
 
 const scriptsDir = fileURLToPath(new URL("../scripts/ci/", import.meta.url));
-
-// La config global del desarrollador (firma de tags, hooks) no debe alterar los repos sintéticos.
-const isolatedGitEnv = { PATH: process.env.PATH ?? "", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
 
 type ScriptRun = { status: number | null; stdout: string; stderr: string; output: string };
 
@@ -46,10 +44,26 @@ function runScript(script: string, cwd: string, env: Record<string, string>, arg
 describe("scripts/ci imports", () => {
   const scripts = readdirSync(scriptsDir).filter((file) => file.endsWith(".mjs"));
 
+  const IMPORT_FORMS =
+    /^(?:import|export)\b[^;"']*?\bfrom\s+["']([^"']+)["']|^import\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/gm;
+  const importSpecifiers = (source: string): (string | undefined)[] =>
+    [...source.matchAll(IMPORT_FORMS)].map((match) => match[1] ?? match[2] ?? match[3]);
+
+  it("finds every import form: from, side-effect, re-export and dynamic", () => {
+    const source = [
+      'import { a } from "node:fs";',
+      'import "side-effect";',
+      'export { b } from "re-export";',
+      'export * from "star";',
+      'const c = await import("dynamic");',
+    ].join("\n");
+    expect(importSpecifiers(source)).toEqual(["node:fs", "side-effect", "re-export", "star", "dynamic"]);
+  });
+
   // El job `resolve` corre sin `pnpm install`: solo node:* y el helper local compartido.
   it.each(scripts)("%s imports only node:* modules or ./cli.mjs", (script) => {
     const source = readFileSync(path.join(scriptsDir, script), "utf8");
-    const specifiers = [...source.matchAll(/^import\b[^;]*?from\s+"([^"]+)"/gm)].map((match) => match[1]);
+    const specifiers = importSpecifiers(source);
     expect(specifiers.length).toBeGreaterThan(0);
     for (const specifier of specifiers) expect(specifier).toMatch(/^node:|^\.\/cli\.mjs$/);
   });
@@ -248,10 +262,14 @@ describe("check-main-tip.mjs", () => {
 
   it("fails closed when origin cannot be fetched", () => {
     const offline = mkdtempSync(path.join(tmpdir(), "evzla-main-tip-offline-"));
-    gitIn(offline, "init", "--quiet", "--initial-branch=main");
-    gitIn(offline, "remote", "add", "origin", `file://${path.join(offline, "missing.git")}`);
-    const run = runScript("check-main-tip.mjs", offline, { EXPECTED_SHA: newerSha });
-    rmSync(offline, { recursive: true, force: true });
+    let run: ScriptRun;
+    try {
+      gitIn(offline, "init", "--quiet", "--initial-branch=main");
+      gitIn(offline, "remote", "add", "origin", `file://${path.join(offline, "missing.git")}`);
+      run = runScript("check-main-tip.mjs", offline, { EXPECTED_SHA: newerSha });
+    } finally {
+      rmSync(offline, { recursive: true, force: true });
+    }
     expect(run.status).toBe(1);
     expect(run.stderr).toContain("no se pudo leer la punta de origin/main");
   });
@@ -725,6 +743,37 @@ describe("check-bundle.mjs", () => {
         [1, 2, 3, 4, 5].map((entry) => `check-bundle: entrada ${entry} del tar: symlink fuera de .open-next/\n`).join(""),
       );
       expect(run.stderr).not.toContain("passwd");
+    });
+
+    it("rejects names with an empty segment in the middle but keeps the trailing slash of directories", () => {
+      const run = checkArchive([directory(".open-next/dir/"), file(".open-next//s/x.js"), file(".open-next/a//b.js")]);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe(
+        [2, 3].map((entry) => `check-bundle: entrada ${entry} del tar: ruta con segmentos vacíos\n`).join(""),
+      );
+    });
+
+    // Destino léxico dentro del bundle, pero tar lo resolvería siguiendo el symlink c.
+    it("rejects a symlink whose target goes through another symlink of the archive", () => {
+      const run = checkArchive([symlink(".open-next/c", "."), symlink(".open-next/a", "c/../x")]);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe("check-bundle: entrada 2 del tar: destino a través de un symlink\n");
+    });
+
+    it("still accepts a symlink that names another symlink directly", () => {
+      const run = checkArchive([file(".open-next/real.js"), symlink(".open-next/b", "real.js"), symlink(".open-next/a", "b")]);
+      expect(run.stderr).toBe("");
+      expect(run.status).toBe(0);
+    });
+
+    it("stops decompressing past the size limit instead of exhausting memory", () => {
+      // Miembros gzip concatenados: ~0,5 MB en disco que se expanden a 513 MiB de ceros.
+      const chunk = gzipSync(Buffer.alloc(1024 * 1024));
+      const archive = path.join(workDir, "bomb.tgz");
+      writeFileSync(archive, Buffer.concat(Array(513).fill(chunk)));
+      const run = check(["--tar-archive", archive]);
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe("check-bundle: no se pudo leer el tar\n");
     });
 
     it("rejects hardlink entries even when their target is inside .open-next/", () => {
