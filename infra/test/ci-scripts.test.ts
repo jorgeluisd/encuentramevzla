@@ -1090,6 +1090,8 @@ describe("smoke.mjs", () => {
   };
   const home = page(200, `<html><head>${TITLE}</head><body>${BODY_MARKER}</body></html>`);
   const adminRedirect = redirect(307, "/admin/login");
+  const services = page(200, `<html><body><h1>Ayuda gratuita tras el sismo</h1>${BODY_MARKER}</body></html>`);
+  const ALL_PATHS = ["GET /", "GET /admin", "GET /servicios", "GET /__smoke-no-existe"];
 
   // spawnSync bloquearía el event loop del servidor local; el smoke corre asíncrono.
   const smoke = (args: string[] = [baseUrl], env: Record<string, string> = {}): Promise<ScriptRun> =>
@@ -1106,7 +1108,7 @@ describe("smoke.mjs", () => {
 
   beforeEach(async () => {
     requests = [];
-    routes = { "/": [home], "/admin": [adminRedirect] };
+    routes = { "/": [home], "/admin": [adminRedirect], "/servicios": [services] };
     server = createServer((req, res) => {
       requests.push(`${req.method} ${req.url}`);
       const handlers = routes[req.url ?? ""] ?? [page(404, BODY_MARKER)];
@@ -1122,15 +1124,16 @@ describe("smoke.mjs", () => {
     await new Promise<void>((closed) => server.close(() => closed()));
   });
 
-  it("passes when / is 200 with the stable title and /admin redirects to /admin/login, without following it", async () => {
+  it("passes when /, /admin, /servicios and the 404 probe answer as expected, without following redirects", async () => {
     const run = await smoke();
     expect(run.stderr).toBe("");
     expect(run.status).toBe(0);
-    expect(requests).toEqual(["GET /", "GET /admin"]);
+    expect(requests).toEqual(ALL_PATHS);
     expect(run.stdout).not.toContain(BODY_MARKER);
   });
 
-  it("exports only / and /admin as the paths it requests", () => {
+  // Nunca el buscador ni /api: no deja filas en search_log ni manda correos.
+  it("exports only read-only paths, never the search or /api", () => {
     const listed = execFileSync(
       process.execPath,
       [
@@ -1140,7 +1143,9 @@ describe("smoke.mjs", () => {
       ],
       { encoding: "utf8" },
     );
-    expect(JSON.parse(listed)).toEqual(["/", "/admin"]);
+    const paths = JSON.parse(listed) as string[];
+    expect(paths).toEqual(["/", "/admin", "/servicios", "/__smoke-no-existe"]);
+    expect(paths.some((p) => p.startsWith("/buscar") || p.startsWith("/api"))).toBe(false);
   });
 
   it("fails after 5 attempts printing path, status and attempt but never the body", async () => {
@@ -1157,7 +1162,7 @@ describe("smoke.mjs", () => {
     const run = await smoke();
     expect(run.status).toBe(0);
     expect(run.stderr).toBe("smoke: / 503 intento 1/5\nsmoke: / 503 intento 2/5\n");
-    expect(requests).toEqual(["GET /", "GET /", "GET /", "GET /admin"]);
+    expect(requests).toEqual(["GET /", "GET /", ...ALL_PATHS]);
   });
 
   it("fails when / is 200 without the stable title", async () => {
@@ -1199,7 +1204,7 @@ describe("smoke.mjs", () => {
     const run = await smoke();
     expect(run.stderr).toBe("");
     expect(run.status).toBe(0);
-    expect(requests).toEqual(["GET /", "GET /admin"]);
+    expect(requests).toEqual(ALL_PATHS);
   });
 
   it("fails when /admin redirects to /admin/login on another origin", async () => {
@@ -1208,6 +1213,31 @@ describe("smoke.mjs", () => {
     expect(run.status).toBe(1);
     expect(run.stderr).toContain("smoke: /admin 307 intento 1/5: redirección inesperada\n");
     expect(run.stderr).not.toContain("other.example");
+  });
+
+  it("fails when /servicios is not 200 or lacks its stable text, never printing the body", async () => {
+    routes["/servicios"] = [page(500, BODY_MARKER)];
+    const broken = await smoke();
+    expect(broken.status).toBe(1);
+    expect(broken.stderr).toBe(
+      [1, 2, 3, 4, 5].map((attempt) => `smoke: /servicios 500 intento ${attempt}/5\n`).join(""),
+    );
+
+    routes["/servicios"] = [page(200, `<html><body>${BODY_MARKER}</body></html>`)];
+    const empty = await smoke();
+    expect(empty.status).toBe(1);
+    expect(empty.stderr).toContain("smoke: /servicios 200 intento 1/5: texto ausente\n");
+    expect(empty.stdout + empty.stderr).not.toContain(BODY_MARKER);
+  });
+
+  it("fails when the 404 probe does not answer 404", async () => {
+    routes["/__smoke-no-existe"] = [page(200, BODY_MARKER)];
+    const run = await smoke();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(
+      [1, 2, 3, 4, 5].map((attempt) => `smoke: /__smoke-no-existe 200 intento ${attempt}/5\n`).join(""),
+    );
+    expect(run.stdout + run.stderr).not.toContain(BODY_MARKER);
   });
 
   it("treats a request that never answers as a failed attempt and ends red after 5", async () => {

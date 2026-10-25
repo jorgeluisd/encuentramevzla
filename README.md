@@ -31,7 +31,7 @@ Bundle para AWS Lambda (OpenNext): `pnpm --filter @evzla/web build:aws` → `app
 
 Producción se despliega desde GitHub Actions con OIDC (sin access keys): cada PR a `main` corre los
 checks; el merge a `main` vuelve a correrlos, construye el bundle, espera la aprobación del environment
-`Production`, despliega `EvzlaStack` y hace un smoke de `/` y `/admin`. El rollback es un
+`Production`, despliega `EvzlaStack` y hace un smoke de `/`, `/admin`, `/servicios` y una ruta 404. El rollback es un
 `workflow_dispatch` con `ref` (SHA o tag ancestro de `main`) y no revierte el esquema. **Migraciones →
 app:** las migraciones de base se aplican a mano en producción, compatibles con el código que está
 corriendo (expand/contract), antes de mergear a `main`; el CI nunca migra. El rol del CI (`EvzlaCiStack`)
@@ -130,7 +130,7 @@ La privacidad de los pacientes es un **requisito innegociable** del diseño:
 
 **En producción en AWS** (`sa-east-1`) desde el **9 de octubre de 2026**, desplegado desde `main`;
 Supabase y Vercel quedaron dados de baja ese día (ver [ADR-0010](adr/0010-migracion-supabase-vercel-a-aws.md)).
-Calidad: typecheck 5/5 paquetes · **636 tests** (core 286 · db 20 · web 61 · infra 269) · `build` y
+Calidad: typecheck 5/5 paquetes · **638 tests** (core 286 · db 20 · web 61 · infra 271) · `build` y
 `build:aws` OK. Specs `0001`–`0025` · migraciones SQL `0001`–`0020` · ADRs `0001`–`0011`. Deploy por GitHub Actions + OIDC
 (feature `0026`, primer deploy por CI el 2026-10-25; ver `docs/ARCHITECTURE.md` §11).
 
