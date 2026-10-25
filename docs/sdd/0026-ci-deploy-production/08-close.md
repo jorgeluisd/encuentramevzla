@@ -4,9 +4,11 @@
 - Entregado: workflow `deploy-production.yml` (resolve, checks, deploy), `EvzlaCiStack` (rol OIDC `evzla-github-deploy`), scripts `infra/scripts/ci/*.mjs`, Dependabot, CODEOWNERS, `.env.production` público, sección "Deploy" en `docs/ARCHITECTURE.md`.
 - AC-1..AC-35 cubiertos según `06-verify.md` (tercera verificación sobre d2d3612, PASS con 1 FAIL externo: check 9, body-parser, fuera del diff). Tareas T-1..T-20.
 - GATE 1 2026-10-22, CORRECCIONES 2 y 3 y GATE 2 2026-10-24 (token "firmado"), todos de Jorge Diaz, en `gates.md`.
-- Merge: PR #120 a `develop` el 2026-10-24T20:40:43Z, merge commit `c0f30fd` (merge commit, no squash). `main` sigue en 4a8128f: el deploy aún no corrió.
+- Merge: PR #120 a `develop` el 2026-10-24T20:40:43Z, merge commit `c0f30fd` (merge commit, no squash). Releases a `main`: #122 (`462d587`) y #125 (`b277aa8`).
 - Suite al cierre (654c5b3): core 286, db 20, web 61, infra 263 (README actualizado a 630).
-- Condición del GATE 2: el primer deploy espera el override de body-parser en `main`.
+- Condición del GATE 2 cumplida: el override de body-parser entró a `main` con #122.
+- Primer deploy: run `40225615580` sobre `b277aa8` (2026-10-25), aprobado en `Production`; OIDC asumió `evzla-github-deploy`, desplegó `EvzlaCertificateStack`, `EvzlaEmailStack` y `EvzlaStack`; smoke en verde (`/` 200, `/admin` 307 a `/admin/login`).
+- Fix post-merge: el primer run (`40215231258`, `462d587`) falló en `checks` porque Next.js copia el `.env.production` versionado a `server-functions/default/apps/web/`. PR #124 (`4a7c324`): `check-bundle` lo acepta solo si es archivo regular con claves `NEXT_PUBLIC_` (regla compartida con `check-public-env` en `cli.mjs`). Suite tras el fix: infra 269.
 
 ## ADRs
 - Aceptados (1): ADR-0011, firmado 2026-10-22 (ya figuraba ACEPTADO en `adr/0011-ci-cd-github-actions-oidc.md`; este cierre no lo tocó).
@@ -37,21 +39,17 @@ Nuevos, origen documentación (hecho en este cierre): `docs/ARCHITECTURE.md` §1
 
 Nuevos, origen riesgo residual / pendientes operativos (no son código de esta feature):
 - OP-1 Hecho: override `body-parser@2` → `2.4.0` en `pnpm.overrides` (rama `chore/deps-body-parser-audit`), con excepción a la regla de 72 h autorizada por el humano el 2026-10-24 (publicado 2026-10-22T11:39Z, ~57 h; sin advisories sobre 2.4.0). `pnpm audit --audit-level=high` en verde.
-- OP-2 Release `develop` → `main`; el primer deploy espera que el override esté en `main`.
-- OP-3 Pasos manuales 1 a 6 de `04-plan.md` (deploy a mano de `EvzlaCiStack`, environment `Production` con reviewer y solo `main`, primera corrida y verificación del `sub`).
-- OP-4 Dudas abiertas: hardlinks en `.open-next` (`nlink > 1`) podrían hacer fallar `checks` si OpenNext los preserva; el `git fetch` sin credenciales de `check-main-tip` depende de que el repo sea público; GNU tar del runner no se probó localmente (solo bsdtar).
+- OP-2 Hecho: releases #122 y #125 a `main`.
+- OP-3 Hecho salvo el paso 6 (opcional): `EvzlaCiStack` desplegado a mano el 2026-10-25 (output `DeployRoleArn` igual al literal del workflow); environment `Production` con reviewer `jorgeluisd` y solo `main`; primera corrida aprobada con el `sub` correcto. Pendiente opcional: `workflow_dispatch` con `ref` inválido.
+- OP-4 Resuelto en el runner: el bundle real no trae hardlinks y GNU tar pasó `--tar-archive` y `--extracted-root`. Sigue vigente: el `git fetch` sin credenciales de `check-main-tip` depende de que el repo sea público.
+- OP-5 El workflow solo corre en PRs a `main`: los PRs a `develop` no tienen CI y un cambio en `infra/scripts/ci/` se prueba recién en el release.
+- OP-6 Dependabot `github-actions` con `target-branch: develop` (#126); `npm` sin `target-branch` para no perder las security updates.
 - Mitigación futura: cuenta AWS propia (ADR-0011).
 
 ## MEMORIAS GUARDADAS
-Ninguna: las herramientas de Engram (`mem_save`) no estaban disponibles en esta sesión. Candidatas pendientes de guardar:
-- Parser de tar propio en CI: reglas de fidelidad frente a GNU tar y defensa por extracción.
-- upload/download-artifact rompen symlinks pnpm: el bundle viaja como tarball.
-- Regla de madurez de 72 h bloquea overrides recientes (body-parser 2.4.0).
+Guardadas en Engram desde la sesión principal: bundle como tarball por symlinks pnpm, parser de tar fail-closed frente a GNU tar, excepción 72 h de body-parser, `.env.production` copiado al bundle, primer deploy exitoso.
 
 ## PRÓXIMO PASO SUGERIDO
-1. Mergear a `develop` el PR con el override de body-parser y este cierre.
-2. Release `develop` → `main` con ese override incluido.
-3. Antes del primer deploy, el humano ejecuta los pasos manuales 1 a 6 de `docs/sdd/0026-ci-deploy-production/04-plan.md` (cuenta AWS 934106163170, `cdk deploy EvzlaCiStack`, environment `Production`).
-4. Primer run en `main`: aprobar, verificar `sub` OIDC, smoke y, si falla `checks` por hardlinks, abrir fix (OP-4).
-5. Leer antes: `gates.md`, `07-security.md` (N-1..N-4), `docs/ARCHITECTURE.md` §11.
-6. Después: tanda de higiene con B-1..B-12 (una sola feature pequeña, TDD).
+1. Tanda de higiene con B-1..B-12 (una sola feature pequeña, TDD).
+2. Evaluar correr `checks` también en PRs a `develop` (OP-5).
+3. Opcional: paso 6 de `04-plan.md`.
