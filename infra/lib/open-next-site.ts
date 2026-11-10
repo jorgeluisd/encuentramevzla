@@ -6,6 +6,7 @@ import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import * as logs from "aws-cdk-lib/aws-logs";
@@ -144,17 +145,25 @@ export class OpenNextSite extends Construct {
 
     this.deployAssets(output, logGroup("AssetsDeployment"));
 
-    // Sin OAC: las Function URL con OAC exigen el hash del body en POST/PUT y rompen los Server Actions.
+    // OAC NO_OVERRIDE sobre URLs NONE mientras dura la secuencia de ADR-0012 (R1 → R2 imagen → R3 server):
+    // CloudFront ya firma y los permisos existen, pero las URL todavía aceptan llamadas sin firma.
     const serverUrl = this.serverFunction.addFunctionUrl({
       authType: lambda.FunctionUrlAuthType.NONE,
       invokeMode: output.server.streaming ? lambda.InvokeMode.RESPONSE_STREAM : lambda.InvokeMode.BUFFERED,
     });
     const imageUrl = imageFunction.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });
 
-    const serverOrigin = new origins.FunctionUrlOrigin(serverUrl, {
+    const serverOrigin = origins.FunctionUrlOrigin.withOriginAccessControl(serverUrl, {
       customHeaders: { "x-origin-verify": props.originVerifyValue },
+      originAccessControl: new cloudfront.FunctionUrlOriginAccessControl(this, "ServerOac", {
+        signing: cloudfront.Signing.SIGV4_NO_OVERRIDE,
+      }),
     });
-    const imageOrigin = new origins.FunctionUrlOrigin(imageUrl);
+    const imageOrigin = origins.FunctionUrlOrigin.withOriginAccessControl(imageUrl, {
+      originAccessControl: new cloudfront.FunctionUrlOriginAccessControl(this, "ImageOac", {
+        signing: cloudfront.Signing.SIGV4_NO_OVERRIDE,
+      }),
+    });
     const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(this.assetsBucket, {
       originPath: `/${ASSETS_PREFIX}`,
     });
@@ -244,6 +253,16 @@ export class OpenNextSite extends Construct {
       certificate: props.certificate,
       domainNames: props.domainNames,
     });
+
+    // CDK solo agrega lambda:InvokeFunctionUrl con OAC; sin este InvokeFunction la URL en AWS_IAM da 403 (aws-cdk#35872).
+    for (const fn of [this.serverFunction, imageFunction]) {
+      fn.addPermission("CloudFrontInvokeViaUrl", {
+        action: "lambda:InvokeFunction",
+        principal: new iam.ServicePrincipal("cloudfront.amazonaws.com"),
+        sourceArn: this.distribution.distributionArn,
+        invokedViaFunctionUrl: true,
+      });
+    }
   }
 
   private deployAssets(output: OpenNextOutput, logGroup: logs.ILogGroup) {

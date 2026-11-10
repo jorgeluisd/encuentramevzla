@@ -118,9 +118,33 @@ TDD Cycle Evidence (comando base: `pnpm --filter @evzla/web test -- lib/revalida
 | REFACTOR | `route.ts` compone `appSecret("REVALIDATE_TOKEN")` + `revalidatePath("/")` | `pnpm --filter @evzla/web test -- lib/revalidation` | PASS — Tests 8 passed (8) | 2026-11-10T02:31:20Z |
 
 Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `apps/web` → `tsc=0`) · lint ✔ (`pnpm exec eslint lib/revalidation app/api/revalidate` → `eslint=0`; la llamada pasó a background por lentitud del disco, línea 2026-11-10T02:28:04Z `exit=?`, resultado leído del output: exit 0) · tests ✔ (8 passed, 2026-11-10T02:31:20Z)
-Commit: PENDIENTE-T6
+Commit: ba6cad3 feat(web): read the revalidation token from x-revalidate-token
 Decisiones menores:
 - `RevalidateDeps.token` es el string ya resuelto (la ruta hace `await appSecret(...)`), no una función.
 - El cuerpo de error usa `code` (`unauthorized`, `not_configured`) según el diseño; antes la ruta respondía `error`. Ningún llamador del repo lee ese campo.
 - La ruta queda con un comentario de 2 líneas (porqué del header propio con OAC); se quitó el docblock anterior de 8 líneas.
 Notas para el verifier / security-reviewer: la comparación del token es `!==`, como antes; el diseño fija que el módulo no importa nada (sin `node:crypto`/`timingSafeEqual`). Si se quiere comparación en tiempo constante, es una tarea aparte.
+
+## T-7 — OAC NO_OVERRIDE y permisos de CloudFront (URLs NONE)   estado: terminada
+TDD: ON (infrastructure CDK; el `describe("function URL access (ADR-0012)")` se escribió primero y falló)
+Safety net: `pnpm --filter @evzla/infra test -- --reporter=dot` → Test Files 7 passed (7) Tests 276 passed (276) (2026-11-10T02:17:16Z)
+Archivos tocados: `infra/lib/open-next-site.ts`, `infra/test/evzla-stack.test.ts`   Desviaciones respecto al plan: ninguna
+
+TDD Cycle Evidence (comando: `pnpm --filter @evzla/infra test -- test/evzla-stack.test.ts`)
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | T2 fronts both URLs with their own sigv4 lambda OAC (AC-19) · T3 lets only this distribution invoke the server/image URL (AC-20) | ídem | FAIL — `expected [ { …(2) } ] to have a length of 3 but got 1` (solo el OAC de S3) y `expected [] to have a length of 1 but got +0` (sin permisos de CloudFront) · Tests 3 failed \| 28 passed (31) | 2026-11-10T02:34:28Z |
+| RED (sigue) | T3 ×2 tras crear `ServerOac`/`ImageOac` y `CloudFrontInvokeViaUrl` | ídem | FAIL — `expected [] to have a length of 1 but got +0` en `InvokeFunctionUrl`: el helper del test buscaba `FunctionName` → función, pero CDK lo emite como `GetAtt <Url>.FunctionArn`. Producción correcta; se corrigió el helper (`permissionsOn` acepta función o URL) · Tests 2 failed \| 29 passed (31) | 2026-11-10T02:37:14Z |
+| GREEN | archivo completo (T1..T6 + L120 + L301 + resto) | ídem | PASS — Tests 31 passed (31) | 2026-11-10T02:41:09Z |
+| TRIANGULATE | T1 (AuthType por URL), T4 (permisos `*` ⇔ NONE), T5 (cache policy sin `x-revalidate-token` ni `x-amz-content-sha256`, Distribution sin `Logging`), T6 (`ALL_VIEWER_EXCEPT_HOST_HEADER`) | ídem | PASS ya en el RED (02:34:28Z) y en GREEN: son guardas del estado R1 que pasan a romperse en R2/R3 al cambiar `EXPECTED`; no se presentan como RED | 2026-11-10T02:34:28Z / 2026-11-10T02:41:09Z |
+| REFACTOR | — | — | sin cambios tras GREEN | — |
+
+Confirmación pedida: L120 (`serves through CloudFront with the default domain and asset behaviors`) y L301 (`sends x-origin-verify only to the server origin…`) no se modificaron (el diff del test no tiene líneas `-`) y siguen verdes en la primera corrida (RED, 02:34:28Z: solo fallaron T2/T3) y tras la implementación (GREEN, 02:41:09Z: 31 passed). Con `withOriginAccessControl`, el origen del server conserva `x-origin-verify` y su `DomainName` sigue referenciando `SiteServerFunctionFunctionUrl…` (duda abierta 4 del plan resuelta).
+Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `infra` → `tsc=0`) · lint ✔ (`pnpm exec eslint lib/open-next-site.ts test/evzla-stack.test.ts` → `eslint=0`; la llamada pasó a background por lentitud del disco, resultado leído del output: exit 0) · tests ✔ (31 passed, 2026-11-10T02:41:09Z)
+Commit: ver informe de cierre (último commit de la tanda)
+Plantilla sintetizada (R1, sin AWS): URLs server e imagen `AuthType: NONE`; 3 OAC (2 `lambda` sigv4 `no-override` + S3); por función: `InvokeFunctionUrl` de `cloudfront.amazonaws.com` sin `FunctionUrlAuthType` (lo crea el OAC), `InvokeFunction` + `InvokedViaFunctionUrl: true` de `cloudfront.amazonaws.com` (manual), ambos con `SourceArn` = distribución de EvzlaStack; siguen los dos permisos `*` de cada URL NONE.
+Decisiones menores:
+- Los dos `addPermission("CloudFrontInvokeViaUrl", …)` van en un `for` sobre server e imagen, tras crear la distribución.
+- Comentario L147 reemplazado por 2 líneas: OAC NO_OVERRIDE sobre URLs NONE durante la secuencia de ADR-0012. Un comentario de 1 línea sobre el permiso manual (aws-cdk#35872).
+- Para ver la forma real de los permisos se corrió una vez un test temporal `infra/test/zz-debug-permissions.test.ts` que volcaba los `AWS::Lambda::Permission` al scratchpad; se borró y no está en el diff. Su corrida no es evidencia de ningún ciclo.
+Notas para el verifier: el guardrail post-escritura avisa de `no-reply@encuentramevzla.com` en `infra/test/evzla-stack.test.ts`; está en L274/L279 desde antes de esta feature (remitente SES del propio proyecto), no lo introdujo T-7 y queda fuera de alcance. No se ejecutó nada contra AWS (sin `cdk diff`/`deploy`; T-10 es manual).

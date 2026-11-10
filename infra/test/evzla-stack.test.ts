@@ -313,6 +313,122 @@ describe("origin verify header", () => {
   });
 });
 
+describe("function URL access (ADR-0012)", () => {
+  const EXPECTED = {
+    server: { authType: "NONE", signing: "no-override" },
+    image: { authType: "NONE", signing: "no-override" },
+  } as const;
+  const ALL_VIEWER_EXCEPT_HOST_HEADER = "b689b0a8-53d0-40ab-baf2-68738e2966ac";
+
+  type Entry = [string, Resource];
+  const entries = (type: string): Entry[] => Object.entries(resources).filter(([, r]) => r.Type === type);
+  const refersTo = (value: unknown, logicalId: string): boolean => JSON.stringify(value).includes(`"${logicalId}"`);
+
+  function functionId(envKey: string): string {
+    const found = entries("AWS::Lambda::Function").find(([, r]) =>
+      envKey in ((r.Properties.Environment as { Variables?: object } | undefined)?.Variables ?? {}),
+    );
+    if (!found) throw new Error(`function with ${envKey} not found`);
+    return found[0];
+  }
+
+  function urlOf(fnId: string): Entry {
+    const urls = entries("AWS::Lambda::Url").filter(([, r]) => refersTo(r.Properties.TargetFunctionArn, fnId));
+    expect(urls).toHaveLength(1);
+    return urls[0] as Entry;
+  }
+
+  function distributionId(): string {
+    const [dist] = entries("AWS::CloudFront::Distribution");
+    if (!dist) throw new Error("distribution not found");
+    return dist[0];
+  }
+
+  function distributionConfig(): Record<string, unknown> {
+    return resources[distributionId()]?.Properties.DistributionConfig as Record<string, unknown>;
+  }
+
+  function oacForUrl(urlId: string): Resource {
+    const origins = distributionConfig().Origins as Record<string, unknown>[];
+    const origin = origins.filter((o) => refersTo(o.DomainName, urlId));
+    expect(origin).toHaveLength(1);
+    const oacId = (origin[0]?.OriginAccessControlId as { "Fn::GetAtt"?: [string, string] } | undefined)?.["Fn::GetAtt"]?.[0];
+    if (!oacId) throw new Error(`origin for ${urlId} has no OAC`);
+    return resources[oacId] as Resource;
+  }
+
+  // El permiso que agrega el OAC apunta a la función vía GetAtt <Url>.FunctionArn, no a la función.
+  function permissionsOn(fnId: string): Resource[] {
+    const [urlId] = urlOf(fnId);
+    return entries("AWS::Lambda::Permission")
+      .filter(([, r]) => refersTo(r.Properties.FunctionName, fnId) || refersTo(r.Properties.FunctionName, urlId))
+      .map(([, r]) => r);
+  }
+
+  const cases = [
+    ["server", () => functionId("EVZLA_DB_SECRET_ADMIN")],
+    ["image", () => functionId("BUCKET_NAME")],
+  ] as const;
+
+  it.each(cases)("gives the %s function exactly one URL with the expected AuthType (T1)", (name, fn) => {
+    const [, url] = urlOf(fn());
+    expect(url.Properties.AuthType).toBe(EXPECTED[name].authType);
+  });
+
+  it("fronts both URLs with their own sigv4 lambda OAC, leaving the S3 OAC apart (T2, AC-19)", () => {
+    const all = entries("AWS::CloudFront::OriginAccessControl").map(([, r]) => r);
+    expect(all).toHaveLength(3);
+    const lambdaOacs = all.filter(
+      (r) => (r.Properties.OriginAccessControlConfig as { OriginAccessControlOriginType: string }).OriginAccessControlOriginType === "lambda",
+    );
+    expect(lambdaOacs).toHaveLength(2);
+    for (const [name, fn] of cases) {
+      const [urlId] = urlOf(fn());
+      expect(oacForUrl(urlId).Properties.OriginAccessControlConfig).toMatchObject({
+        OriginAccessControlOriginType: "lambda",
+        SigningProtocol: "sigv4",
+        SigningBehavior: EXPECTED[name].signing,
+      });
+    }
+  });
+
+  it.each(cases)("lets only this distribution invoke the %s URL through CloudFront (T3, AC-20)", (_name, fn) => {
+    const fromCloudFront = permissionsOn(fn()).filter((p) => p.Properties.Principal === "cloudfront.amazonaws.com");
+    const viaUrl = fromCloudFront.filter((p) => p.Properties.Action === "lambda:InvokeFunctionUrl");
+    const viaInvoke = fromCloudFront.filter((p) => p.Properties.Action === "lambda:InvokeFunction");
+    expect(viaUrl).toHaveLength(1);
+    expect(viaInvoke).toHaveLength(1);
+    expect(viaUrl[0]?.Properties.FunctionUrlAuthType).toBeUndefined();
+    expect(viaInvoke[0]?.Properties.InvokedViaFunctionUrl).toBe(true);
+    for (const p of [...viaUrl, ...viaInvoke]) {
+      expect(refersTo(p.Properties.SourceArn, distributionId())).toBe(true);
+      expect(JSON.stringify(p.Properties.SourceArn)).not.toContain("*");
+    }
+  });
+
+  it.each(cases)("keeps public (*) permissions on the %s function only while its URL is NONE (T4)", (name, fn) => {
+    const publicPermissions = permissionsOn(fn()).filter((p) => p.Properties.Principal === "*");
+    expect(publicPermissions.length > 0).toBe(EXPECTED[name].authType === "NONE");
+  });
+
+  it("keeps the revalidation token and the body hash out of the cache key and disables access logs (T5)", () => {
+    const [, policy] = entries("AWS::CloudFront::CachePolicy").find(([id]) => id.includes("ServerCachePolicy")) ?? [];
+    const headers = JSON.stringify(policy?.Properties.CachePolicyConfig);
+    expect(headers).toContain("next-router-state-tree");
+    expect(headers).not.toContain("x-revalidate-token");
+    expect(headers).not.toContain("x-amz-content-sha256");
+    expect(distributionConfig().Logging).toBeUndefined();
+  });
+
+  it("forwards every viewer header except Host to the server and image origins (T6, AC-24)", () => {
+    const config = distributionConfig();
+    const image = (config.CacheBehaviors as Record<string, unknown>[]).find((b) => b.PathPattern === "_next/image*");
+    for (const behavior of [config.DefaultCacheBehavior as Record<string, unknown>, image]) {
+      expect(behavior?.OriginRequestPolicyId).toBe(ALL_VIEWER_EXCEPT_HOST_HEADER);
+    }
+  });
+});
+
 describe("server bundle symlinks", () => {
   let workDir: string;
 
