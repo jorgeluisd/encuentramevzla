@@ -141,10 +141,31 @@ TDD Cycle Evidence (comando: `pnpm --filter @evzla/infra test -- test/evzla-stac
 
 Confirmación pedida: L120 (`serves through CloudFront with the default domain and asset behaviors`) y L301 (`sends x-origin-verify only to the server origin…`) no se modificaron (el diff del test no tiene líneas `-`) y siguen verdes en la primera corrida (RED, 02:34:28Z: solo fallaron T2/T3) y tras la implementación (GREEN, 02:41:09Z: 31 passed). Con `withOriginAccessControl`, el origen del server conserva `x-origin-verify` y su `DomainName` sigue referenciando `SiteServerFunctionFunctionUrl…` (duda abierta 4 del plan resuelta).
 Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `infra` → `tsc=0`) · lint ✔ (`pnpm exec eslint lib/open-next-site.ts test/evzla-stack.test.ts` → `eslint=0`; la llamada pasó a background por lentitud del disco, resultado leído del output: exit 0) · tests ✔ (31 passed, 2026-11-10T02:41:09Z)
-Commit: ver informe de cierre (último commit de la tanda)
+Commit: b80812d feat(infra): sign function URL origins with no-override OAC
 Plantilla sintetizada (R1, sin AWS): URLs server e imagen `AuthType: NONE`; 3 OAC (2 `lambda` sigv4 `no-override` + S3); por función: `InvokeFunctionUrl` de `cloudfront.amazonaws.com` sin `FunctionUrlAuthType` (lo crea el OAC), `InvokeFunction` + `InvokedViaFunctionUrl: true` de `cloudfront.amazonaws.com` (manual), ambos con `SourceArn` = distribución de EvzlaStack; siguen los dos permisos `*` de cada URL NONE.
 Decisiones menores:
 - Los dos `addPermission("CloudFrontInvokeViaUrl", …)` van en un `for` sobre server e imagen, tras crear la distribución.
 - Comentario L147 reemplazado por 2 líneas: OAC NO_OVERRIDE sobre URLs NONE durante la secuencia de ADR-0012. Un comentario de 1 línea sobre el permiso manual (aws-cdk#35872).
 - Para ver la forma real de los permisos se corrió una vez un test temporal `infra/test/zz-debug-permissions.test.ts` que volcaba los `AWS::Lambda::Permission` al scratchpad; se borró y no está en el diff. Su corrida no es evidencia de ningún ciclo.
 Notas para el verifier: el guardrail post-escritura avisa de `no-reply@encuentramevzla.com` en `infra/test/evzla-stack.test.ts`; está en L274/L279 desde antes de esta feature (remitente SES del propio proyecto), no lo introdujo T-7 y queda fuera de alcance. No se ejecutó nada contra AWS (sin `cdk diff`/`deploy`; T-10 es manual).
+
+## T-8 — harness C1 `test:content-hash` (playwright)   estado: terminada
+TDD: OFF (harness de verificación; no corre en `pnpm test`)
+Safety net: `pnpm --filter @evzla/web test -- --reporter=dot` → `Tests 1 failed | 97 passed (98)` (2026-11-10T02:49:06Z); repetido solo el archivo → `Tests 1 failed | 5 passed (6)` (2026-11-10T02:50:12Z). La falla es `Test timed out in 5000ms` en `hydrated-submit-guard.test.ts > routes every <form action>…` (AC-13): la guarda tarda ~6 s porque el disco externo está saturado por procesos de otros proyectos (estado `U`). T-8 no toca ese archivo ni lo que escanea (`app/`, `components/`); no se parcheó. Ver T-9.
+Archivos tocados: `apps/web/e2e/content-hash/run.mjs`, `apps/web/e2e/content-hash/fixture/{next.config.ts,tsconfig.json,instrumentation-client.ts,app/layout.tsx,app/page.tsx,app/actions.ts}`, `apps/web/package.json`, `pnpm-lock.yaml`, `apps/web/tsconfig.json` (exclude `e2e`), `apps/web/eslint.config.mjs` (ignore `e2e/**`), `.gitignore` (`apps/web/e2e/**/.next/`, `apps/web/e2e/**/next-env.d.ts`)
+Desviaciones respecto al plan: ninguna de archivos. `pnpm-lock.yaml` trae además el campo `deprecated` de `@smithy/core@3.35.2` (metadato que pnpm refrescó del registry al instalar; no cambia versiones).
+Dependencia: `playwright` 1.65.0 exacta (publicada 2026-11-05T18:28Z, > 72 h), deps `playwright-core` 1.65.0; sin scripts de instalación (`ignore-scripts=true` en la config de pnpm, pnpm no pidió aprobar builds). Navegadores: Chrome for Testing 158.0.8127.18 (v1254), WebKit 27.2 (v2388), Firefox 159.0 (v1572).
+Corridas del harness (`pnpm --filter @evzla/web test:content-hash`):
+| Corrida | Resultado | Fuente |
+|---|---|---|
+| `SKIP_BUILD=1 node apps/web/e2e/content-hash/run.mjs` (sobre un build previo) | 17 PASS, 1 FAIL: `chromium · S1 → page.goto: Timeout 30000ms exceeded` (primera petición en frío; S1 pasó en webkit y firefox) · `content-hash C1: FAIL (1)` | salida de la tarea en background (no la registra el hook) |
+| `pnpm --filter @evzla/web test:content-hash` (build + 3 navegadores), tras agregar un GET de calentamiento | S1..S6 PASS en chromium, webkit y firefox (18/18) · `content-hash C1: PASS` · exit 0 | log 2026-11-10T03:11:19Z (`WARN=backgrounded`, sin resumen: el build tarda > 3 min en este disco); resultado leído del output de la tarea, terminado 03:18:42Z |
+Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `apps/web` → `tsc=0`) · lint ✔ (`pnpm exec eslint .` en `apps/web` → `eslint=0`) · harness ✔ (`content-hash C1: PASS`)
+Commit: ver informe de cierre
+Decisiones menores:
+- El proxy registra por petición solo `{método, ruta, tipo de content-type, headerPresente, coincide}`; el "S3" falso, `{método, headerPresente, contentTypePreservado}`. Los mensajes de falla imprimen solo esos campos.
+- El origen del "S3" se pasa a la página por `?s3=`, para no acoplar el build a puertos.
+- Next reescribió el `tsconfig.json` del fixture en el primer build (`jsx: react-jsx`, `include` con `.next/dev/types`); se commitea esa forma para que los builds siguientes no lo modifiquen.
+- `SKIP_BUILD=1` y la lista de navegadores por argumento existen para iterar; el comando del plan no los usa.
+- Se agregó un GET de calentamiento antes de los escenarios: la primera navegación en frío excedía 30 s en este disco.
+Notas para el verifier: se vieron POST `text/plain` (S3, S6) y `multipart/form-data` (S4) firmados y coincidentes; S4 envía `Ñandú Pérez 🌎` y 70 000 bytes aleatorios. `playwright install` borró del caché compartido `chromium-1248`/`chromium_headless_shell-1248` (otra versión de playwright). No quedan procesos de next ni del proxy.
