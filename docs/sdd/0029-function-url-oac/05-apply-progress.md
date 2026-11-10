@@ -68,9 +68,33 @@ Safety net: N/A (solo archivos nuevos)
 Archivos tocados: `apps/web/components/ui/hydrated-submit.tsx`, `apps/web/components/ui/js-required-notice.tsx`   Desviaciones respecto al plan: ninguna
 TDD Cycle Evidence: no aplica (TDD OFF)
 Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `apps/web` → exit 0) · lint ✔ (`pnpm exec eslint components/ui/hydrated-submit.tsx components/ui/js-required-notice.tsx` → exit 0) · tests: sin tests propios
-Commit: ver el informe de cierre (último commit de la tanda)
+Commit: 1533c23 feat(web): add hydration-gated submit and noscript notice
 Decisiones menores:
 - `HydratedSubmitProps = Omit<ButtonProps, "type">`: deja pasar `formAction`, `name`, `value`, `variant`, `title` (lo que pide el diseño) y además `className`, `size`, `children` y demás atributos del botón, para que la migración de T-5 no pierda estilos. `type` queda fijo en `"submit"` y `disabled = !hydrated || disabled`.
 - `JsRequiredNotice` sin `"use client"` ni hooks, así sirve en server y en client; texto en español con el token `text-danger` ya usado en la app.
 - Un comentario de porqué en `HydratedSubmit` (envío nativo antes de hidratar → 403 tras R3, ADR-0012).
 Notas para el verifier: ningún formulario usa todavía estos componentes; la migración es T-5.
+
+## T-5 — guarda AST `HydratedSubmit` + migración de los 15 formularios   estado: terminada
+TDD: ON (la guarda se escribió primero y falló; la migración va en la misma tarea, aprobado en GATE 1)
+Safety net (sesión T-5..T-7): `pnpm --filter @evzla/web test -- --reporter=dot` → Test Files 17 passed (17) Tests 84 passed (84) (2026-11-10T02:16:34Z) · `pnpm --filter @evzla/infra test -- --reporter=dot` → Test Files 7 passed (7) Tests 276 passed (276) (2026-11-10T02:17:16Z) · `pnpm typecheck` → Tasks: 5 successful, 5 total (no lo registra el hook). Los formularios tocados no tienen tests propios.
+Archivos tocados: `apps/web/lib/origin-signing/hydrated-submit-guard.test.ts` (nuevo), `apps/web/app/admin/(protected)/layout.tsx`, `apps/web/app/admin/(protected)/review/review-case-actions.tsx`, `apps/web/app/admin/(protected)/foreign-rows/foreign-row-actions.tsx`, `apps/web/components/search-panel.tsx`, `apps/web/components/servicios/submit-service-form.tsx`, `apps/web/components/servicios/report-service-button.tsx`, `apps/web/components/servicios/manage-service-form.tsx`, `apps/web/components/servicios/services-admin-browser.tsx`
+Desviaciones respecto al plan: ninguna. El plan habla de "9 archivos" pero enumera 8; son 8 archivos de formularios (los 15 formularios están en esos 8), más el test.
+
+TDD Cycle Evidence (comando: `pnpm --filter @evzla/web test -- lib/origin-signing/hydrated-submit-guard.test.ts`)
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED (inválido) | suite completa del archivo | ídem | FAIL — `ReferenceError: describe is not defined` (el paquete web no tiene globals de Vitest); se agregó el import de `vitest`, no cuenta | 2026-11-10T02:19:55Z |
+| RED | routes every <form action> and formAction … through HydratedSubmit (AC-13) · puts a JsRequiredNotice inside every public <form action> (AC-14) | ídem | FAIL — 29 violaciones `archivo:línea:col` sobre los 15 formularios inventariados (14 `<form action>` + el `formAction` de foreign-row-actions) y 5 formularios públicos sin `JsRequiredNotice` · Tests 2 failed \| 4 passed (6) | 2026-11-10T02:20:01Z |
+| GREEN | ídem, tras migrar los 8 archivos | ídem | PASS — Tests 6 passed (6) | 2026-11-10T02:21:16Z |
+| TRIANGULATE | casos negativos inline: `<form action>` con `Button type="submit"` (2 violaciones con línea:col), `button` sin `type`, `formAction` fuera de `HydratedSubmit`, caso positivo con "Fusionar" `type="button"` y conteo de `formAction` | ídem (en la misma corrida RED/GREEN) | PASS en RED y en GREEN: prueban la propia guarda (código de test), no producción; no se presentan como RED | 2026-11-10T02:20:01Z / 2026-11-10T02:21:16Z |
+| REFACTOR | `lib/origin-signing` completo (guarda + interceptor + hook) | `pnpm --filter @evzla/web test -- lib/origin-signing` | PASS — Test Files 3 passed (3) Tests 29 passed (29) | 2026-11-10T02:22:28Z |
+
+Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `apps/web` → exit 0) · lint ✔ (`pnpm exec eslint lib/origin-signing app components` → exit 0) · tests ✔ (29 passed, 2026-11-10T02:22:28Z)
+Commit: PENDIENTE-T5
+Decisiones menores:
+- "Formulario detectado" = cada `<form>` con atributo `action` más cada `HydratedSubmit` con `formAction` (foreign-row-actions: un `<form>` sin `action` cuyo `SubmitButton` envuelve `HydratedSubmit`). Total en el repo: 15; la guarda exige ≥ 15.
+- La guarda vive entera en el test (sin módulo de producción): es una verificación estática, no código de la app.
+- AC-14 se verifica sobre la lista fija de los 4 archivos públicos; los admin no requieren `JsRequiredNotice`.
+- `JsRequiredNotice` se ubica junto al botón de envío, dentro del `<form>`.
+Notas para el verifier: "Fusionar" (review-case-actions) sigue `type="button"` y la guarda lo acepta; los demás `Button type="button"` de esos formularios no cambian. `Button` sigue importado en review-case-actions y report-service-button porque lo usan botones no submit.

@@ -7,7 +7,8 @@ import {
   type EstadoGestion,
 } from "@/lib/actions/servicios";
 import { SERVICE_CATEGORIES } from "@evzla/core";
-import { Button } from "@/components/ui/button";
+import { HydratedSubmit } from "@/components/ui/hydrated-submit";
+import { JsRequiredNotice } from "@/components/ui/js-required-notice";
 import { Card, CardBody, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
@@ -80,9 +81,10 @@ export function ManageServiceForm({ current }: { current: ManageServiceInitial }
               />
             </div>
 
-            <Button type="submit" size="lg" disabled={editPending}>
+            <HydratedSubmit size="lg" disabled={editPending}>
               {editPending ? "Guardando…" : "Guardar cambios"}
-            </Button>
+            </HydratedSubmit>
+            <JsRequiredNotice />
             {editState.mensaje && (
               <p
                 className={`rounded-[var(--radius-control)] px-4 py-3 text-sm ${editState.ok ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
@@ -103,9 +105,10 @@ export function ManageServiceForm({ current }: { current: ManageServiceInitial }
           </p>
           <form action={removeForm}>
             <input type="hidden" name="token" value={current.token} />
-            <Button type="submit" variant="danger" disabled={removePending}>
+            <HydratedSubmit variant="danger" disabled={removePending}>
               {removePending ? "Dando de baja…" : "Dar de baja mi publicación"}
-            </Button>
+            </HydratedSubmit>
+            <JsRequiredNotice />
             {removeState.mensaje && (
               <p
                 className={`mt-3 rounded-[var(--radius-control)] px-4 py-3 text-sm ${removeState.ok ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}

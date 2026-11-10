@@ -6,9 +6,10 @@ import { submitServiceAction, type SubmitServiceState } from "@/lib/actions/serv
 import { PUBLICATION_TERMS } from "@/lib/legal/publication-terms";
 import { LegalModal } from "@/components/legal/legal-modal";
 import { TurnstileField } from "@/components/servicios/turnstile-field";
-import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardTitle } from "@/components/ui/card";
+import { HydratedSubmit } from "@/components/ui/hydrated-submit";
 import { Input } from "@/components/ui/input";
+import { JsRequiredNotice } from "@/components/ui/js-required-notice";
 
 const initialState: SubmitServiceState = { status: "idle" };
 
@@ -137,15 +138,15 @@ export function SubmitServiceForm({ bare = false }: { bare?: boolean }): React.R
 
           <TurnstileField resetSignal={state} />
 
-          <Button
-            type="submit"
+          <HydratedSubmit
             size="lg"
             className="w-full"
             disabled={pending || !accepted}
             title={!accepted ? "Debes aceptar los términos de publicación" : undefined}
           >
             {pending ? "Publicando…" : "Publicar servicio"}
-          </Button>
+          </HydratedSubmit>
+          <JsRequiredNotice />
 
           {state.status === "done" && (
             <p className="rounded-[var(--radius-control)] bg-success/10 px-4 py-3 text-sm text-success" role="status">

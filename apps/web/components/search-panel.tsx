@@ -5,9 +5,10 @@ import Script from "next/script";
 import { searchAction, type SearchState } from "@/lib/actions/search";
 import { SearchResults } from "@/components/search-results";
 import { SearchResultsSkeleton } from "@/components/search-results-skeleton";
-import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
+import { HydratedSubmit } from "@/components/ui/hydrated-submit";
 import { Input } from "@/components/ui/input";
+import { JsRequiredNotice } from "@/components/ui/js-required-notice";
 
 // render=explicit: NO auto-renderiza; lo montamos nosotros con turnstile.render
 // para controlar su ciclo de vida (clave al navegar entrando/saliendo del home).
@@ -140,10 +141,11 @@ export function SearchPanel(): React.ReactElement {
                   autoComplete="off"
                 />
               </div>
-              <Button type="submit" size="lg" className="w-full" disabled={pending}>
+              <HydratedSubmit size="lg" className="w-full" disabled={pending}>
                 {pending ? "Buscando…" : "Buscar"}
-              </Button>
+              </HydratedSubmit>
             </div>
+            <JsRequiredNotice />
 
             {siteKey && (
               <div ref={widgetWrapRef} className="w-full">
