@@ -91,10 +91,36 @@ TDD Cycle Evidence (comando: `pnpm --filter @evzla/web test -- lib/origin-signin
 | REFACTOR | `lib/origin-signing` completo (guarda + interceptor + hook) | `pnpm --filter @evzla/web test -- lib/origin-signing` | PASS — Test Files 3 passed (3) Tests 29 passed (29) | 2026-11-10T02:22:28Z |
 
 Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `apps/web` → exit 0) · lint ✔ (`pnpm exec eslint lib/origin-signing app components` → exit 0) · tests ✔ (29 passed, 2026-11-10T02:22:28Z)
-Commit: PENDIENTE-T5
+Commit: 686b2e8 feat(web): gate every form submit on hydration with an AST guard
 Decisiones menores:
 - "Formulario detectado" = cada `<form>` con atributo `action` más cada `HydratedSubmit` con `formAction` (foreign-row-actions: un `<form>` sin `action` cuyo `SubmitButton` envuelve `HydratedSubmit`). Total en el repo: 15; la guarda exige ≥ 15.
 - La guarda vive entera en el test (sin módulo de producción): es una verificación estática, no código de la app.
 - AC-14 se verifica sobre la lista fija de los 4 archivos públicos; los admin no requieren `JsRequiredNotice`.
 - `JsRequiredNotice` se ubica junto al botón de envío, dentro del `<form>`.
 Notas para el verifier: "Fusionar" (review-case-actions) sigue `type="button"` y la guarda lo acepta; los demás `Button type="button"` de esos formularios no cambian. `Button` sigue importado en review-case-actions y report-service-button porque lo usan botones no submit.
+
+## T-6 — `/api/revalidate` con `x-revalidate-token`   estado: terminada
+TDD: ON (presentation/lib con seguridad, modo estricto)
+Safety net: `route.ts` no tiene tests propios; línea base del paquete en T-5 (Tests 84 passed, 2026-11-10T02:16:34Z). `revalidate-request.ts` y su test son nuevos.
+Archivos tocados: `apps/web/lib/revalidation/revalidate-request.ts` (nuevo), `apps/web/lib/revalidation/revalidate-request.test.ts` (nuevo), `apps/web/app/api/revalidate/route.ts`   Desviaciones respecto al plan: ninguna
+
+TDD Cycle Evidence (comando base: `pnpm --filter @evzla/web test -- lib/revalidation/revalidate-request.test.ts`)
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED de API (previa) | revalidates the home when x-revalidate-token matches (AC-15) | base | FAIL — `Cannot find module './revalidate-request'` (símbolo del diseño aún inexistente) · Test Files 1 failed (1) | 2026-11-10T02:23:52Z |
+| RED | ídem, contra esqueleto que lanza `not implemented` | base | FAIL — `Error: not implemented` · Tests 1 failed (1) | 2026-11-10T02:24:02Z |
+| GREEN | ídem | base | PASS — Tests 1 passed (1) | 2026-11-10T02:24:09Z |
+| RED | rejects a missing/wrong/empty x-revalidate-token with 401 unauthorized (AC-16) | base + `-t "AC-16"` | FAIL — `expected 200 to be 401` · Tests 3 failed \| 1 skipped (4) | 2026-11-10T02:24:18Z |
+| GREEN | ídem | base + `-t "AC-16"` | PASS — Tests 3 passed \| 1 skipped (4) | 2026-11-10T02:24:26Z |
+| RED | answers 503 not_configured when the secret is empty, with no header / an empty header | base + `-t "not_configured"` | FAIL — `expected 401 to be 503` y `expected 200 to be 503` (un secreto vacío autorizaba un header vacío) · Tests 2 failed \| 4 skipped (6) | 2026-11-10T02:24:34Z |
+| GREEN | ídem | base + `-t "not_configured"` | PASS — Tests 2 passed \| 4 skipped (6) | 2026-11-10T02:24:40Z |
+| TRIANGULATE | ignores a valid Authorization: Bearer token (AC-17) · never reads the body, logs or echoes the token (AC-18) | base | PASS — Tests 8 passed (8). Guardas que el diseño cumple por construcción; no se presentan como RED | 2026-11-10T02:24:55Z |
+| REFACTOR | `route.ts` compone `appSecret("REVALIDATE_TOKEN")` + `revalidatePath("/")` | `pnpm --filter @evzla/web test -- lib/revalidation` | PASS — Tests 8 passed (8) | 2026-11-10T02:31:20Z |
+
+Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `apps/web` → `tsc=0`) · lint ✔ (`pnpm exec eslint lib/revalidation app/api/revalidate` → `eslint=0`; la llamada pasó a background por lentitud del disco, línea 2026-11-10T02:28:04Z `exit=?`, resultado leído del output: exit 0) · tests ✔ (8 passed, 2026-11-10T02:31:20Z)
+Commit: PENDIENTE-T6
+Decisiones menores:
+- `RevalidateDeps.token` es el string ya resuelto (la ruta hace `await appSecret(...)`), no una función.
+- El cuerpo de error usa `code` (`unauthorized`, `not_configured`) según el diseño; antes la ruta respondía `error`. Ningún llamador del repo lee ese campo.
+- La ruta queda con un comentario de 2 líneas (porqué del header propio con OAC); se quitó el docblock anterior de 8 líneas.
+Notas para el verifier / security-reviewer: la comparación del token es `!==`, como antes; el diseño fija que el módulo no importa nada (sin `node:crypto`/`timingSafeEqual`). Si se quiere comparación en tiempo constante, es una tarea aparte.
