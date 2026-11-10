@@ -32,9 +32,22 @@ function attribute(tag: JsxTag, name: string): ts.JsxAttribute | undefined {
   );
 }
 
-function isLiteralButtonType(tag: JsxTag): boolean {
+const NATIVE_SUBMIT_INPUT_TYPES = new Set(["submit", "image"]);
+
+function literalType(tag: JsxTag): string | undefined {
   const type = attribute(tag, "type");
-  return type?.initializer !== undefined && ts.isStringLiteral(type.initializer) && type.initializer.text === "button";
+  return type?.initializer !== undefined && ts.isStringLiteral(type.initializer) ? type.initializer.text : undefined;
+}
+
+function isLiteralButtonType(tag: JsxTag): boolean {
+  return literalType(tag) === "button";
+}
+
+function nativeSubmitInputType(tag: JsxTag): string | undefined {
+  const type = literalType(tag);
+  return (tagName(tag) === "input" || tagName(tag) === "Input") && type !== undefined && NATIVE_SUBMIT_INPUT_TYPES.has(type)
+    ? type
+    : undefined;
 }
 
 function tagsIn(node: ts.Node): JsxTag[] {
@@ -72,6 +85,10 @@ function inspectSource(fileName: string, source: string): GuardReport {
         for (const t of inner) {
           if ((tagName(t) === "button" || tagName(t) === "Button") && !isLiteralButtonType(t)) {
             report.violations.push(`${at(t)} <${tagName(t)}> inside <form action> must be type="button"`);
+          }
+          const inputType = nativeSubmitInputType(t);
+          if (inputType) {
+            report.violations.push(`${at(t)} <${tagName(t)} type="${inputType}"> inside <form action> submits before hydration`);
           }
         }
         if (!inner.some((t) => tagName(t) === "JsRequiredNotice")) {
@@ -115,14 +132,18 @@ function inspectWebApp(): GuardReport {
     );
 }
 
+// Parsea todo app/ y components/ desde disco: en el disco externo del equipo tarda ~6 s y el
+// límite por defecto de 5 s lo volvía intermitente.
+const DISK_SCAN_TIMEOUT_MS = 30_000;
+
 describe("hydrated submit guard (ADR-0012)", () => {
-  it("routes every <form action> and formAction in app/ and components/ through HydratedSubmit (AC-13)", () => {
+  it("routes every <form action> and formAction in app/ and components/ through HydratedSubmit (AC-13)", { timeout: DISK_SCAN_TIMEOUT_MS }, () => {
     const report = inspectWebApp();
     expect(report.violations).toEqual([]);
     expect(report.actionForms).toBeGreaterThanOrEqual(MIN_ACTION_FORMS);
   });
 
-  it("puts a JsRequiredNotice inside every public <form action> (AC-14)", () => {
+  it("puts a JsRequiredNotice inside every public <form action> (AC-14)", { timeout: DISK_SCAN_TIMEOUT_MS }, () => {
     const missing = PUBLIC_FORM_FILES.flatMap((file) => {
       const report = inspectFile(file);
       expect(report.actionForms, file).toBeGreaterThan(0);
@@ -156,6 +177,42 @@ describe("hydrated submit guard (ADR-0012)", () => {
     ].join("\n");
     expect(inspectSource("inline.tsx", source).violations).toEqual([
       'inline.tsx:4:5 <button> inside <form action> must be type="button"',
+    ]);
+  });
+
+  it("treats <input type=\"submit\"> and <input type=\"image\"> inside <form action> as native submits", () => {
+    const source = [
+      "export const F = () => (",
+      "  <form action={act}>",
+      '    <input type="submit" value="Enviar" />',
+      '    <input type="image" src="/enviar.png" alt="Enviar" />',
+      "    <HydratedSubmit>Enviar</HydratedSubmit>",
+      '    <input type="text" name="q" />',
+      "  </form>",
+      ");",
+    ].join("\n");
+    expect(inspectSource("inline.tsx", source).violations).toEqual([
+      'inline.tsx:3:5 <input type="submit"> inside <form action> submits before hydration',
+      'inline.tsx:4:5 <input type="image"> inside <form action> submits before hydration',
+    ]);
+  });
+
+  it("flags the shadcn Input as a native submit too, but not an input submit outside <form action>", () => {
+    const source = [
+      "export const F = () => (",
+      "  <>",
+      "    <form action={act}>",
+      "      <HydratedSubmit>Enviar</HydratedSubmit>",
+      '      <Input type="image" src="/enviar.png" alt="Enviar" />',
+      "    </form>",
+      "    <form onSubmit={handle}>",
+      '      <input type="submit" value="Entrar" />',
+      "    </form>",
+      "  </>",
+      ");",
+    ].join("\n");
+    expect(inspectSource("inline.tsx", source).violations).toEqual([
+      'inline.tsx:5:7 <Input type="image"> inside <form action> submits before hydration',
     ]);
   });
 

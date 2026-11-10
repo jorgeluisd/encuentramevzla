@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createContentHashFetch, installContentHashFetch } from "./content-hash-fetch";
 
 const ORIGIN = "https://example.test";
+const PAGE = `${ORIGIN}/servicios/abc`;
 const HEADER = "x-amz-content-sha256";
 
 type Sent = { input: RequestInfo | URL; init: RequestInit | undefined };
@@ -33,8 +34,10 @@ async function sentRequest(call: Sent | undefined): Promise<{ header: string | n
   };
 }
 
+const failingSubtle = { digest: () => Promise.reject(new Error("synthetic failure")) } as unknown as SubtleCrypto;
+
 function build(fetch: ReturnType<typeof recordingFetch>["fetch"], subtle: SubtleCrypto | null = globalThis.crypto.subtle) {
-  return createContentHashFetch({ fetch, origin: ORIGIN, subtle: subtle ?? undefined });
+  return createContentHashFetch({ fetch, location: { href: PAGE }, subtle: subtle ?? undefined });
 }
 
 describe("createContentHashFetch", () => {
@@ -85,6 +88,7 @@ describe("createContentHashFetch", () => {
     "https://bucket.example.test/uploads/key?X-Amz-Signature=fake",
     "https://evil.test/buscar",
     "http://example.test/buscar",
+    "//evil.test/buscar",
   ])("sends a cross-origin PUT to %s exactly as given", async (target) => {
     const { fetch, calls } = recordingFetch();
     const body = new Blob([new Uint8Array([1, 2, 3])], { type: "application/vnd.ms-excel" });
@@ -109,7 +113,6 @@ describe("createContentHashFetch", () => {
 
   it("falls back to the original arguments without logging when hashing fails", async () => {
     const { fetch, calls } = recordingFetch();
-    const failingSubtle = { digest: () => Promise.reject(new Error("synthetic failure")) } as unknown as SubtleCrypto;
     const consoleSpies = (["log", "info", "warn", "error", "debug"] as const).map((level) =>
       vi.spyOn(console, level).mockImplementation(() => undefined),
     );
@@ -124,6 +127,39 @@ describe("createContentHashFetch", () => {
     expect(calls[0]?.init).toBe(init);
     expect(form.get("q")).toBe("V-00000000");
     for (const spy of consoleSpies) expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the original Request with its body unread when hashing fails", async () => {
+    const { fetch, calls } = recordingFetch();
+    const request = new Request(`${ORIGIN}/buscar`, { method: "POST", body: "V-00000000" });
+
+    await build(fetch, failingSubtle)(request);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.input).toBe(request);
+    expect(request.bodyUsed).toBe(false);
+    expect(await request.text()).toBe("V-00000000");
+  });
+
+  it("keeps the init headers, signal and credentials of a string-URL call on the signed request", async () => {
+    const { fetch, calls } = recordingFetch();
+    const controller = new AbortController();
+
+    await build(fetch)("/servicios/abc", {
+      method: "POST",
+      body: "Persona Prueba",
+      headers: { "Next-Action": "action-id", accept: "text/x-component" },
+      signal: controller.signal,
+      credentials: "include",
+    });
+
+    const sent = calls[0]?.input as Request;
+    expect(sent.headers.get("next-action")).toBe("action-id");
+    expect(sent.headers.get("accept")).toBe("text/x-component");
+    expect(sent.credentials).toBe("include");
+    expect(sent.signal.aborted).toBe(false);
+    controller.abort();
+    expect(sent.signal.aborted).toBe(true);
   });
 
   it.each(["PUT", "PATCH", "DELETE", "post"])("signs a same-origin %s with a string body", async (method) => {
@@ -200,6 +236,31 @@ describe("createContentHashFetch", () => {
     expect(attempts).toBe(1);
   });
 
+  it.each([
+    ["", `${ORIGIN}/servicios/abc`],
+    ["?x=1", `${ORIGIN}/servicios/abc?x=1`],
+    ["api/x", `${ORIGIN}/servicios/api/x`],
+  ])("resolves the relative URL %j against the document URL, as native fetch does", async (target, expected) => {
+    const { fetch, calls } = recordingFetch();
+
+    await build(fetch)(target, { method: "POST", body: "Persona Prueba" });
+
+    const sent = calls[0]?.input as Request;
+    expect(sent.url).toBe(expected);
+    expect(sent.headers.get(HEADER)).toBe(sha256Hex(new TextEncoder().encode("Persona Prueba")));
+  });
+
+  it("resolves against the document URL current at call time, after a client-side navigation", async () => {
+    const { fetch, calls } = recordingFetch();
+    const location = { href: PAGE };
+    const intercepted = createContentHashFetch({ fetch, location, subtle: globalThis.crypto.subtle });
+
+    location.href = `${ORIGIN}/admin/ingesta/lote`;
+    await intercepted("", { method: "POST", body: "Persona Prueba" });
+
+    expect((calls[0]?.input as Request).url).toBe(`${ORIGIN}/admin/ingesta/lote`);
+  });
+
   it("passes a bare same-origin call through untouched (default GET)", async () => {
     const { fetch, calls } = recordingFetch();
 
@@ -224,7 +285,7 @@ describe("installContentHashFetch", () => {
     const receivers: unknown[] = [];
     const sent: Request[] = [];
     const win = {
-      location: { origin: ORIGIN },
+      location: { href: PAGE },
       crypto: { subtle: globalThis.crypto.subtle },
       fetch(this: unknown, input: RequestInfo | URL, _init?: RequestInit) {
         receivers.push(this);

@@ -169,3 +169,43 @@ Decisiones menores:
 - `SKIP_BUILD=1` y la lista de navegadores por argumento existen para iterar; el comando del plan no los usa.
 - Se agregó un GET de calentamiento antes de los escenarios: la primera navegación en frío excedía 30 s en este disco.
 Notas para el verifier: se vieron POST `text/plain` (S3, S6) y `multipart/form-data` (S4) firmados y coincidentes; S4 envía `Ñandú Pérez 🌎` y 70 000 bytes aleatorios. `playwright install` borró del caché compartido `chromium-1248`/`chromium_headless_shell-1248` (otra versión de playwright). No quedan procesos de next ni del proxy.
+
+## T-9b — fix de hallazgos medios M1..M4 (06-code-review.md)   estado: terminada
+TDD: ON (M1/M2: RED contra mutantes del código, porque el comportamiento ya era correcto y faltaba el test; M3/M4: RED contra el código real)
+Safety net: `vitest run lib/origin-signing/content-hash-fetch.test.ts lib/origin-signing/hydrated-submit-guard.test.ts --reporter=dot` → `Tests 1 failed | 27 passed (28)`: `Test timed out in 5000ms` en la guarda AC-13 (falla preexistente ya registrada en T-8; el timeout está en el alcance de esta tarea). Log 2026-11-10T17:36:05Z (`WARN=backgrounded`; resultado leído de la salida de la tarea, no repetido en primer plano porque es justo el timeout que corrige la tarea).
+Archivos tocados: `apps/web/lib/origin-signing/content-hash-fetch.ts`, `apps/web/lib/origin-signing/content-hash-fetch.test.ts`, `apps/web/lib/origin-signing/hydrated-submit-guard.test.ts`   Desviaciones respecto al plan: ninguna (`instrumentation-client.ts` no cambia: `window` cumple el nuevo `ContentHashFetchTarget`).
+
+Mutantes (copias en el scratchpad `t9b/<dir>`, el repo no se tocó; comando: `vitest run --root $SCRATCH/t9b/<dir> --reporter=dot`):
+- a: `new Request(..., { method: init?.method, body: init?.body })`
+- a2: a + `headers: init?.headers` (pierde signal y credentials)
+- a3: a2 + `credentials: init?.credentials` (pierde solo el signal)
+- b: `new Request(input instanceof Request ? input : url, init)` (sin `.clone()`)
+- base-a / base-b: mutantes a y b con el test de HEAD
+
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| (prueba de supervivencia) | suite de HEAD contra mutante a | `--root t9b/base-a` | PASS — Tests 22 passed (22): el mutante sobrevive | 2026-11-10T17:39:15Z |
+| (prueba de supervivencia) | suite de HEAD contra mutante b | `--root t9b/base-b` | PASS — Tests 22 passed (22): el mutante sobrevive | 2026-11-10T17:39:35Z |
+| RED (M1) | keeps the init headers, signal and credentials of a string-URL call on the signed request | `--root t9b/mut-a` | FAIL — `expected null to be 'action-id'` · Tests 1 failed \| 23 passed (24) | 2026-11-10T17:40:08Z |
+| RED (M2) | falls back to the original Request with its body unread when hashing fails | `--root t9b/mut-b` | FAIL — `bodyUsed`: `expected true to be false` · Tests 1 failed \| 23 passed (24) | 2026-11-10T17:40:33Z |
+| TRIANGULATE (M1) | ídem M1 | `--root t9b/mut-a2` | FAIL esperado — `expected 'same-origin' to be 'include'` · Tests 1 failed \| 23 passed (24) | 2026-11-10T17:41:04Z |
+| GREEN (M1, M2) | los dos tests nuevos contra el código real | `vitest run lib/origin-signing/content-hash-fetch.test.ts --reporter=dot` | PASS — Tests 24 passed (24) | 2026-11-10T17:41:26Z |
+| TRIANGULATE (M1) | ídem M1 | `--root t9b/mut-a3` | FAIL esperado — `signal.aborted`: `expected false to be true` · Tests 1 failed \| 23 passed (24) | 2026-11-10T17:41:44Z |
+| REFACTOR previo (M3) | deps `origin` → `location: { href }` leída en cada llamada, resolviendo aún contra el origen | `vitest run lib/origin-signing/content-hash-fetch.test.ts --reporter=dot` | PASS — Tests 24 passed (24) | 2026-11-10T17:43:00Z |
+| RED (M3) | resolves the relative URL "" / "?x=1" / "api/x" against the document URL (página `/servicios/abc`) | base + `-t "against the document URL"` | FAIL — `expected 'https://example.test/' to be 'https://example.test/servicios/abc'` (y `/?x=1`, `/api/x`) · Tests 3 failed \| 24 skipped (27) | 2026-11-10T17:44:05Z |
+| GREEN (M3) | ídem | base + `-t "against the document URL"` | PASS — Tests 3 passed \| 24 skipped (27) | 2026-11-10T17:45:27Z |
+| TRIANGULATE (M3) | URL del documento leída al llamar (navegación de cliente) + `//evil.test/buscar` relativa al protocolo pasa intacta | `vitest run lib/origin-signing/content-hash-fetch.test.ts --reporter=dot` | PASS — Tests 29 passed (29) | 2026-11-10T17:47:05Z |
+| RED (M4) | treats <input type="submit"> and <input type="image"> inside <form action> as native submits | `vitest run lib/origin-signing/hydrated-submit-guard.test.ts --reporter=dot -t "native submits"` | FAIL — `expected [] to deeply equal [ …(2) ]` · Tests 1 failed \| 6 skipped (7) | 2026-11-10T17:48:38Z |
+| GREEN (M4) | ídem | ídem | PASS — Tests 1 passed \| 6 skipped (7) | 2026-11-10T17:49:59Z |
+| TRIANGULATE (M4) + timeout | `<Input type="image">` marcado; `<input type="submit">` en `<form onSubmit>` no; escaneo real de app/ y components/ con timeout 30 s | `vitest run lib/origin-signing/hydrated-submit-guard.test.ts --reporter=dot` | PASS — Tests 8 passed (8) | 2026-11-10T17:51:07Z |
+| REFACTOR | fake `failingSubtle` compartido en el test del interceptor | `vitest run lib/origin-signing/content-hash-fetch.test.ts lib/origin-signing/hydrated-submit-guard.test.ts --reporter=dot` | PASS — Tests 37 passed (37) | 2026-11-10T17:52:30Z |
+
+Checks locales: lint ✔ (`pnpm lint` → `Tasks: 5 successful, 5 total`) · typecheck ✔ (`pnpm typecheck` → `Tasks: 5 successful, 5 total`) · tests ✔ (`pnpm test` → `Tasks: 4 successful, 4 total`; web `Test Files 19 passed (19)`, `Tests 107 passed (107)`; core 286, infra 285, db 20 passed). Log 2026-11-10T18:04:11Z (`WARN=backgrounded`; resultado leído de la salida de la tarea, exit 0).
+Commit: ver informe de cierre
+Decisiones menores:
+- `ContentHashFetchDeps.location` recibe el objeto `location` vivo y se lee en cada llamada: con navegación de cliente la URL del documento cambia después de instalar el interceptor. La comparación de mismo origen sigue siendo por `origin`.
+- La guarda también trata `<Input>` (shadcn, que reenvía `type` al `<input>`) igual que `<input>`, en paralelo a `button`/`Button`. Solo `type` literal `submit`/`image`.
+- Timeout explícito de 30 s solo en los dos tests que leen de disco (AC-13 y AC-14), con comentario del porqué.
+- La línea del log 2026-11-10T17:51:18Z (`exit=!0`, `sin salida capturada`) es una entrada del hook sin resumen para ese mismo comando; la corrida con resumen del runner, que es la que cuenta, es la de 17:52:30Z.
+Notas para el verifier: los mutantes viven en el scratchpad de la sesión, fuera del repo. Los TRIANGULATE de M3/M4 pasaron de entrada (guardas de comportamiento correcto por construcción); no se presentan como RED. Fixtures sintéticos (`Persona Prueba`, `V-00000000`).

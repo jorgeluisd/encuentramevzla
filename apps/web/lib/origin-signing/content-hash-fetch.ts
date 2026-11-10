@@ -5,13 +5,13 @@ const METHODS_WITH_BODY = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export type ContentHashFetchDeps = {
   fetch: Fetch;
-  origin: string;
+  location: { readonly href: string };
   subtle: SubtleCrypto | undefined;
 };
 
 export type ContentHashFetchTarget = {
   fetch: Fetch;
-  location: { origin: string };
+  location: { readonly href: string };
   crypto?: { subtle?: SubtleCrypto | undefined };
 };
 
@@ -41,8 +41,9 @@ async function withContentHash(
 export function createContentHashFetch(deps: ContentHashFetchDeps): Fetch {
   return async (input, init) => {
     if (!METHODS_WITH_BODY.has(methodOf(input, init))) return deps.fetch(input, init);
-    const url = new URL(input instanceof Request ? input.url : String(input), deps.origin);
-    if (url.origin !== deps.origin || !deps.subtle) return deps.fetch(input, init);
+    const page = new URL(deps.location.href);
+    const url = new URL(input instanceof Request ? input.url : String(input), page);
+    if (url.origin !== page.origin || !deps.subtle) return deps.fetch(input, init);
     let prepared: Request;
     try {
       prepared = await withContentHash(deps.subtle, input, url, init);
@@ -56,7 +57,7 @@ export function createContentHashFetch(deps: ContentHashFetchDeps): Fetch {
 export function installContentHashFetch(win: ContentHashFetchTarget): void {
   win.fetch = createContentHashFetch({
     fetch: win.fetch.bind(win),
-    origin: win.location.origin,
+    location: win.location,
     subtle: win.crypto?.subtle,
   });
 }
