@@ -58,6 +58,19 @@ TDD Cycle Evidence
 | TRIANGULATE | — | — | no aplica: la rama cliente (`true` tras hidratar, AC-11) necesita DOM y el plan la asigna a C1 (T-8) | — |
 | REFACTOR | — | — | sin cambios tras GREEN | — |
 Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `apps/web` → exit 0) · lint ✔ (`pnpm exec eslint lib/origin-signing` → exit 0) · tests ✔ (1 passed, 2026-11-10T02:12:23Z)
-Commit: ver la sección de T-4
+Commit: 716f210 feat(web): add useHydrated hook for submit gating
 Decisiones menores: el GREEN implementa directamente la forma del diseño en vez de una constante `false`, porque la constante rompería AC-11 y el caso cliente no es testeable en el entorno `node` de Vitest.
-Notas para el verifier: sin jsdom en el paquete; no se agregó dependencia para probar la rama cliente.
+Notas para el verifier: sin jsdom en el paquete; no se agregó dependencia para probar la rama cliente. El commit se enmendó una vez (antes de cualquier push) para incluir este archivo de progreso, que quedó fuera por un `sed` fallido.
+
+## T-4 — componentes `HydratedSubmit` y `JsRequiredNotice`   estado: terminada
+TDD: OFF (componentes delgados; los prueban la guarda de T-5 y C1, según el plan)
+Safety net: N/A (solo archivos nuevos)
+Archivos tocados: `apps/web/components/ui/hydrated-submit.tsx`, `apps/web/components/ui/js-required-notice.tsx`   Desviaciones respecto al plan: ninguna
+TDD Cycle Evidence: no aplica (TDD OFF)
+Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `apps/web` → exit 0) · lint ✔ (`pnpm exec eslint components/ui/hydrated-submit.tsx components/ui/js-required-notice.tsx` → exit 0) · tests: sin tests propios
+Commit: ver el informe de cierre (último commit de la tanda)
+Decisiones menores:
+- `HydratedSubmitProps = Omit<ButtonProps, "type">`: deja pasar `formAction`, `name`, `value`, `variant`, `title` (lo que pide el diseño) y además `className`, `size`, `children` y demás atributos del botón, para que la migración de T-5 no pierda estilos. `type` queda fijo en `"submit"` y `disabled = !hydrated || disabled`.
+- `JsRequiredNotice` sin `"use client"` ni hooks, así sirve en server y en client; texto en español con el token `text-danger` ya usado en la app.
+- Un comentario de porqué en `HydratedSubmit` (envío nativo antes de hidratar → 403 tras R3, ADR-0012).
+Notas para el verifier: ningún formulario usa todavía estos componentes; la migración es T-5.
