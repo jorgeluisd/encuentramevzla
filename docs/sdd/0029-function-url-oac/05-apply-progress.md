@@ -42,6 +42,22 @@ Safety net: N/A (archivo nuevo)
 Archivos tocados: `apps/web/instrumentation-client.ts`   Desviaciones respecto al plan: ninguna
 TDD Cycle Evidence: no aplica (TDD OFF)
 Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `apps/web` → exit 0) · lint ✔ (`pnpm exec eslint instrumentation-client.ts lib/origin-signing` → exit 0) · tests: sin tests propios del archivo
-Commit: ver la sección de T-3
+Commit: ec72bcc feat(web): install content hash fetch before hydration
 Decisiones menores: el archivo solo importa y llama `installContentHashFetch(window)`; Next 16 lo carga antes de hidratar.
 Notas para el verifier: la instalación real se valida en C1 (T-8) y con el grep del artefacto (T-9).
+
+## T-3 — hook `useHydrated`   estado: terminada
+TDD: ON (presentation/lib)
+Safety net: N/A (solo archivos nuevos)
+Archivos tocados: `apps/web/lib/origin-signing/use-hydrated.ts`, `apps/web/lib/origin-signing/use-hydrated.test.ts`   Desviaciones respecto al plan: ninguna
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | reports not hydrated while rendering on the server (AC-10, SSR) — esqueleto `return true` | `pnpm --filter @evzla/web test -- lib/origin-signing/use-hydrated.test.ts` | FAIL — `expected '<span>true</span>' to be '<span>false</span>'` · Tests 1 failed (1) | 2026-11-10T02:12:13Z |
+| GREEN | ídem, con `useSyncExternalStore(noopSubscribe, () => true, () => false)` | ídem | PASS — Tests 1 passed (1) | 2026-11-10T02:12:23Z |
+| TRIANGULATE | — | — | no aplica: la rama cliente (`true` tras hidratar, AC-11) necesita DOM y el plan la asigna a C1 (T-8) | — |
+| REFACTOR | — | — | sin cambios tras GREEN | — |
+Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `apps/web` → exit 0) · lint ✔ (`pnpm exec eslint lib/origin-signing` → exit 0) · tests ✔ (1 passed, 2026-11-10T02:12:23Z)
+Commit: ver la sección de T-4
+Decisiones menores: el GREEN implementa directamente la forma del diseño en vez de una constante `false`, porque la constante rompería AC-11 y el caso cliente no es testeable en el entorno `node` de Vitest.
+Notas para el verifier: sin jsdom en el paquete; no se agregó dependencia para probar la rama cliente.
