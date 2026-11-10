@@ -29,9 +29,19 @@ TDD Cycle Evidence (comando base: `pnpm --filter @evzla/web test -- lib/origin-s
 | REFACTOR | restauración de espías en `afterEach` | base | PASS — Tests 22 passed (22) | 2026-11-10T02:02:31Z |
 
 Checks locales: typecheck ✔ (`pnpm --filter @evzla/web typecheck` → `tsc --noEmit` sin errores) · lint ✔ (`pnpm --filter @evzla/web lint` → `eslint .` sin hallazgos) · tests ✔ (22 passed, 2026-11-10T02:02:31Z)
-Commit: ver la sección de T-2 (el hash se anota en el commit siguiente)
+Commit: 40657a4 feat(web): add same-origin content hash fetch interceptor
 Decisiones menores:
 - Los casos de TRIANGULATE pasaron de entrada: son guardas de AC que el diseño cumple por construcción (`new Request` para cualquier body, sin estado de módulo, `fetch` fuera del `try`). No se presentan como RED.
 - Tipo `ContentHashFetchTarget` mínimo (`fetch`, `location.origin`, `crypto?.subtle`) para que `installContentHashFetch(window)` compile y sea testeable sin DOM.
 - Un único comentario de porqué sobre `withContentHash` (bytes firmados = bytes enviados, ADR-0012).
 Notas para el verifier: los fixtures son sintéticos (`Persona Prueba`, `V-00000000`); la salida de los RED muestra hashes de esos fixtures, no de datos reales.
+
+## T-2 — instalación del interceptor en `instrumentation-client.ts`   estado: terminada
+TDD: OFF (cableado de una línea; lo cubren AC-9 en T-8 y el chequeo del artefacto en T-9, según el plan)
+Safety net: N/A (archivo nuevo)
+Archivos tocados: `apps/web/instrumentation-client.ts`   Desviaciones respecto al plan: ninguna
+TDD Cycle Evidence: no aplica (TDD OFF)
+Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `apps/web` → exit 0) · lint ✔ (`pnpm exec eslint instrumentation-client.ts lib/origin-signing` → exit 0) · tests: sin tests propios del archivo
+Commit: ver la sección de T-3
+Decisiones menores: el archivo solo importa y llama `installContentHashFetch(window)`; Next 16 lo carga antes de hidratar.
+Notas para el verifier: la instalación real se valida en C1 (T-8) y con el grep del artefacto (T-9).
