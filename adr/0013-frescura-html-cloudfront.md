@@ -4,7 +4,7 @@ Fecha: 2026-11-11 · Estado: **PROPUESTO** · Complementa: [ADR-0010](./0010-mig
 
 ## Contexto
 
-OpenNext fuerza `s-maxage=31536000` en las páginas HTML prerenderizadas (`/`, `/buscar`, `/confianza`, `/emergencias`).
+OpenNext fuerza `s-maxage=31536000` en las páginas HTML prerenderizadas (`/`, `/confianza`, `/emergencias`).
 `ServerCachePolicy` acepta hasta 365 días, así que CloudFront guarda ese HTML hasta un año. Ningún paso del deploy ni de la
 revalidación invalida la CDN. Por eso, después de cada deploy el HTML servido es de un build anterior: sus ids de Server
 Action ya no existen (409) y no trae el interceptor de ADR-0012. Con R3 eso se convertiría en un 403. Además,
@@ -21,11 +21,14 @@ sobre `*` al rol del handler que comparten todos los deployments del stack.
 2. El recurso depende de la función server, de los `BucketDeployment` de assets y caché y de la siembra de tags. Así corre
    después de que el código y la caché del build nuevo están en su lugar.
 3. Su propiedad incluye el BUILD_ID de Next (aleatorio por build), que además se usa como `CallerReference`. Todo deploy
-   re-invalida y los reintentos son idempotentes. No se espera a que la invalidación se complete.
+   de un build nuevo re-invalida. Un rollback o un "Re-run failed jobs" del mismo artefacto reutiliza el BUILD_ID y no
+   re-invalida: esa ventana la acota el `maxTtl` de 300 s. No se espera a que la invalidación se complete.
 4. `ServerCachePolicy.maxTtl` pasa a 300 s. `defaultTtl`, `minTtl` y la clave de caché no cambian. Esto acota la
    obsolescencia del HTML tras una revalidación y cubre un fallo de la invalidación.
-5. El smoke de CI compara el BUILD_ID del artefacto con el que trae el HTML de las cuatro rutas, con reintentos durante unos
-   3 minutos, y nunca imprime el HTML.
+5. El smoke de CI compara el BUILD_ID del artefacto con el que trae el HTML de las 3 rutas (`/`, `/confianza`,
+   `/emergencias`), pedidas con el `Accept` de un navegador porque `accept` está en la clave de caché. Mientras sirve un
+   build distinto reintenta hasta 18 veces (unos 3 minutos); los demás fallos tienen un presupuesto aparte de 5. Nunca
+   imprime el HTML ni el id servido.
 6. No cambian el rol de CI, el rol del server Lambda ni `POST /api/revalidate`. No se activa el override
    `cdnInvalidation: "cloudfront"` de OpenNext.
 
