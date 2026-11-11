@@ -456,6 +456,152 @@ describe("server cache policy (0030)", () => {
   });
 });
 
+describe("HTML invalidation on deploy (0030, ADR-0013)", () => {
+  type Statement = { Action: string | string[]; Resource: unknown; Effect: string };
+  type Entry = [string, Resource & { DependsOn?: string[] }];
+  const FIXTURE_BUILD_ID = "fixture-build";
+
+  const entries = (type: string): Entry[] =>
+    Object.entries(resources).filter(([, r]) => r.Type === type) as Entry[];
+  const idOf = (type: string, fragment: string): string => {
+    const found = entries(type).filter(([id]) => id.includes(fragment));
+    expect(found).toHaveLength(1);
+    return (found[0] as Entry)[0];
+  };
+  const actionsOf = (statement: Statement): string[] =>
+    Array.isArray(statement.Action) ? statement.Action : [statement.Action];
+  const statementsOf = (policies: Resource[]): Statement[] =>
+    policies.flatMap((p) => (p.Properties.PolicyDocument as { Statement: Statement[] }).Statement);
+
+  function invalidation(from: Record<string, Resource> = resources): Entry {
+    const found = Object.entries(from).filter(([, r]) => r.Type === "Custom::AWS") as Entry[];
+    expect(found).toHaveLength(1);
+    return found[0] as Entry;
+  }
+
+  function distributionLogicalId(): string {
+    const [dist] = entries("AWS::CloudFront::Distribution");
+    if (!dist) throw new Error("distribution not found");
+    return dist[0];
+  }
+
+  function serverFunctionId(): string {
+    const found = entries("AWS::Lambda::Function").find(([, r]) =>
+      "EVZLA_DB_SECRET_ADMIN" in ((r.Properties.Environment as { Variables?: object } | undefined)?.Variables ?? {}),
+    );
+    if (!found) throw new Error("server function not found");
+    return found[0];
+  }
+
+  function invalidationPolicy(): Statement[] {
+    const [, cr] = invalidation();
+    const handlerId = JSON.stringify(cr.Properties.ServiceToken).match(/"(AWS[0-9A-Za-z]+)"/)?.[1];
+    if (!handlerId) throw new Error("invalidation handler not found");
+    const roleId = (resources[handlerId]?.Properties.Role as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0];
+    return statementsOf(
+      entries("AWS::IAM::Policy")
+        .filter(([, p]) => (p.Properties.Roles as { Ref: string }[]).some((role) => role.Ref === roleId))
+        .map(([, p]) => p),
+    );
+  }
+
+  it("invalidates /* of this stack's distribution exactly once (AC-1)", () => {
+    const [, cr] = invalidation();
+    for (const call of [cr.Properties.Create, cr.Properties.Update]) {
+      const text = JSON.stringify(call);
+      expect(text).toContain('\\"service\\":\\"CloudFront\\"');
+      expect(text).toContain('\\"action\\":\\"createInvalidation\\"');
+      expect(text).toContain('\\"Items\\":[\\"/*\\"]');
+      expect(text).toContain(`{"Ref":"${distributionLogicalId()}"}`);
+    }
+    expect(cr.Properties.Delete).toBeUndefined();
+  });
+
+  it("never invalidates through a BucketDeployment (AC-1, AC-4)", () => {
+    for (const [, deployment] of entries("Custom::CDKBucketDeployment")) {
+      expect(deployment.Properties.DistributionId).toBeUndefined();
+      expect(deployment.Properties.DistributionPaths).toBeUndefined();
+    }
+  });
+
+  it("runs after the server code, the assets, the cache seed and the tag cache are deployed (AC-2)", () => {
+    const [, cr] = invalidation();
+    expect(cr.DependsOn).toEqual(
+      expect.arrayContaining([
+        serverFunctionId(),
+        idOf("Custom::CDKBucketDeployment", "VersionedAssets"),
+        idOf("Custom::CDKBucketDeployment", "UnversionedAssets"),
+        idOf("Custom::CDKBucketDeployment", "CacheSeed"),
+        idOf("AWS::CloudFormation::CustomResource", "TagCacheInit"),
+      ]),
+    );
+  });
+
+  it("keys the call on the build id so every new build re-invalidates (AC-3)", () => {
+    const [, cr] = invalidation();
+    for (const call of [cr.Properties.Create, cr.Properties.Update]) {
+      expect(JSON.stringify(call)).toContain(`\\"CallerReference\\":\\"evzla-${FIXTURE_BUILD_ID}\\"`);
+    }
+
+    const workDir = mkdtempSync(path.join(tmpdir(), "evzla-build-id-"));
+    try {
+      cpSync(path.join(infraDir, "test/fixtures/web"), path.join(workDir, "web"), { recursive: true });
+      writeFileSync(path.join(workDir, "web/.open-next/assets/BUILD_ID"), "next-build-2\n");
+      const { evzla } = synth({ openNextPath: path.join(workDir, "web/.open-next") });
+      const other = Template.fromStack(evzla).toJSON().Resources as Record<string, Resource>;
+      const [, otherCr] = invalidation(other);
+      expect(JSON.stringify(otherCr.Properties.Create)).toContain('\\"CallerReference\\":\\"evzla-next-build-2\\"');
+      expect(otherCr.Properties.Update).not.toEqual(cr.Properties.Update);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
+  it("grants the invalidation handler only CreateInvalidation on this distribution, with the bundled SDK (AC-4)", () => {
+    const [, cr] = invalidation();
+    expect(cr.Properties.InstallLatestAwsSdk).toBe(false);
+    expect(invalidationPolicy()).toEqual([
+      {
+        Effect: "Allow",
+        Action: "cloudfront:CreateInvalidation",
+        Resource: {
+          "Fn::Join": [
+            "",
+            ["arn:", { Ref: "AWS::Partition" }, ":cloudfront::111111111111:distribution/", { Ref: distributionLogicalId() }],
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("never grants a CloudFront action on every resource anywhere in the stack (AC-4)", () => {
+    const cloudFrontOnAnything = statementsOf(entries("AWS::IAM::Policy").map(([, p]) => p)).filter(
+      (s) => actionsOf(s).some((a) => a.startsWith("cloudfront:")) && JSON.stringify(s.Resource) === '"*"',
+    );
+    expect(cloudFrontOnAnything).toEqual([]);
+  });
+
+  it("keeps CloudFront out of the public server function: no permission, no distribution id (S-2)", () => {
+    const fn = resources[serverFunctionId()] as Resource;
+    const env = (fn.Properties.Environment as { Variables: Record<string, unknown> }).Variables;
+    expect(env.CLOUDFRONT_DISTRIBUTION_ID).toBeUndefined();
+    const roleId = (fn.Properties.Role as { "Fn::GetAtt": string[] })["Fn::GetAtt"][0];
+    const serverPolicies = entries("AWS::IAM::Policy")
+      .filter(([, p]) => (p.Properties.Roles as { Ref: string }[]).some((role) => role.Ref === roleId))
+      .map(([, p]) => p);
+    expect(JSON.stringify(serverPolicies)).not.toContain("cloudfront:");
+  });
+
+  it("logs the invalidation handler to its own retained log group", () => {
+    const [, cr] = invalidation();
+    const handlerId = JSON.stringify(cr.Properties.ServiceToken).match(/"(AWS[0-9A-Za-z]+)"/)?.[1] ?? "";
+    const logGroup = (resources[handlerId]?.Properties.LoggingConfig as { LogGroup?: { Ref?: string } } | undefined)
+      ?.LogGroup?.Ref;
+    expect(logGroup).toContain("HtmlInvalidationLogs");
+    expect(resources[logGroup ?? ""]?.Properties.RetentionInDays).toBe(30);
+  });
+});
+
 describe("server bundle symlinks", () => {
   let workDir: string;
 

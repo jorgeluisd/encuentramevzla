@@ -126,6 +126,7 @@ export class OpenNextSite extends Construct {
     });
     revalidationFunction.addEventSource(new SqsEventSource(revalidationQueue, { batchSize: 5 }));
 
+    let tagCacheInit: CustomResource | undefined;
     if (output.initialization && existsSync(output.initialization.cacheFile)) {
       const initFunction = nodeFunction("TagCacheInitFunction", output.initialization, {
         memorySize: 256,
@@ -137,13 +138,13 @@ export class OpenNextSite extends Construct {
         onEventHandler: initFunction,
         logGroup: logGroup("TagCacheInitProvider"),
       });
-      new CustomResource(this, "TagCacheInit", {
+      tagCacheInit = new CustomResource(this, "TagCacheInit", {
         serviceToken: provider.serviceToken,
         properties: { contentHash: sha256(readFileSync(output.initialization.cacheFile)) },
       });
     }
 
-    this.deployAssets(output, logGroup("AssetsDeployment"));
+    const assetDeployments = this.deployAssets(output, logGroup("AssetsDeployment"));
 
     // OAC NO_OVERRIDE sobre URLs NONE mientras dura la secuencia de ADR-0012 (R1 → R2 imagen → R3 server):
     // CloudFront ya firma y los permisos existen, pero las URL todavía aceptan llamadas sin firma.
@@ -264,11 +265,41 @@ export class OpenNextSite extends Construct {
         invokedViaFunctionUrl: true,
       });
     }
+
+    const htmlInvalidation = this.invalidateHtml(output.buildId, logGroup("HtmlInvalidation"));
+    htmlInvalidation.node.addDependency(this.serverFunction, ...assetDeployments, ...(tagCacheInit ? [tagCacheInit] : []));
   }
 
-  private deployAssets(output: OpenNextOutput, logGroup: logs.ILogGroup) {
+  // OpenNext publica el HTML con s-maxage de un año: sin invalidar, la CDN sigue sirviendo el build anterior (ADR-0013).
+  // BucketDeployment concedería CreateInvalidation sobre "*"; aquí queda acotado a esta distribución.
+  private invalidateHtml(buildId: string, logGroup: logs.ILogGroup): cr.AwsCustomResource {
+    const createInvalidation: cr.AwsSdkCall = {
+      service: "CloudFront",
+      action: "createInvalidation",
+      parameters: {
+        DistributionId: this.distribution.distributionId,
+        // Mismo build, mismo CallerReference: CloudFront devuelve la invalidación existente en reintentos y rollback.
+        InvalidationBatch: { CallerReference: `evzla-${buildId}`, Paths: { Quantity: 1, Items: ["/*"] } },
+      },
+      physicalResourceId: cr.PhysicalResourceId.fromResponse("Invalidation.Id"),
+    };
+    return new cr.AwsCustomResource(this, "HtmlInvalidation", {
+      onCreate: createInvalidation,
+      onUpdate: createInvalidation,
+      policy: cr.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          actions: ["cloudfront:CreateInvalidation"],
+          resources: [this.distribution.distributionArn],
+        }),
+      ]),
+      installLatestAwsSdk: false,
+      logGroup,
+    });
+  }
+
+  private deployAssets(output: OpenNextOutput, logGroup: logs.ILogGroup): Construct[] {
     const assets = s3deploy.Source.asset(output.assetsDir);
-    new s3deploy.BucketDeployment(this, "VersionedAssets", {
+    const versioned = new s3deploy.BucketDeployment(this, "VersionedAssets", {
       sources: [assets],
       destinationBucket: this.assetsBucket,
       destinationKeyPrefix: ASSETS_PREFIX,
@@ -280,7 +311,7 @@ export class OpenNextSite extends Construct {
       memoryLimit: 1024,
       logGroup,
     });
-    new s3deploy.BucketDeployment(this, "UnversionedAssets", {
+    const unversioned = new s3deploy.BucketDeployment(this, "UnversionedAssets", {
       sources: [assets],
       destinationBucket: this.assetsBucket,
       destinationKeyPrefix: ASSETS_PREFIX,
@@ -289,17 +320,17 @@ export class OpenNextSite extends Construct {
       memoryLimit: 1024,
       logGroup,
     });
-    if (output.cacheDir && existsSync(output.cacheDir)) {
-      new s3deploy.BucketDeployment(this, "CacheSeed", {
-        sources: [s3deploy.Source.asset(output.cacheDir)],
-        destinationBucket: this.cacheBucket,
-        destinationKeyPrefix: CACHE_PREFIX,
-        // El server escribe en este prefijo en runtime: nunca podar.
-        prune: false,
-        memoryLimit: 1024,
-        logGroup,
-      });
-    }
+    if (!output.cacheDir || !existsSync(output.cacheDir)) return [versioned, unversioned];
+    const cacheSeed = new s3deploy.BucketDeployment(this, "CacheSeed", {
+      sources: [s3deploy.Source.asset(output.cacheDir)],
+      destinationBucket: this.cacheBucket,
+      destinationKeyPrefix: CACHE_PREFIX,
+      // El server escribe en este prefijo en runtime: nunca podar.
+      prune: false,
+      memoryLimit: 1024,
+      logGroup,
+    });
+    return [versioned, unversioned, cacheSeed];
   }
 }
 
