@@ -10,7 +10,7 @@ import {
   type EstadoModeracion,
 } from "@/lib/actions/servicios";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { HydratedSubmit } from "@/components/ui/hydrated-submit";
 import { Card, CardBody } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
@@ -99,17 +99,17 @@ function Row({ item }: { item: AdminServiceView }): React.ReactElement {
           {isPending && (
             <form action={approveForm}>
               <input type="hidden" name="serviceId" value={item.id} />
-              <Button type="submit" disabled={busy}>
+              <HydratedSubmit disabled={busy}>
                 {approvePending ? "Aprobando…" : "Aprobar"}
-              </Button>
+              </HydratedSubmit>
             </form>
           )}
           {item.reported && (
             <form action={dismissForm}>
               <input type="hidden" name="serviceId" value={item.id} />
-              <Button type="submit" disabled={busy}>
+              <HydratedSubmit disabled={busy}>
                 {dismissPending ? "Descartando…" : "Descartar reporte"}
-              </Button>
+              </HydratedSubmit>
             </form>
           )}
           {isPending && (
@@ -120,24 +120,24 @@ function Row({ item }: { item: AdminServiceView }): React.ReactElement {
                 placeholder="Motivo del rechazo (opcional)"
                 className="h-[52px] min-w-[12rem] flex-1 rounded-[var(--radius-control)] border border-border bg-bg px-4 text-text placeholder:text-text-3 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:outline-none"
               />
-              <Button type="submit" variant="outline" disabled={busy}>
+              <HydratedSubmit variant="outline" disabled={busy}>
                 {rejectPending ? "Rechazando…" : "Rechazar"}
-              </Button>
+              </HydratedSubmit>
             </form>
           )}
           {isApproved && (
             <form action={downForm}>
               <input type="hidden" name="serviceId" value={item.id} />
-              <Button type="submit" variant="danger" disabled={busy}>
+              <HydratedSubmit variant="danger" disabled={busy}>
                 {downPending ? "Dando de baja…" : "Dar de baja"}
-              </Button>
+              </HydratedSubmit>
             </form>
           )}
           <form action={resendForm}>
             <input type="hidden" name="serviceId" value={item.id} />
-            <Button type="submit" variant="outline" disabled={busy}>
+            <HydratedSubmit variant="outline" disabled={busy}>
               {resendPending ? "Reenviando…" : "Reenviar enlace"}
-            </Button>
+            </HydratedSubmit>
           </form>
         </div>
 
