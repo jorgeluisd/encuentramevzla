@@ -10,8 +10,11 @@ const { fetch, AbortSignal } = globalThis;
 const { fail } = cli("smoke");
 
 const ATTEMPTS = 5;
-// La invalidación de CloudFront tarda 1-2 min en propagarse: ~3 min de reintentos para las páginas HTML.
-const BUILD_ID_ATTEMPTS = 18;
+// La invalidación de CloudFront tarda 1-2 min en propagarse: ~3 min de reintentos solo mientras sirve el build viejo.
+const STALE_BUILD_ATTEMPTS = 18;
+const STALE_BUILD = "build id distinto";
+// accept está en la clave de caché de ServerCachePolicy: el smoke debe leer la variante que reciben los navegadores.
+const BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
 const BUILD_ID = /^[A-Za-z0-9_-]{1,64}$/;
 // En el payload RSC el build id va escapado dentro de un string de JS: \"b\":\"<id>\".
 const SERVED_BUILD_ID = /\\?"b\\?":\\?"([A-Za-z0-9_-]{1,64})\\?"/;
@@ -51,7 +54,7 @@ function servingBuild(expectedBuildId) {
   return (body) => {
     const served = SERVED_BUILD_ID.exec(body)?.[1];
     if (served === undefined) return "build id ausente";
-    return served === expectedBuildId ? undefined : "build id distinto";
+    return served === expectedBuildId ? undefined : STALE_BUILD;
   };
 }
 
@@ -82,17 +85,17 @@ async function checkAdmin(response, url) {
 }
 
 const htmlPage = (buildId, ...problems) => ({
-  attempts: BUILD_ID_ATTEMPTS,
+  headers: { accept: BROWSER_ACCEPT },
   check: pageWhere(...problems, servingBuild(buildId)),
 });
-const probe = (check) => ({ attempts: ATTEMPTS, check });
+const probe = (check) => ({ headers: {}, check });
 
 // Nunca /api ni el buscador con término: el smoke no debe dejar filas en search_log ni mandar correos.
 // `/` sale de la caché de CloudFront; /servicios es force-dynamic y se renderiza en la Lambda desplegada.
+// /buscar no entra: es un redirect 307 a la home, sin HTML que comparar.
 function checksFor(buildId) {
   return {
     "/": htmlPage(buildId, containing(STABLE_TITLE, "título ausente")),
-    "/buscar": htmlPage(buildId),
     "/confianza": htmlPage(buildId),
     "/emergencias": htmlPage(buildId),
     "/admin": probe(checkAdmin),
@@ -102,25 +105,26 @@ function checksFor(buildId) {
 }
 export const SMOKE_PATHS = Object.keys(checksFor(""));
 
-async function attempt(baseUrl, smokePath, check, timeoutMs) {
+async function attempt(baseUrl, smokePath, { headers, check }, timeoutMs) {
   const url = new URL(smokePath, baseUrl);
   try {
-    const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
+    const response = await fetch(url, { headers, redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
     return { status: String(response.status), ...(await check(response, url)) };
   } catch {
     return { status: "sin-respuesta", ok: false };
   }
 }
 
-async function smokePathWithRetries(baseUrl, smokePath, { attempts, check }, { retryDelayMs, timeoutMs }) {
-  for (let n = 1; n <= attempts; n += 1) {
-    const result = await attempt(baseUrl, smokePath, check, timeoutMs);
+async function smokePathWithRetries(baseUrl, smokePath, smokeCheck, { retryDelayMs, timeoutMs }) {
+  for (let n = 1; ; n += 1) {
+    const result = await attempt(baseUrl, smokePath, smokeCheck, timeoutMs);
     if (result.ok) return true;
+    const attempts = result.reason === STALE_BUILD ? STALE_BUILD_ATTEMPTS : ATTEMPTS;
     const reason = result.reason ? `: ${result.reason}` : "";
     process.stderr.write(`smoke: ${smokePath} ${result.status} intento ${n}/${attempts}${reason}\n`);
-    if (n < attempts) await sleep(retryDelayMs);
+    if (n >= attempts) return false;
+    await sleep(retryDelayMs);
   }
-  return false;
 }
 
 async function main() {

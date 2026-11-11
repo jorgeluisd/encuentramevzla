@@ -1122,7 +1122,8 @@ describe("smoke.mjs", () => {
   const BODY_MARKER = "synthetic-body-marker";
   const BUILD_ID = "synthetic-build_01";
   const OTHER_BUILD_ID = "stale-build_00";
-  const HTML_PATHS = ["/", "/buscar", "/confianza", "/emergencias"];
+  const HTML_PATHS = ["/", "/confianza", "/emergencias"];
+  const BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
   const BUILD_ID_FAILURE = "smoke: falta un BUILD_ID válido del build desplegado\n";
 
   type Handler = (req: IncomingMessage, res: ServerResponse) => void;
@@ -1131,6 +1132,7 @@ describe("smoke.mjs", () => {
   let server: Server;
   let baseUrl: string;
   let requests: string[];
+  let accepts: Record<string, string | undefined>;
   let routes: Route;
   let workDir: string;
   let buildIdFile: string;
@@ -1152,7 +1154,6 @@ describe("smoke.mjs", () => {
   const services = page(200, `<html><body><h1>Ayuda gratuita tras el sismo</h1>${BODY_MARKER}</body></html>`);
   const ALL_PATHS = [
     "GET /",
-    "GET /buscar",
     "GET /confianza",
     "GET /emergencias",
     "GET /admin",
@@ -1180,9 +1181,9 @@ describe("smoke.mjs", () => {
     buildIdFile = path.join(workDir, "BUILD_ID");
     writeFileSync(buildIdFile, `${BUILD_ID}\n`);
     requests = [];
+    accepts = {};
     routes = {
       "/": [home()],
-      "/buscar": [html(BUILD_ID)],
       "/confianza": [html(BUILD_ID)],
       "/emergencias": [html(BUILD_ID)],
       "/admin": [adminRedirect],
@@ -1190,6 +1191,7 @@ describe("smoke.mjs", () => {
     };
     server = createServer((req, res) => {
       requests.push(`${req.method} ${req.url}`);
+      accepts[req.url ?? ""] = req.headers.accept;
       const handlers = routes[req.url ?? ""] ?? [page(404, BODY_MARKER)];
       const handler = handlers.length > 1 ? handlers.shift() : handlers[0];
       handler?.(req, res);
@@ -1212,6 +1214,23 @@ describe("smoke.mjs", () => {
     expect(run.stdout).not.toContain(BODY_MARKER);
   });
 
+  // accept forma parte de la clave de caché de ServerCachePolicy: hay que leer la variante de los navegadores.
+  it("asks for the HTML pages with a browser Accept header, so it reads the cache entry visitors get", async () => {
+    const run = await smoke();
+    expect(run.status).toBe(0);
+    expect(HTML_PATHS.map((smokePath) => accepts[smokePath])).toEqual(HTML_PATHS.map(() => BROWSER_ACCEPT));
+  });
+
+  it("stops after 5 attempts when a stale build id turns into an unexpected status", async () => {
+    routes["/confianza"] = [html(OTHER_BUILD_ID), page(503, BODY_MARKER)];
+    const run = await smoke();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(
+      "smoke: /confianza 200 intento 1/18: build id distinto\n" +
+        [2, 3, 4, 5].map((n) => `smoke: /confianza 503 intento ${n}/5\n`).join(""),
+    );
+  });
+
   it("also recognizes the build id when the payload is not escaped", async () => {
     routes["/confianza"] = [page(200, `<html><body>{"b":"${BUILD_ID}"}</body></html>`)];
     const run = await smoke();
@@ -1231,7 +1250,7 @@ describe("smoke.mjs", () => {
       { encoding: "utf8" },
     );
     const paths = JSON.parse(listed) as string[];
-    expect(paths).toEqual(["/", "/buscar", "/confianza", "/emergencias", "/admin", "/servicios", "/__smoke-no-existe"]);
+    expect(paths).toEqual(["/", "/confianza", "/emergencias", "/admin", "/servicios", "/__smoke-no-existe"]);
     expect(paths.some((p) => p.includes("?") || p.startsWith("/api"))).toBe(false);
   });
 
@@ -1247,37 +1266,38 @@ describe("smoke.mjs", () => {
     },
   );
 
-  it.each(HTML_PATHS)("fails on %s when the page carries no build id (AC-10)", async (smokePath) => {
+  it.each(HTML_PATHS)("fails on %s after 5 attempts when the page carries no build id (AC-10)", async (smokePath) => {
     routes[smokePath] = [page(200, `<html><head>${TITLE}</head><body>${BODY_MARKER}</body></html>`)];
     const run = await smoke();
     expect(run.status).toBe(1);
-    expect(run.stderr).toBe(attemptLines(smokePath, "200", 18, ": build id ausente"));
+    expect(run.stderr).toBe(attemptLines(smokePath, "200", 5, ": build id ausente"));
     expect(run.stdout + run.stderr).not.toContain(BODY_MARKER);
   });
 
   it("waits for the invalidation to propagate and passes once the new build id is served", async () => {
-    routes["/buscar"] = [html(OTHER_BUILD_ID), html(OTHER_BUILD_ID), html(BUILD_ID)];
+    routes["/confianza"] = [html(OTHER_BUILD_ID), html(OTHER_BUILD_ID), html(BUILD_ID)];
     const run = await smoke();
     expect(run.status).toBe(0);
     expect(run.stderr).toBe(
-      "smoke: /buscar 200 intento 1/18: build id distinto\nsmoke: /buscar 200 intento 2/18: build id distinto\n",
+      "smoke: /confianza 200 intento 1/18: build id distinto\nsmoke: /confianza 200 intento 2/18: build id distinto\n",
     );
   });
 
-  it("fails after 18 attempts on / printing path, status and attempt but never the body", async () => {
+  // Solo el build id viejo justifica esperar la propagación: un status inesperado corta en 5.
+  it("fails after 5 attempts on / with an unexpected status, printing path, status and attempt but never the body", async () => {
     routes["/"] = [page(404, BODY_MARKER)];
     const run = await smoke();
     expect(run.status).toBe(1);
-    expect(run.stderr).toBe(attemptLines("/", "404", 18));
+    expect(run.stderr).toBe(attemptLines("/", "404", 5));
     expect(run.stdout + run.stderr).not.toContain(BODY_MARKER);
-    expect(requests).toEqual(Array(18).fill("GET /"));
+    expect(requests).toEqual(Array(5).fill("GET /"));
   });
 
   it("retries until the site answers and passes within the attempts", async () => {
     routes["/"] = [page(503, BODY_MARKER), page(503, BODY_MARKER), home()];
     const run = await smoke();
     expect(run.status).toBe(0);
-    expect(run.stderr).toBe("smoke: / 503 intento 1/18\nsmoke: / 503 intento 2/18\n");
+    expect(run.stderr).toBe("smoke: / 503 intento 1/5\nsmoke: / 503 intento 2/5\n");
     expect(requests).toEqual(["GET /", "GET /", ...ALL_PATHS]);
   });
 
@@ -1285,7 +1305,7 @@ describe("smoke.mjs", () => {
     routes["/"] = [page(200, `<html><head><title>Otro sitio</title></head><body>${rscBuildId(BUILD_ID)}</body></html>`)];
     const run = await smoke();
     expect(run.status).toBe(1);
-    expect(run.stderr).toBe(attemptLines("/", "200", 18, ": título ausente"));
+    expect(run.stderr).toBe(attemptLines("/", "200", 5, ": título ausente"));
     expect(run.stdout + run.stderr).not.toContain("Otro sitio");
   });
 
@@ -1350,12 +1370,12 @@ describe("smoke.mjs", () => {
     expect(run.stdout + run.stderr).not.toContain(BODY_MARKER);
   });
 
-  it("treats a request that never answers as a failed attempt and ends red after 18 on /", async () => {
+  it("treats a request that never answers as a failed attempt and ends red after 5 on /", async () => {
     routes["/"] = [() => undefined];
     const run = await smoke();
     expect(run.status).toBe(1);
-    expect(run.stderr).toBe(attemptLines("/", "sin-respuesta", 18));
-    expect(requests).toEqual(Array(18).fill("GET /"));
+    expect(run.stderr).toBe(attemptLines("/", "sin-respuesta", 5));
+    expect(requests).toEqual(Array(5).fill("GET /"));
   });
 
   it("fails closed without a valid http(s) base URL and makes no request", async () => {
