@@ -162,4 +162,4 @@ jobs:
         env:
           DEPLOY_SHA: ${{ needs.resolve.outputs.sha }}
       - name: Smoke test
-        run: node infra/scripts/ci/smoke.mjs https://encuentramevzla.com
+        run: node infra/scripts/ci/smoke.mjs https://encuentramevzla.com apps/web/.open-next/assets/BUILD_ID
