@@ -278,7 +278,8 @@ export class OpenNextSite extends Construct {
       action: "createInvalidation",
       parameters: {
         DistributionId: this.distribution.distributionId,
-        // Mismo build, mismo CallerReference: CloudFront devuelve la invalidación existente en reintentos y rollback.
+        // Mismo CallerReference, misma invalidación ya hecha: en rollback o "Re-run failed jobs" del mismo artefacto
+        // no se invalida de nuevo y la ventana de HTML viejo la acota maxTtl (300 s).
         InvalidationBatch: { CallerReference: `evzla-${buildId}`, Paths: { Quantity: 1, Items: ["/*"] } },
       },
       physicalResourceId: cr.PhysicalResourceId.fromResponse("Invalidation.Id"),

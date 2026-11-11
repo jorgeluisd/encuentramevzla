@@ -44,7 +44,7 @@ export type OpenNextOutput = {
 
 const OUTPUT_FILE = "open-next.output.json";
 const BUILD_ID_FILE = "BUILD_ID";
-// El id viaja a la plantilla de CloudFormation y a los logs del smoke: solo caracteres inertes.
+// El id viaja a la plantilla de CloudFormation y al HTML que compara el smoke: solo caracteres inertes.
 const BUILD_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 function isMissing(error: unknown): boolean {
