@@ -22,9 +22,9 @@ CI:
 - AC-7  Given `infra/test/ci-stack.test.ts` sin cambios When corre Then pasa y la única política del rol `evzla-github-deploy` sigue siendo `sts:AssumeRole` sobre los roles de bootstrap (ADR-0011 intacto).
 - AC-8  Given el workflow `deploy-production.yml` When se parsea Then el smoke corre después de `cdk deploy`, recibe el build id esperado (de `.open-next` o del artefacto del build) y no se agregan pasos con permisos de CloudFront.
 Smoke (`ci-scripts.test.ts` + script de smoke):
-- AC-9  Given un build id esperado y un fetch simulado When el HTML de `/`, `/buscar`, `/confianza` y `/emergencias` contiene ese id Then el smoke termina con código 0.
-- AC-10 Given que una de las 4 rutas devuelve un id distinto o ninguno When corre el smoke Then termina con código ≠ 0 e indica la ruta, sin imprimir el cuerpo del HTML.
-- AC-11 Given el smoke When se inspecciona Then solo hace GET de esas 4 rutas (sin `/api/*`, sin buscador), para no escribir en `search_log`.
+- AC-9  Given un build id esperado y un fetch simulado When el HTML de `/`, `/confianza` y `/emergencias`, pedido con el `Accept` de un navegador, contiene ese id Then el smoke termina con código 0. (T-8: `/buscar` salió porque hace `redirect("/")` y responde 307, sin HTML; `accept` está en la clave de caché, así que el smoke lee la variante de los navegadores.)
+- AC-10 Given que una de las 3 rutas HTML devuelve un id distinto o ninguno When corre el smoke Then termina con código ≠ 0 e indica la ruta, sin imprimir el cuerpo del HTML.
+- AC-11 Given el smoke When se inspecciona Then solo hace GET de esas 3 rutas HTML y de las sondas sin término (sin `/api/*`, sin buscador), para no escribir en `search_log`.
 
 CASOS BORDE
 - AC-1/3: deploy sin cambio de HTML pero con nuevo BUILD_ID → invalida igual (costo: 1 ruta). Deploy idéntico (mismo valor de propiedad) → CloudFormation no re-ejecuta; aceptable porque el HTML no cambió. Depende de DUDAS 2.
@@ -54,11 +54,11 @@ CONSISTENCIA
 VERIFICACIÓN MANUAL POST-DEPLOY (una vez, producción)
 - M-1  En sesión limpia abrir `/`; ejecutar un Server Action: responde sin 409.
 - M-2  La pestaña Network muestra el chunk del interceptor de 0029 cargado.
-- M-3  `curl -sI https://encuentramevzla.com/` justo tras el deploy: `age` reiniciado (cercano a 0), no el de antes del deploy; luego `age` ≤ 300.
+- M-3  `curl -sI -H 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' https://encuentramevzla.com/` justo tras el deploy (sin ese `Accept`, `curl` manda `*/*` y lee otra entrada de la caché, porque `accept` está en la clave): `age` reiniciado (cercano a 0), no el de antes del deploy; luego `age` ≤ 300.
 - M-4  `POST /api/revalidate` y confirmar el sello "Actualizado" nuevo en ≤ 300 s.
 
 PRECONDICIÓN PARA 0029 R3
-- Al menos un deploy a producción con esta feature completado, AC-9 en verde (smoke con build id en las 4 rutas) y M-1 a M-3 confirmados. R3 se despliega solo después; su propio deploy también invalida.
+- Al menos un deploy a producción con esta feature completado, AC-9 en verde (smoke con build id en las 3 rutas HTML) y M-1 a M-3 confirmados. R3 se despliega solo después; su propio deploy también invalida.
 
 FUERA DE ALCANCE
 - Override nativo `cdnInvalidation: "cloudfront"` de OpenNext; cambios al rol CI; OAC/interceptor de 0029; runtime nodejs; canary; telemetría; invalidación de pestañas ya abiertas; invalidación por ruta. ADR-0013 pendiente (`/new-adr`).

@@ -3,7 +3,7 @@
 RESUMEN
 - A1: un `AwsCustomResource` (`HtmlInvalidation`) dentro de `OpenNextSite` llama a `CloudFront.createInvalidation` con `/*`. Su propiedad depende del BUILD_ID y tiene `DependsOn` sobre la función server, las tres `BucketDeployment` y `TagCacheInit`. Su policy está acotada al ARN de la distribución.
 - B1: `ServerCachePolicy.maxTtl` pasa de 365 d a 300 s. La clave de caché no cambia.
-- Smoke: recibe la ruta de `.open-next/assets/BUILD_ID` y verifica `"b":"<id>"` en `/`, `/buscar`, `/confianza` y `/emergencias`. El rol de CI y el server Lambda no reciben permisos nuevos.
+- Smoke: recibe la ruta de `.open-next/assets/BUILD_ID` y verifica `"b":"<id>"` en `/`, `/confianza` y `/emergencias`, pedidas con el `Accept` de un navegador (T-8). El rol de CI y el server Lambda no reciben permisos nuevos.
 - ADR-0013 en estado PROPUESTO (`adr/0013-frescura-html-cloudfront.md`).
 
 DUDAS DE LA SPEC, RESUELTAS
@@ -38,9 +38,9 @@ EVENTOS Y JOBS
 
 SMOKE (contrato)
 - `smoke.mjs <url> <build-id-file>`. Si falta el archivo, el id no cumple la regex o la URL no es válida, termina con `fail` y un mensaje fijo, sin la ruta del runner.
-- `SMOKE_PATHS` = `/`, `/buscar`, `/confianza`, `/emergencias`, `/admin`, `/servicios`, `/__smoke-no-existe`. Todas son GET sin querystring. `/buscar` es estática (no lee `searchParams`) y no ejecuta búsqueda (AC-11).
-- Check de build id (las 4 rutas HTML): status 200 y extracción con `/\\?"b\\?":\\?"([A-Za-z0-9_-]{1,64})\\?"/`. Los motivos posibles son `build id ausente` o `build id distinto`. Nunca se imprime el cuerpo del HTML ni el id servido (S-4). `/` conserva además el check del título.
-- Reintentos: los checks de build id usan `BUILD_ID_ATTEMPTS = 18` × `SMOKE_RETRY_DELAY_MS` (≈ 3 min). El resto se queda en 5. Si la invalidación no se propagó, el smoke falla (AC-10).
+- `SMOKE_PATHS` = `/`, `/confianza`, `/emergencias`, `/admin`, `/servicios`, `/__smoke-no-existe`. Todas son GET sin querystring y ninguna ejecuta búsqueda (AC-11). `/buscar` salió en T-8: hace `redirect("/")` (prerender con status 307), no es HTML con build id.
+- Check de build id (las 3 rutas HTML): se pide con `accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8`, porque `accept` está en la clave de `ServerCachePolicy` y el smoke debe leer la misma entrada de caché que los navegadores. Status 200 y extracción con `/\\?"b\\?":\\?"([A-Za-z0-9_-]{1,64})\\?"/`. Los motivos posibles son `build id ausente` o `build id distinto`. Nunca se imprime el cuerpo del HTML ni el id servido (S-4). `/` conserva además el check del título.
+- Reintentos: 18 × `SMOKE_RETRY_DELAY_MS` (≈ 3 min) solo mientras la respuesta es 200 con `build id distinto` (propagación de la invalidación). Status inesperado, sin respuesta u otro motivo corta en 5 (T-8). Si la invalidación no se propagó, el smoke falla (AC-10).
 
 COMPOSITION ROOT
 - `infra/lib/app.ts` sin cambios: `readOpenNextOutput` ya alimenta a `OpenNextSite`. No hay tokens DI (es CDK).
@@ -86,6 +86,6 @@ SKILLS A CARGAR EN IMPLEMENTACIÓN
 - `.claude/skills/testing-vitest.md`, `.claude/skills/privacy-and-security.md`, `.claude/skills/architecture.md` (infra fuera de core), `.claude/skills/git-commits.md`.
 
 DUDAS ABIERTAS
-1. Hay que confirmar que la regex del smoke coincide con el HTML real de `/buscar`, `/confianza` y `/emergencias` (solo se verificó `/`). Se verifica en M-3 y en el primer smoke.
+1. Hay que confirmar que la regex del smoke coincide con el HTML real de `/confianza` y `/emergencias` (solo se verificó `/`). Se verifica en M-3 y en el primer smoke. `/buscar` quedó fuera (redirect 307).
 2. El comentario "Cero invocations" de la página del home deja de ser literal con maxTtl 300 s. ¿Se ajusta en este PR? Es solo texto y no cambia el comportamiento.
 3. Retención de `CallerReference` en CloudFront para la idempotencia del rollback: no está documentada. Si no se cumple, aplica el runbook.
