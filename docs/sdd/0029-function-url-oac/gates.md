@@ -29,3 +29,16 @@ GATE 2 · 2026-11-10 · Jorge Diaz · APROBADO · token: "acepto" · alcance: R1
   1. Los hallazgos bajos de las tres revisiones pasan al backlog.
   2. Condición del security-reviewer: no activar logs de CloudFront con headers ni loggear headers en la app.
   3. El deploy a producción requiere release a `main` y aprobación del environment Production. R2 y R3 tienen sus propios gates.
+
+## GATE 2 — implementación R2
+
+GATE 2 · 2026-11-11 · Jorge Diaz · DELEGADO AL MERGE · alcance: R2 (T-11..T-13).
+
+- Fecha: 2026-11-11
+- Quién: humano (dueño del proyecto)
+- Veredicto: el humano indicó trabajar en autónomo, abrir el PR y esperar su merge; el merge del PR de R2 es la aprobación.
+- Evidencia: 06-verify-r2.md (PASS, sha 750c54a), 06-review-r2.md (sin críticos, altos ni medios; 2 bajos), `cdk diff` de R2 (URL de imagen NONE → AWS_IAM, OAC de imagen no-override → always, se eliminan los 2 permisos con principal `*` de la imagen; server sin cambios de auth).
+- Observaciones:
+  1. Bajo aceptado: posible ventana de 403 en imágenes mientras CloudFront propaga el cambio de firma; se verifica tras el deploy (por dominio 200, directo a la URL 403).
+  2. Bajo al backlog: T6 no fija la ausencia de `FunctionAssociations` en `_next/image*`.
+  3. La evidencia RED/GREEN de T-11 está en `bg-runs/` (corridas en background por durar >180 s).
