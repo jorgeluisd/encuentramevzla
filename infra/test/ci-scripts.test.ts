@@ -1162,6 +1162,8 @@ describe("smoke.mjs", () => {
   ];
   const attemptLines = (smokePath: string, status: string, attempts: number, reason = ""): string =>
     Array.from({ length: attempts }, (_, n) => `smoke: ${smokePath} ${status} intento ${n + 1}/${attempts}${reason}\n`).join("");
+  const staleLines = (smokePath: string, count: number): string =>
+    Array.from({ length: count }, (_, n) => `smoke: ${smokePath} 200 intento ${n + 1}/18: build id distinto\n`).join("");
 
   // spawnSync bloquearía el event loop del servidor local; el smoke corre asíncrono.
   const smoke = (args: string[] = [baseUrl, buildIdFile], env: Record<string, string> = {}): Promise<ScriptRun> =>
@@ -1221,13 +1223,40 @@ describe("smoke.mjs", () => {
     expect(HTML_PATHS.map((smokePath) => accepts[smokePath])).toEqual(HTML_PATHS.map(() => BROWSER_ACCEPT));
   });
 
-  it("stops after 5 attempts when a stale build id turns into an unexpected status", async () => {
-    routes["/confianza"] = [html(OTHER_BUILD_ID), page(503, BODY_MARKER)];
+  // Mientras se propaga la invalidación el Lambda arranca en frío: un 503 tardío conserva sus propios 5 intentos.
+  it("keeps the retries for an unexpected status after a long stale build id and passes once the page heals", async () => {
+    routes["/confianza"] = [...Array<Handler>(6).fill(html(OTHER_BUILD_ID)), page(503, BODY_MARKER), html(BUILD_ID)];
+    const run = await smoke();
+    expect(run.status).toBe(0);
+    expect(run.stderr).toBe(
+      staleLines("/confianza", 6) +
+        "smoke: /confianza 503 intento 1/5\n",
+    );
+  });
+
+  it("stops after 5 unexpected statuses that follow a long stale build id, counting them apart from the stale ones", async () => {
+    routes["/confianza"] = [...Array<Handler>(6).fill(html(OTHER_BUILD_ID)), page(503, BODY_MARKER)];
     const run = await smoke();
     expect(run.status).toBe(1);
     expect(run.stderr).toBe(
-      "smoke: /confianza 200 intento 1/18: build id distinto\n" +
-        [2, 3, 4, 5].map((n) => `smoke: /confianza 503 intento ${n}/5\n`).join(""),
+      staleLines("/confianza", 6) +
+        attemptLines("/confianza", "503", 5),
+    );
+  });
+
+  it("counts unexpected statuses across interleaved stale build ids instead of resetting them", async () => {
+    const unavailable = page(503, BODY_MARKER);
+    const stale = html(OTHER_BUILD_ID);
+    routes["/confianza"] = [unavailable, stale, unavailable, stale, unavailable, stale, unavailable, stale, unavailable];
+    const run = await smoke();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(
+      [1, 2, 3, 4]
+        .map(
+          (n) =>
+            `smoke: /confianza 503 intento ${n}/5\nsmoke: /confianza 200 intento ${n}/18: build id distinto\n`,
+        )
+        .join("") + "smoke: /confianza 503 intento 5/5\n",
     );
   });
 

@@ -11,6 +11,7 @@ const { fail } = cli("smoke");
 
 const ATTEMPTS = 5;
 // La invalidación de CloudFront tarda 1-2 min en propagarse: ~3 min de reintentos solo mientras sirve el build viejo.
+// Presupuesto aparte del de los demás fallos: un 503 en frío tras esa espera conserva sus 5 intentos.
 const STALE_BUILD_ATTEMPTS = 18;
 const STALE_BUILD = "build id distinto";
 // accept está en la clave de caché de ServerCachePolicy: el smoke debe leer la variante que reciben los navegadores.
@@ -116,13 +117,16 @@ async function attempt(baseUrl, smokePath, { headers, check }, timeoutMs) {
 }
 
 async function smokePathWithRetries(baseUrl, smokePath, smokeCheck, { retryDelayMs, timeoutMs }) {
-  for (let n = 1; ; n += 1) {
+  const failures = { stale: 0, other: 0 };
+  for (;;) {
     const result = await attempt(baseUrl, smokePath, smokeCheck, timeoutMs);
     if (result.ok) return true;
-    const attempts = result.reason === STALE_BUILD ? STALE_BUILD_ATTEMPTS : ATTEMPTS;
+    const budget = result.reason === STALE_BUILD ? "stale" : "other";
+    const attempts = budget === "stale" ? STALE_BUILD_ATTEMPTS : ATTEMPTS;
+    failures[budget] += 1;
     const reason = result.reason ? `: ${result.reason}` : "";
-    process.stderr.write(`smoke: ${smokePath} ${result.status} intento ${n}/${attempts}${reason}\n`);
-    if (n >= attempts) return false;
+    process.stderr.write(`smoke: ${smokePath} ${result.status} intento ${failures[budget]}/${attempts}${reason}\n`);
+    if (failures[budget] >= attempts) return false;
     await sleep(retryDelayMs);
   }
 }
