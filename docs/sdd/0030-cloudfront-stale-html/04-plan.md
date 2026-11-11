@@ -1,0 +1,34 @@
+# 0030 cloudfront-stale-html: plan
+
+RESUMEN
+- Un solo release (un PR a develop y luego release a main). Solo infra, CI y un comentario; sin cambios en core, db, rol de CI ni `POST /api/revalidate`. Sin DDL.
+- Orden: lectura del BUILD_ID (T-1), `maxTtl` (T-2), invalidación (T-3), smoke (T-4), workflow (T-5), verificación (T-6), `cdk diff` manual (T-7).
+- Ninguna tarea despliega: el deploy lo dispara el humano. Precondición de 0029 R3: un deploy con esta feature, AC-9 en verde y M-1..M-3 confirmados.
+- Sin `TDD: ?` pendiente. Hay DUDAS ABIERTAS al final (residuales, no bloquean).
+
+Convención: cada tarea deja `pnpm typecheck && pnpm test` en verde. Skills comunes: architecture, testing-vitest, strict-tdd, privacy-and-security.
+
+T-1 · infrastructure (CDK, lib) · TDD: ON (lógica de validación con riesgo de inyección) · alcance: estricto · modelo: capaz · skills: privacy-and-security, testing-vitest · depende de: — · cubre AC-3 (base), amenaza BUILD_ID manipulado · terminado cuando: `readOpenNextOutput` devuelve `buildId` leído de `<assetsDir>/BUILD_ID` con `confine`, trim y regex `^[A-Za-z0-9_-]{1,64}$`; los tests de BUILD_ID ausente, inválido (`a b`, `"`, > 64) y symlink fuera de `.open-next` fallan antes y pasan después; el error nombra el campo y no la ruta; los tests existentes pasan · archivos: `infra/lib/open-next-output.ts`, `infra/test/open-next-output.test.ts`
+
+T-2 · infrastructure (CDK) + docs (comentario) · TDD: ON (el test AC-5 se escribe antes y falla) · alcance: estricto · modelo: capaz · skills: architecture · depende de: — · cubre AC-5, AC-6, S-3 · terminado cuando: `ServerCachePolicy` tiene `MaxTTL 300`, `DefaultTTL 0`, `MinTTL 0` y la clave de caché idéntica (test de igualdad); el comentario "Cero invocations" de la página del home deja de decir que no hay invocaciones (solo texto, sin cambio de comportamiento); tests de behaviors existentes sin modificar · archivos: `infra/lib/open-next-site.ts`, `infra/test/evzla-stack.test.ts`, `apps/web/app/page.tsx`
+
+T-3 · infrastructure (CDK) · TDD: ON (tests AC-1..AC-4 y S-2 primero, en rojo) · alcance: estricto · modelo: capaz (seguridad de infra) · skills: architecture, privacy-and-security · depende de: T-1, T-2 · cubre AC-1, AC-2, AC-3, AC-4, AC-7, S-1, S-2 · terminado cuando: `HtmlInvalidation` (`AwsCustomResource`, `createInvalidation`, `Paths ["/*"]`, `CallerReference evzla-<buildId>`, `physicalResourceId` desde `Invalidation.Id`, sin `onDelete`, `installLatestAwsSdk: false`, `logGroup` propio) existe una sola vez con `DistributionId` = Ref; `DependsOn` incluye `ServerFunction`, `VersionedAssets`, `UnversionedAssets` y `CacheSeed` si existe (`deployAssets` devuelve los constructs, dependencias al final del constructor, sin ciclo); `Create` y `Update` llevan el BUILD_ID y cambian con un fixture temporal de otro BUILD_ID; policy exacta `cloudfront:CreateInvalidation` sobre `distributionArn`; ningún statement combina `cloudfront:*` con `*`; ningún `BucketDeployment` con `DistributionId`; el rol del server sin `cloudfront:` ni `CLOUDFRONT_DISTRIBUTION_ID`; `ci-stack.test.ts` sin diff y verde · archivos: `infra/lib/open-next-site.ts`, `infra/test/evzla-stack.test.ts`
+
+T-4 · test + config (script de smoke) · TDD: ON (casos de `ci-scripts.test.ts` primero) · alcance: estricto en el script (privacidad de logs) · modelo: capaz · skills: privacy-and-security, testing-vitest · depende de: — · cubre AC-9, AC-10, AC-11, S-4 · terminado cuando: `smoke.mjs <url> <build-id-file>` valida el archivo y la URL (falla con mensaje fijo, sin ruta del runner); `SMOKE_PATHS` es exactamente `/`, `/buscar`, `/confianza`, `/emergencias`, `/admin`, `/servicios`, `/__smoke-no-existe`, solo GET sin querystring; en las 4 rutas HTML exige 200 y `"b":"<id>"` con la regex del diseño (motivos `build id ausente` o `build id distinto`), `BUILD_ID_ATTEMPTS = 18`, el resto 5; `/` conserva el check del título; tests: caso OK (código 0), id distinto, id ausente (código ≠ 0 con la ruta), stderr sin `BODY_MARKER` ni el id servido, lista exacta de rutas · archivos: `infra/scripts/ci/smoke.mjs`, `infra/test/ci-scripts.test.ts`
+
+T-5 · config (workflow) · TDD: ON (la constante `SMOKE` del test cambia primero y falla) · alcance: pragmático · modelo: económico · skills: delivery-workflow · depende de: T-4 · cubre AC-8 · terminado cuando: el paso Smoke corre `node infra/scripts/ci/smoke.mjs https://encuentramevzla.com apps/web/.open-next/assets/BUILD_ID` después de `cdk deploy`; no hay pasos nuevos ni `cloudfront` en ningún `run:` · archivos: `.github/workflows/deploy-production.yml`, `infra/test/ci-workflow.test.ts`
+
+T-6 · config (verificación) · TDD: OFF (solo comandos) · alcance: pragmático · modelo: económico · skills: delivery-workflow · depende de: T-1..T-5 · cubre AC-6, AC-7 y regresión general · terminado cuando: `pnpm lint && pnpm typecheck && pnpm test && pnpm build` verdes, `pnpm --filter @evzla/web build:aws` genera `.open-next/assets/BUILD_ID` y el synth de infra pasa; el diff contiene solo los archivos de T-1..T-5 · archivos: ninguno
+
+T-7 · PASO MANUAL, no automatizable · `cdk diff` (solo lectura, lo hace el orquestador desde `infra/`, nunca `cdk deploy`) · depende de: T-6 · terminado cuando: el diff muestra solo `MaxTTL` 300, el custom resource de invalidación con su rol y política acotada, su log group y su handler singleton; sin cambios en el rol de CI ni en el server Lambda; se muestra al humano antes de pedir merge. Post-deploy (humano): M-1..M-4 de la spec y regex del smoke sobre `/buscar`, `/confianza`, `/emergencias` (ya verificadas en prod el 2026-11-11) · archivos: ninguno
+
+MARCAS: cross-tenant → ninguna (no aplica tenant) · migración → ninguna de BD; es de infraestructura: T-3 (custom resource) y T-2 (cache policy in place) · datos personales → T-4 (el smoke no imprime HTML ni términos; sin GET a buscador ni `/api`)
+
+PARA EL GATE 1
+1. Confirmar que ADR-0013 pasa de PROPUESTO a aceptado con el gate.
+2. Confirmar que T-2 incluye el ajuste del comentario del home (`apps/web/app/page.tsx`).
+3. Ninguna tarea tiene `TDD: ?`.
+
+DUDAS ABIERTAS
+1. Retención de `CallerReference` en CloudFront (idempotencia del rollback): riesgo residual cubierto por el runbook, sin tarea. Los pasos del runbook no están ensayados.
+2. `open-next-output.test.ts` ya existe (el diseño lo marcaba como nuevo): T-1 lo extiende.
