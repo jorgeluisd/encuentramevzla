@@ -190,7 +190,8 @@ export class OpenNextSite extends Construct {
       cookieBehavior: cloudfront.CacheCookieBehavior.all(),
       defaultTtl: Duration.seconds(0),
       minTtl: Duration.seconds(0),
-      maxTtl: Duration.days(365),
+      // OpenNext emite s-maxage de un año en el HTML prerenderizado; el tope acota el sello del home tras revalidar (ADR-0013).
+      maxTtl: Duration.seconds(300),
       enableAcceptEncodingGzip: true,
       enableAcceptEncodingBrotli: true,
     });

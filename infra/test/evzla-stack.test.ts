@@ -429,6 +429,33 @@ describe("function URL access (ADR-0012)", () => {
   });
 });
 
+describe("server cache policy (0030)", () => {
+  function serverCachePolicyConfig(): Record<string, unknown> {
+    const policy = Object.entries(resources).find(
+      ([id, r]) => r.Type === "AWS::CloudFront::CachePolicy" && id.includes("ServerCachePolicy"),
+    );
+    if (!policy) throw new Error("server cache policy not found");
+    return policy[1].Properties.CachePolicyConfig as Record<string, unknown>;
+  }
+
+  it("caps the shared cache of server responses at 300 s without caching by default (AC-5)", () => {
+    expect(serverCachePolicyConfig()).toMatchObject({ MinTTL: 0, DefaultTTL: 0, MaxTTL: 300 });
+  });
+
+  it("keeps the cache key identical: every cookie and query string plus the RSC headers (AC-5, S-3)", () => {
+    expect(serverCachePolicyConfig().ParametersInCacheKeyAndForwardedToOrigin).toEqual({
+      CookiesConfig: { CookieBehavior: "all" },
+      EnableAcceptEncodingBrotli: true,
+      EnableAcceptEncodingGzip: true,
+      HeadersConfig: {
+        HeaderBehavior: "whitelist",
+        Headers: ["accept", "rsc", "next-router-prefetch", "next-router-state-tree", "next-url", "x-prerender-revalidate"],
+      },
+      QueryStringsConfig: { QueryStringBehavior: "all" },
+    });
+  });
+});
+
 describe("server bundle symlinks", () => {
   let workDir: string;
 
