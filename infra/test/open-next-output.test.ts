@@ -128,6 +128,60 @@ describe("readOpenNextOutput", () => {
     expectRejected("dynamodb-cache.json");
   });
 
+  describe("BUILD_ID", () => {
+    const INVALID = "La salida de OpenNext no trae un BUILD_ID válido.";
+    const buildIdFile = (): string => path.join(openNextDir, "assets/BUILD_ID");
+
+    const rejection = (): string => {
+      try {
+        readOpenNextOutput(openNextDir);
+      } catch (error) {
+        return (error as Error).message;
+      }
+      return "";
+    };
+
+    it("reads the build id of the assets directory", () => {
+      expect(readOpenNextOutput(openNextDir).buildId).toBe("fixture-build");
+    });
+
+    it("trims the surrounding whitespace of the build id", () => {
+      writeFileSync(buildIdFile(), "  Ab_9-z\n");
+      expect(readOpenNextOutput(openNextDir).buildId).toBe("Ab_9-z");
+    });
+
+    it("accepts a 64-character build id", () => {
+      writeFileSync(buildIdFile(), "a".repeat(64));
+      expect(readOpenNextOutput(openNextDir).buildId).toBe("a".repeat(64));
+    });
+
+    it.each([
+      ["a space", "a b"],
+      ["a double quote", 'ab"c'],
+      ["more than 64 characters", "a".repeat(65)],
+      ["an empty file", "  \n"],
+    ])("rejects a build id with %s naming the field, without printing the path", (_label, content) => {
+      writeFileSync(buildIdFile(), content);
+      const message = rejection();
+      expect(message).toBe(INVALID);
+      expect(message).not.toContain(workDir);
+    });
+
+    it("rejects a missing BUILD_ID without printing the path", () => {
+      rmSync(buildIdFile());
+      const message = rejection();
+      expect(message).toBe(INVALID);
+      expect(message).not.toContain(workDir);
+    });
+
+    it("rejects a BUILD_ID that is a symlink out of .open-next", () => {
+      writeFileSync(path.join(outside, "BUILD_ID"), "outside-build");
+      rmSync(buildIdFile());
+      symlinkSync(path.join(outside, "BUILD_ID"), buildIdFile());
+      expectRejected("BUILD_ID");
+    });
+  });
+
   it("accepts symlinks that stay inside .open-next and an .open-next reached through a symlink", () => {
     symlinkSync("assets", path.join(openNextDir, "assets-alias"));
     editOutput((output) => (copyEntry(output, true).from = ".open-next/assets-alias"));

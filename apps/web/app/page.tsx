@@ -3,9 +3,9 @@ import { formatLastUpdate } from "@evzla/core";
 import { getLastUpdateUseCase } from "@/lib/composition";
 import { HomeTabs } from "@/components/home/home-tabs";
 
-// Home 100% estático (CDN): se regenera SOLO cuando se sube una lista
-// (revalidatePath("/") en la acción de ingesta). Cero invocations en uso normal;
-// el sello "última actualización" queda exacto justo cuando cambian los datos.
+// Home estático: se regenera SOLO cuando se sube una lista (revalidatePath("/")
+// en la acción de ingesta). La CDN lo guarda hasta 300 s (ADR-0013), así que el
+// sello "última actualización" llega a los visitantes en ≤ 300 s.
 // La pestaña de servicios carga su listado del lado del cliente (no rompe lo estático).
 export const dynamic = "force-static";
 
