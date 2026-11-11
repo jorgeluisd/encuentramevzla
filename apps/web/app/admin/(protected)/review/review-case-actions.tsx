@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import type { ReviewActionState } from "@/lib/actions/review";
 import { Button } from "@/components/ui/button";
+import { HydratedSubmit } from "@/components/ui/hydrated-submit";
 
 export interface PatientDetail {
   name: string;
@@ -97,8 +98,7 @@ export function ReviewCaseActions({
         </div>
         <form action={formAction} className="flex flex-col gap-2 sm:flex-row" aria-live="polite">
           {hidden}
-          <Button
-            type="submit"
+          <HydratedSubmit
             name="decision"
             value="merge"
             disabled={pending}
@@ -111,7 +111,7 @@ export function ReviewCaseActions({
             ) : (
               "Confirmar fusión"
             )}
-          </Button>
+          </HydratedSubmit>
           <Button
             type="button"
             variant="outline"
@@ -160,8 +160,7 @@ export function ReviewCaseActions({
         >
           Fusionar
         </Button>
-        <Button
-          type="submit"
+        <HydratedSubmit
           name="decision"
           value="keep"
           variant="outline"
@@ -175,7 +174,7 @@ export function ReviewCaseActions({
           ) : (
             "Mantener separados"
           )}
-        </Button>
+        </HydratedSubmit>
         <Button
           type="button"
           variant="outline"

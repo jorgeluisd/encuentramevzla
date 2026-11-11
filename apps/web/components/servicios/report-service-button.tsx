@@ -4,6 +4,8 @@ import { useActionState, useState } from "react";
 import { reportServiceAction, type ReportState } from "@/lib/actions/servicios";
 import { TurnstileField } from "@/components/servicios/turnstile-field";
 import { Button } from "@/components/ui/button";
+import { HydratedSubmit } from "@/components/ui/hydrated-submit";
+import { JsRequiredNotice } from "@/components/ui/js-required-notice";
 import { Modal } from "@/components/ui/modal";
 
 const initial: ReportState = { status: "idle" };
@@ -55,9 +57,10 @@ export function ReportServiceButton({ serviceId }: { serviceId: string }): React
               />
             </div>
             <TurnstileField resetSignal={state} />
-            <Button type="submit" variant="danger" disabled={pending}>
+            <HydratedSubmit variant="danger" disabled={pending}>
               {pending ? "Enviando…" : "Reportar"}
-            </Button>
+            </HydratedSubmit>
+            <JsRequiredNotice />
             {state.status === "verification-failed" && (
               <p className="rounded-[var(--radius-control)] bg-warning/10 px-4 py-2 text-sm text-warning" role="alert">
                 No pudimos verificar la solicitud. Intenta de nuevo.

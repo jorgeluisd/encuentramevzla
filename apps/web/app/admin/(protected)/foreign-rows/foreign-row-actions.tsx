@@ -1,7 +1,7 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
-import { Button } from "@/components/ui/button";
+import { HydratedSubmit } from "@/components/ui/hydrated-submit";
 
 interface HospitalOption {
   id: string;
@@ -27,15 +27,14 @@ function SubmitButton({
 }): React.ReactElement {
   const { pending } = useFormStatus();
   return (
-    <Button
-      type="submit"
+    <HydratedSubmit
       variant={variant}
       formAction={action.bind(null, decision)}
       disabled={pending}
       className="w-full sm:w-auto"
     >
       {pending ? "Procesando…" : label}
-    </Button>
+    </HydratedSubmit>
   );
 }
 

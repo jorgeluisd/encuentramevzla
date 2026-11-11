@@ -3,7 +3,7 @@ import { canAccessReviewQueue, canManageHospitalTeam, canModerate } from "@evzla
 import { getCurrentMember } from "@/lib/auth/current-member";
 import { signOutAction } from "@/lib/actions/auth";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { HydratedSubmit } from "@/components/ui/hydrated-submit";
 import { Card, CardBody } from "@/components/ui/card";
 import { AdminNav, type AdminNavItem } from "./admin-nav";
 
@@ -36,9 +36,9 @@ export default async function ProtectedAdminLayout({
             un moderador.
           </p>
           <form action={signOutAction}>
-            <Button type="submit" variant="outline">
+            <HydratedSubmit variant="outline">
               Salir
-            </Button>
+            </HydratedSubmit>
           </form>
         </CardBody>
       </Card>
@@ -91,9 +91,9 @@ export default async function ProtectedAdminLayout({
             </Badge>
           </div>
           <form action={signOutAction}>
-            <Button type="submit" variant="outline">
+            <HydratedSubmit variant="outline">
               Salir
-            </Button>
+            </HydratedSubmit>
           </form>
         </div>
       </div>

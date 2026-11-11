@@ -19,7 +19,7 @@ const onionWeb = onion({
 });
 
 export default [
-  { ignores: [".next/**", ".open-next/**", ".turbo/**", "node_modules/**", "next-env.d.ts"] },
+  { ignores: [".next/**", ".open-next/**", ".turbo/**", "node_modules/**", "next-env.d.ts", "e2e/**"] },
   {
     files: ["**/*.ts", "**/*.tsx"],
     languageOptions: { parser: tseslint.parser },

@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:content-hash": "node e2e/content-hash/run.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.107.0",
@@ -40,6 +41,7 @@
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "eslint": "9.39.4",
+    "playwright": "1.65.0",
     "tailwindcss": "4.3.1",
     "typescript": "5.9.3",
     "typescript-eslint": "8.62.0",

@@ -37,6 +37,10 @@ draft/
 # cdk
 cdk.out/
 
+# fixture de la prueba C1 (apps/web/e2e/content-hash): build y tipos generados por next
+apps/web/e2e/**/.next/
+apps/web/e2e/**/next-env.d.ts
+
 # OpenNext (build:aws)
 .open-next/
 cdk-outputs.json
