@@ -1120,6 +1120,11 @@ describe("check-bundle.mjs", () => {
 describe("smoke.mjs", () => {
   const TITLE = "<title>EncuéntrameVzla — Buscador de pacientes</title>";
   const BODY_MARKER = "synthetic-body-marker";
+  const BUILD_ID = "synthetic-build_01";
+  const OTHER_BUILD_ID = "stale-build_00";
+  const HTML_PATHS = ["/", "/confianza", "/emergencias"];
+  const BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+  const BUILD_ID_FAILURE = "smoke: falta un BUILD_ID válido del build desplegado\n";
 
   type Handler = (req: IncomingMessage, res: ServerResponse) => void;
   type Route = Record<string, Handler[]>;
@@ -1127,8 +1132,13 @@ describe("smoke.mjs", () => {
   let server: Server;
   let baseUrl: string;
   let requests: string[];
+  let accepts: Record<string, string | undefined>;
   let routes: Route;
+  let workDir: string;
+  let buildIdFile: string;
 
+  // El payload RSC de Next lleva el build id escapado dentro de un string de JS.
+  const rscBuildId = (id: string): string => `<script>self.__next_f.push([1,"0:{\\"b\\":\\"${id}\\"}"])</script>`;
   const page = (status: number, body: string): Handler => (_req, res) => {
     res.writeHead(status, { "content-type": "text/html; charset=utf-8" });
     res.end(body);
@@ -1137,13 +1147,26 @@ describe("smoke.mjs", () => {
     res.writeHead(status, { location });
     res.end(BODY_MARKER);
   };
-  const home = page(200, `<html><head>${TITLE}</head><body>${BODY_MARKER}</body></html>`);
+  const html = (id: string, head = ""): Handler =>
+    page(200, `<html><head>${head}</head><body>${BODY_MARKER}${rscBuildId(id)}</body></html>`);
+  const home = (id = BUILD_ID): Handler => html(id, TITLE);
   const adminRedirect = redirect(307, "/admin/login");
   const services = page(200, `<html><body><h1>Ayuda gratuita tras el sismo</h1>${BODY_MARKER}</body></html>`);
-  const ALL_PATHS = ["GET /", "GET /admin", "GET /servicios", "GET /__smoke-no-existe"];
+  const ALL_PATHS = [
+    "GET /",
+    "GET /confianza",
+    "GET /emergencias",
+    "GET /admin",
+    "GET /servicios",
+    "GET /__smoke-no-existe",
+  ];
+  const attemptLines = (smokePath: string, status: string, attempts: number, reason = ""): string =>
+    Array.from({ length: attempts }, (_, n) => `smoke: ${smokePath} ${status} intento ${n + 1}/${attempts}${reason}\n`).join("");
+  const staleLines = (smokePath: string, count: number): string =>
+    Array.from({ length: count }, (_, n) => `smoke: ${smokePath} 200 intento ${n + 1}/18: build id distinto\n`).join("");
 
   // spawnSync bloquearía el event loop del servidor local; el smoke corre asíncrono.
-  const smoke = (args: string[] = [baseUrl], env: Record<string, string> = {}): Promise<ScriptRun> =>
+  const smoke = (args: string[] = [baseUrl, buildIdFile], env: Record<string, string> = {}): Promise<ScriptRun> =>
     new Promise((resolveRun) => {
       const child = spawn(process.execPath, [path.join(scriptsDir, "smoke.mjs"), ...args], {
         env: { PATH: process.env.PATH ?? "", SMOKE_RETRY_DELAY_MS: "1", SMOKE_REQUEST_TIMEOUT_MS: "300", ...env },
@@ -1156,10 +1179,21 @@ describe("smoke.mjs", () => {
     });
 
   beforeEach(async () => {
+    workDir = mkdtempSync(path.join(tmpdir(), "evzla-smoke-"));
+    buildIdFile = path.join(workDir, "BUILD_ID");
+    writeFileSync(buildIdFile, `${BUILD_ID}\n`);
     requests = [];
-    routes = { "/": [home], "/admin": [adminRedirect], "/servicios": [services] };
+    accepts = {};
+    routes = {
+      "/": [home()],
+      "/confianza": [html(BUILD_ID)],
+      "/emergencias": [html(BUILD_ID)],
+      "/admin": [adminRedirect],
+      "/servicios": [services],
+    };
     server = createServer((req, res) => {
       requests.push(`${req.method} ${req.url}`);
+      accepts[req.url ?? ""] = req.headers.accept;
       const handlers = routes[req.url ?? ""] ?? [page(404, BODY_MARKER)];
       const handler = handlers.length > 1 ? handlers.shift() : handlers[0];
       handler?.(req, res);
@@ -1171,9 +1205,10 @@ describe("smoke.mjs", () => {
   afterEach(async () => {
     server.closeAllConnections();
     await new Promise<void>((closed) => server.close(() => closed()));
+    rmSync(workDir, { recursive: true, force: true });
   });
 
-  it("passes when /, /admin, /servicios and the 404 probe answer as expected, without following redirects", async () => {
+  it("passes when every HTML page carries the deployed build id and the other probes answer as expected (AC-9)", async () => {
     const run = await smoke();
     expect(run.stderr).toBe("");
     expect(run.status).toBe(0);
@@ -1181,8 +1216,59 @@ describe("smoke.mjs", () => {
     expect(run.stdout).not.toContain(BODY_MARKER);
   });
 
-  // Nunca el buscador ni /api: no deja filas en search_log ni manda correos.
-  it("exports only read-only paths, never the search or /api", () => {
+  // accept forma parte de la clave de caché de ServerCachePolicy: hay que leer la variante de los navegadores.
+  it("asks for the HTML pages with a browser Accept header, so it reads the cache entry visitors get", async () => {
+    const run = await smoke();
+    expect(run.status).toBe(0);
+    expect(HTML_PATHS.map((smokePath) => accepts[smokePath])).toEqual(HTML_PATHS.map(() => BROWSER_ACCEPT));
+  });
+
+  // Mientras se propaga la invalidación el Lambda arranca en frío: un 503 tardío conserva sus propios 5 intentos.
+  it("keeps the retries for an unexpected status after a long stale build id and passes once the page heals", async () => {
+    routes["/confianza"] = [...Array<Handler>(6).fill(html(OTHER_BUILD_ID)), page(503, BODY_MARKER), html(BUILD_ID)];
+    const run = await smoke();
+    expect(run.status).toBe(0);
+    expect(run.stderr).toBe(
+      staleLines("/confianza", 6) +
+        "smoke: /confianza 503 intento 1/5\n",
+    );
+  });
+
+  it("stops after 5 unexpected statuses that follow a long stale build id, counting them apart from the stale ones", async () => {
+    routes["/confianza"] = [...Array<Handler>(6).fill(html(OTHER_BUILD_ID)), page(503, BODY_MARKER)];
+    const run = await smoke();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(
+      staleLines("/confianza", 6) +
+        attemptLines("/confianza", "503", 5),
+    );
+  });
+
+  it("counts unexpected statuses across interleaved stale build ids instead of resetting them", async () => {
+    const unavailable = page(503, BODY_MARKER);
+    const stale = html(OTHER_BUILD_ID);
+    routes["/confianza"] = [unavailable, stale, unavailable, stale, unavailable, stale, unavailable, stale, unavailable];
+    const run = await smoke();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(
+      [1, 2, 3, 4]
+        .map(
+          (n) =>
+            `smoke: /confianza 503 intento ${n}/5\nsmoke: /confianza 200 intento ${n}/18: build id distinto\n`,
+        )
+        .join("") + "smoke: /confianza 503 intento 5/5\n",
+    );
+  });
+
+  it("also recognizes the build id when the payload is not escaped", async () => {
+    routes["/confianza"] = [page(200, `<html><body>{"b":"${BUILD_ID}"}</body></html>`)];
+    const run = await smoke();
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
+  });
+
+  // Nunca el buscador con término ni /api: no deja filas en search_log ni manda correos.
+  it("exports only read-only paths without query strings, never /api (AC-11)", () => {
     const listed = execFileSync(
       process.execPath,
       [
@@ -1193,21 +1279,51 @@ describe("smoke.mjs", () => {
       { encoding: "utf8" },
     );
     const paths = JSON.parse(listed) as string[];
-    expect(paths).toEqual(["/", "/admin", "/servicios", "/__smoke-no-existe"]);
-    expect(paths.some((p) => p.startsWith("/buscar") || p.startsWith("/api"))).toBe(false);
+    expect(paths).toEqual(["/", "/confianza", "/emergencias", "/admin", "/servicios", "/__smoke-no-existe"]);
+    expect(paths.some((p) => p.includes("?") || p.startsWith("/api"))).toBe(false);
   });
 
-  it("fails after 5 attempts printing path, status and attempt but never the body", async () => {
+  it.each(HTML_PATHS)(
+    "fails on %s serving another build id after 18 attempts, naming the path but never the served id or the body (AC-10, S-4)",
+    async (smokePath) => {
+      routes[smokePath] = [smokePath === "/" ? home(OTHER_BUILD_ID) : html(OTHER_BUILD_ID)];
+      const run = await smoke();
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe(attemptLines(smokePath, "200", 18, ": build id distinto"));
+      expect(run.stdout + run.stderr).not.toContain(OTHER_BUILD_ID);
+      expect(run.stdout + run.stderr).not.toContain(BODY_MARKER);
+    },
+  );
+
+  it.each(HTML_PATHS)("fails on %s after 5 attempts when the page carries no build id (AC-10)", async (smokePath) => {
+    routes[smokePath] = [page(200, `<html><head>${TITLE}</head><body>${BODY_MARKER}</body></html>`)];
+    const run = await smoke();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(attemptLines(smokePath, "200", 5, ": build id ausente"));
+    expect(run.stdout + run.stderr).not.toContain(BODY_MARKER);
+  });
+
+  it("waits for the invalidation to propagate and passes once the new build id is served", async () => {
+    routes["/confianza"] = [html(OTHER_BUILD_ID), html(OTHER_BUILD_ID), html(BUILD_ID)];
+    const run = await smoke();
+    expect(run.status).toBe(0);
+    expect(run.stderr).toBe(
+      "smoke: /confianza 200 intento 1/18: build id distinto\nsmoke: /confianza 200 intento 2/18: build id distinto\n",
+    );
+  });
+
+  // Solo el build id viejo justifica esperar la propagación: un status inesperado corta en 5.
+  it("fails after 5 attempts on / with an unexpected status, printing path, status and attempt but never the body", async () => {
     routes["/"] = [page(404, BODY_MARKER)];
     const run = await smoke();
     expect(run.status).toBe(1);
-    expect(run.stderr).toBe([1, 2, 3, 4, 5].map((attempt) => `smoke: / 404 intento ${attempt}/5\n`).join(""));
+    expect(run.stderr).toBe(attemptLines("/", "404", 5));
     expect(run.stdout + run.stderr).not.toContain(BODY_MARKER);
     expect(requests).toEqual(Array(5).fill("GET /"));
   });
 
-  it("retries until the site answers and passes within the 5 attempts", async () => {
-    routes["/"] = [page(503, BODY_MARKER), page(503, BODY_MARKER), home];
+  it("retries until the site answers and passes within the attempts", async () => {
+    routes["/"] = [page(503, BODY_MARKER), page(503, BODY_MARKER), home()];
     const run = await smoke();
     expect(run.status).toBe(0);
     expect(run.stderr).toBe("smoke: / 503 intento 1/5\nsmoke: / 503 intento 2/5\n");
@@ -1215,12 +1331,10 @@ describe("smoke.mjs", () => {
   });
 
   it("fails when / is 200 without the stable title", async () => {
-    routes["/"] = [page(200, `<html><head><title>Otro sitio</title></head><body>${BODY_MARKER}</body></html>`)];
+    routes["/"] = [page(200, `<html><head><title>Otro sitio</title></head><body>${rscBuildId(BUILD_ID)}</body></html>`)];
     const run = await smoke();
     expect(run.status).toBe(1);
-    expect(run.stderr).toBe(
-      [1, 2, 3, 4, 5].map((attempt) => `smoke: / 200 intento ${attempt}/5: título ausente\n`).join(""),
-    );
+    expect(run.stderr).toBe(attemptLines("/", "200", 5, ": título ausente"));
     expect(run.stdout + run.stderr).not.toContain("Otro sitio");
   });
 
@@ -1228,7 +1342,7 @@ describe("smoke.mjs", () => {
     routes["/admin"] = [page(404, BODY_MARKER)];
     const notFound = await smoke();
     expect(notFound.status).toBe(1);
-    expect(notFound.stderr).toBe([1, 2, 3, 4, 5].map((attempt) => `smoke: /admin 404 intento ${attempt}/5\n`).join(""));
+    expect(notFound.stderr).toBe(attemptLines("/admin", "404", 5));
 
     routes["/admin"] = [page(200, BODY_MARKER)];
     const served = await smoke();
@@ -1268,9 +1382,7 @@ describe("smoke.mjs", () => {
     routes["/servicios"] = [page(500, BODY_MARKER)];
     const broken = await smoke();
     expect(broken.status).toBe(1);
-    expect(broken.stderr).toBe(
-      [1, 2, 3, 4, 5].map((attempt) => `smoke: /servicios 500 intento ${attempt}/5\n`).join(""),
-    );
+    expect(broken.stderr).toBe(attemptLines("/servicios", "500", 5));
 
     routes["/servicios"] = [page(200, `<html><body>${BODY_MARKER}</body></html>`)];
     const empty = await smoke();
@@ -1283,25 +1395,42 @@ describe("smoke.mjs", () => {
     routes["/__smoke-no-existe"] = [page(200, BODY_MARKER)];
     const run = await smoke();
     expect(run.status).toBe(1);
-    expect(run.stderr).toBe(
-      [1, 2, 3, 4, 5].map((attempt) => `smoke: /__smoke-no-existe 200 intento ${attempt}/5\n`).join(""),
-    );
+    expect(run.stderr).toBe(attemptLines("/__smoke-no-existe", "200", 5));
     expect(run.stdout + run.stderr).not.toContain(BODY_MARKER);
   });
 
-  it("treats a request that never answers as a failed attempt and ends red after 5", async () => {
+  it("treats a request that never answers as a failed attempt and ends red after 5 on /", async () => {
     routes["/"] = [() => undefined];
     const run = await smoke();
     expect(run.status).toBe(1);
-    expect(run.stderr).toBe([1, 2, 3, 4, 5].map((attempt) => `smoke: / sin-respuesta intento ${attempt}/5\n`).join(""));
+    expect(run.stderr).toBe(attemptLines("/", "sin-respuesta", 5));
     expect(requests).toEqual(Array(5).fill("GET /"));
   });
 
   it("fails closed without a valid http(s) base URL and makes no request", async () => {
-    for (const args of [[], ["not a url"], ["ftp://127.0.0.1/"]]) {
+    for (const args of [[], ["not a url", buildIdFile], ["ftp://127.0.0.1/", buildIdFile]]) {
       const run = await smoke(args);
       expect(run.status).toBe(1);
       expect(run.stderr).toBe("smoke: falta la URL base http(s) del sitio\n");
+    }
+    expect(requests).toEqual([]);
+  });
+
+  it("fails closed without a valid build id file, never printing its path, and makes no request", async () => {
+    const missing = await smoke([baseUrl]);
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toBe(BUILD_ID_FAILURE);
+
+    const absent = await smoke([baseUrl, path.join(workDir, "missing")]);
+    expect(absent.status).toBe(1);
+    expect(absent.stderr).toBe(BUILD_ID_FAILURE);
+
+    for (const content of ["a b", 'a"b', "a".repeat(65), "\n"]) {
+      writeFileSync(buildIdFile, content);
+      const run = await smoke();
+      expect(run.status).toBe(1);
+      expect(run.stderr).toBe(BUILD_ID_FAILURE);
+      expect(run.stderr).not.toContain(workDir);
     }
     expect(requests).toEqual([]);
   });

@@ -263,7 +263,7 @@ describe("deploy-production workflow — deploy job", () => {
   const CDK_DEPLOY =
     "pnpm exec cdk deploy EvzlaStack --app cdk.out --ci --require-approval never --outputs-file cdk-outputs.json";
   const SUMMARY = "node infra/scripts/ci/write-summary.mjs infra/cdk-outputs.json";
-  const SMOKE = "node infra/scripts/ci/smoke.mjs https://encuentramevzla.com";
+  const SMOKE = "node infra/scripts/ci/smoke.mjs https://encuentramevzla.com apps/web/.open-next/assets/BUILD_ID";
   const MAIN_TIP_CHECK = "node infra/scripts/ci/check-main-tip.mjs";
   const ZIP_CHECK = "command -v zip";
 
@@ -306,6 +306,15 @@ describe("deploy-production workflow — deploy job", () => {
       SUMMARY,
       SMOKE,
     ]);
+  });
+
+  // La invalidación la hace el stack (ADR-0013): el rol de CI sigue sin permisos de CloudFront (ADR-0011).
+  it("smokes the deployed build id after cdk deploy and never calls CloudFront from a step (AC-8)", () => {
+    const deployIndex = indexOf((step) => step.run?.trim() === CDK_DEPLOY);
+    const smokeIndex = indexOf((step) => step.run?.trim() === SMOKE);
+    expect(deployIndex).toBeGreaterThanOrEqual(0);
+    expect(smokeIndex).toBeGreaterThan(deployIndex);
+    expect(allSteps.filter((step) => /cloudfront/i.test(step.run ?? ""))).toEqual([]);
   });
 
   it("checks out the same resolved sha as checks", () => {

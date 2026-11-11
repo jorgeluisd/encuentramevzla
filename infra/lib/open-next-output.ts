@@ -39,9 +39,13 @@ export type OpenNextOutput = {
   assetsDir: string;
   cacheDir?: string;
   behaviors: OpenNextBehavior[];
+  buildId: string;
 };
 
 const OUTPUT_FILE = "open-next.output.json";
+const BUILD_ID_FILE = "BUILD_ID";
+// El id viaja a la plantilla de CloudFormation y al HTML que compara el smoke: solo caracteres inertes.
+const BUILD_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 function isMissing(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === "ENOENT";
@@ -87,6 +91,17 @@ function confineTo(openNextDir: string) {
   };
 }
 
+function readBuildId(file: string): string {
+  let buildId: string;
+  try {
+    buildId = readFileSync(file, "utf8").trim();
+  } catch {
+    buildId = "";
+  }
+  if (!BUILD_ID_PATTERN.test(buildId)) throw new Error("La salida de OpenNext no trae un BUILD_ID válido.");
+  return buildId;
+}
+
 // Las rutas del json son relativas al padre de .open-next (p. ej. ".open-next/assets").
 export function readOpenNextOutput(openNextDir: string): OpenNextOutput {
   const file = path.join(openNextDir, OUTPUT_FILE);
@@ -121,6 +136,7 @@ export function readOpenNextOutput(openNextDir: string): OpenNextOutput {
   const assets = raw.origins.s3.copy.find((c) => c.cached);
   const cache = raw.origins.s3.copy.find((c) => !c.cached);
   if (!assets) throw new Error("Falta la copia de assets en la salida de OpenNext.");
+  const assetsDir = resolve("origins.s3.copy (assets)", assets.from);
 
   const init = raw.additionalProps?.initializationFunction;
   const initDir = init ? resolve("additionalProps.initializationFunction.bundle", init.bundle) : undefined;
@@ -147,8 +163,9 @@ export function readOpenNextOutput(openNextDir: string): OpenNextOutput {
             cacheFile: confine("dynamodb-cache.json", path.join(initDir, "dynamodb-cache.json")),
           }
         : undefined,
-    assetsDir: resolve("origins.s3.copy (assets)", assets.from),
+    assetsDir,
     cacheDir: cache ? resolve("origins.s3.copy (cache)", cache.from) : undefined,
     behaviors: raw.behaviors,
+    buildId: readBuildId(confine(BUILD_ID_FILE, path.join(assetsDir, BUILD_ID_FILE))),
   };
 }
