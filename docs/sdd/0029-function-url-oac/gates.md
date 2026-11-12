@@ -42,3 +42,20 @@ GATE 2 · 2026-11-11 · Jorge Diaz · DELEGADO AL MERGE · alcance: R2 (T-11..T-
   1. Bajo aceptado: posible ventana de 403 en imágenes mientras CloudFront propaga el cambio de firma; se verifica tras el deploy (por dominio 200, directo a la URL 403).
   2. Bajo al backlog: T6 no fija la ausencia de `FunctionAssociations` en `_next/image*`.
   3. La evidencia RED/GREEN de T-11 está en `bg-runs/` (corridas en background por durar >180 s).
+
+## GATE 2 — implementación R3
+
+GATE 2 · 2026-11-12 · Jorge Diaz · DELEGADO AL MERGE · alcance: R3 (T-14..T-18b).
+
+- Veredicto: el humano indicó trabajar en autónomo, abrir el PR y esperar su merge; el merge del PR de R3 y la aprobación del environment Production son el OK explícito que exige R3.
+- Evidencia: 06-verify-r3.md (PASS, sha 4e36edf; T-18b con lint, typecheck e infra 325/325 en verde), 06-review-r3.md, `cdk diff` de R3 (URL del server NONE → AWS_IAM, OAC del server no-override → always, se eliminan los 2 permisos con principal `*` del server).
+- Requisitos de R3:
+  - C1: `test:content-hash` PASS en chromium, webkit y firefox sobre 03cb307.
+  - C2: hecho el 2026-11-12, lectura de solo consulta tras R2: imagen en AWS_IAM con solo los 2 permisos de CloudFront acotados por `AWS:SourceArn`; server con los 2 permisos de CloudFront acotados; imagen no cacheada 200 por dominio y 403 directo a la URL.
+  - C3: plan post-deploy: smoke de CI (incluye POST firmado a `/api/revalidate` → 401), URL directa del server → 403, `list-function-url-configs` → AWS_IAM en ambas; el humano hace una búsqueda y una acción admin en el navegador.
+  - C4: el humano, con sesión `blockealo` activa al aprobar el deploy; pendiente de su confirmación antes de aprobar Production.
+- Hallazgos de 06-review-r3.md:
+  1. Alto condicional (403 cacheado por `x-amz-content-sha256` falso en GET): no se reproduce. Contra `/_next/image` (ya always desde R2), hash falso, `authorization` falso y `x-amz-date`/`x-amz-security-token` falsos → 200.
+  2. Medio (firma de POST solo validada en producción): sonda POST agregada al smoke (T-18b).
+  3. Medio (C2 sin registro): registrado arriba.
+  4. Bajos: T4b sobre toda la plantilla y comentario corregidos en T-18b; el resto al backlog.

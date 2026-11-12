@@ -73,7 +73,7 @@ INFRAESTRUCTURA (CDK, `open-next-site.ts`)
   - T1: `AWS::Lambda::Url` por función, identificada por `TargetFunctionArn`.
   - T2: AC-19. Origen → `OriginAccessControlId` → OAC; filtrando por tipo `lambda` quedan exactamente 2 (de los 3 de la plantilla; el de S3 queda fuera), sigv4, con `signing` según `EXPECTED`.
   - T3: AC-20. Por función, `InvokeFunctionUrl` (sin `FunctionUrlAuthType`) e `InvokeFunction` + `InvokedViaFunctionUrl`, ambos con principal cloudfront y `SourceArn` que referencia la Distribution, sin `*`.
-  - T4: hay permisos con principal `*` sí y solo si el authType es NONE.
+  - T4: desde R3, ninguna de las dos funciones tiene permisos con principal `*` (`toHaveLength(0)` por función, AC-22). T4b: ninguna `AWS::Lambda::Permission` de toda la plantilla tiene principal `*`.
   - T5: `ServerCachePolicy` sin `x-revalidate-token` ni `x-amz-content-sha256`; Distribution sin `Logging`.
   - T6: los behaviors default e imagen siguen con `ALL_VIEWER_EXCEPT_HOST_HEADER` (AC-24).
 
@@ -115,7 +115,7 @@ AMENAZAS (activo · actor · vector · mitigación · test)
 | Firma NO_OVERRIDE / `x-origin-verify` | Viewer, Internet | `Authorization` para evitar la firma; pérdida de la segunda capa | NONE no autoriza nada extra y ALWAYS sobrescribe; el header se conserva solo en el origen server | T2, AC-21/22, L301, AC-23 |
 | Estado de la URL tras emergencia | Operación | La CLI deja NONE sin que CloudFormation lo detecte | Reconciliación obligatoria | AC-M6 tras reconciliar |
 
-RUNBOOK POR RELEASE (PR → main, aprobación Production, smoke GET, fast-forward de develop)
+RUNBOOK POR RELEASE (PR → main, aprobación Production, smoke de CI, fast-forward de develop)
 - Solo datos sintéticos (`Persona Prueba`, `V-00000000`) o propios; nunca pegar bodies, hashes ni tokens en tickets o chats.
 - R1 (C5 resuelto antes de aprobar):
   - Pre: `pnpm lint && pnpm typecheck && pnpm test && pnpm build` + chequeo del artefacto.
@@ -125,6 +125,7 @@ RUNBOOK POR RELEASE (PR → main, aprobación Production, smoke GET, fast-forwar
   - Post: AC-M1 imagen → 403; AC-M6; AC-M7 (`aws lambda get-policy` de server e imagen, solo lectura, con los dos permisos de CloudFront); AC-M3.
   - Reversión: `ref` = SHA de R1.
 - R3 (**no se aprueba sin OK explícito del humano**; requiere C1 verde en los 3 navegadores sobre el commit de R3, C2 hecho, plan C3 escrito y C4 listo con nombres reales fuera del repo y una persona con credenciales presente). Diff: 2 literales del server + comentario + `EXPECTED`.
+  - Smoke de CI: además de los GET, `POST /api/revalidate` sin `x-revalidate-token`, con body vacío y `x-amz-content-sha256: e3b0c442…b855`, exige exactamente 401 (la firma pasó; la app rechaza por token). 403 = firma SigV4 rechazada → el smoke falla con ese motivo, sin imprimir body ni headers, tras el mismo presupuesto de 5 intentos.
   - Post inmediato: POST de búsqueda; acción admin; Excel y dictado si aplica (AC-M4); AC-M5 con `x-revalidate-token` + `x-amz-content-sha256: e3b0c442…b855`; AC-M1 server → 403; AC-M6.
   - Si falla un POST: reversión normal `ref` = SHA de R2. Si no alcanza el tiempo, emergencia por CLI con credenciales humanas y sin pegar ARNs. **COMANDOS NO ENSAYADOS:**
     `aws lambda update-function-url-config --function-name <server> --auth-type NONE`
