@@ -1,4 +1,5 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   linkSync,
   mkdirSync,
@@ -1125,6 +1126,8 @@ describe("smoke.mjs", () => {
   const HTML_PATHS = ["/", "/confianza", "/emergencias"];
   const BROWSER_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
   const BUILD_ID_FAILURE = "smoke: falta un BUILD_ID válido del build desplegado\n";
+  const REVALIDATE_PATH = "/api/revalidate";
+  const EMPTY_BODY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
   type Handler = (req: IncomingMessage, res: ServerResponse) => void;
   type Route = Record<string, Handler[]>;
@@ -1133,6 +1136,7 @@ describe("smoke.mjs", () => {
   let baseUrl: string;
   let requests: string[];
   let accepts: Record<string, string | undefined>;
+  let revalidateCalls: { method?: string; hash?: string | string[]; token?: string | string[]; body: string }[];
   let routes: Route;
   let workDir: string;
   let buildIdFile: string;
@@ -1152,6 +1156,20 @@ describe("smoke.mjs", () => {
   const home = (id = BUILD_ID): Handler => html(id, TITLE);
   const adminRedirect = redirect(307, "/admin/login");
   const services = page(200, `<html><body><h1>Ayuda gratuita tras el sismo</h1>${BODY_MARKER}</body></html>`);
+  // Emula la Function URL detrás de OAC: 403 si el hash no coincide con el body (firma), 401 de la app sin token.
+  const signedRevalidate: Handler = (req, res) => {
+    let body = "";
+    req.on("data", (chunk: Buffer) => (body += chunk.toString("utf8")));
+    req.on("end", () => {
+      const hash = req.headers["x-amz-content-sha256"];
+      const token = req.headers["x-revalidate-token"];
+      revalidateCalls.push({ method: req.method, hash, token, body });
+      const signed = hash === createHash("sha256").update(body).digest("hex");
+      const status = !signed ? 403 : token === undefined ? 401 : 200;
+      res.writeHead(status, { "content-type": "application/json", "x-synthetic-header": BODY_MARKER });
+      res.end(JSON.stringify({ ok: false, marker: BODY_MARKER }));
+    });
+  };
   const ALL_PATHS = [
     "GET /",
     "GET /confianza",
@@ -1159,6 +1177,7 @@ describe("smoke.mjs", () => {
     "GET /admin",
     "GET /servicios",
     "GET /__smoke-no-existe",
+    `POST ${REVALIDATE_PATH}`,
   ];
   const attemptLines = (smokePath: string, status: string, attempts: number, reason = ""): string =>
     Array.from({ length: attempts }, (_, n) => `smoke: ${smokePath} ${status} intento ${n + 1}/${attempts}${reason}\n`).join("");
@@ -1184,12 +1203,14 @@ describe("smoke.mjs", () => {
     writeFileSync(buildIdFile, `${BUILD_ID}\n`);
     requests = [];
     accepts = {};
+    revalidateCalls = [];
     routes = {
       "/": [home()],
       "/confianza": [html(BUILD_ID)],
       "/emergencias": [html(BUILD_ID)],
       "/admin": [adminRedirect],
       "/servicios": [services],
+      [REVALIDATE_PATH]: [signedRevalidate],
     };
     server = createServer((req, res) => {
       requests.push(`${req.method} ${req.url}`);
@@ -1267,8 +1288,8 @@ describe("smoke.mjs", () => {
     expect(run.status).toBe(0);
   });
 
-  // Nunca el buscador con término ni /api: no deja filas en search_log ni manda correos.
-  it("exports only read-only paths without query strings, never /api (AC-11)", () => {
+  // Nunca el buscador con término: no deja filas en search_log ni manda correos. /api/revalidate va sin token.
+  it("exports only read-only paths without query strings, and /api/revalidate as the only /api probe (AC-11)", () => {
     const listed = execFileSync(
       process.execPath,
       [
@@ -1279,8 +1300,9 @@ describe("smoke.mjs", () => {
       { encoding: "utf8" },
     );
     const paths = JSON.parse(listed) as string[];
-    expect(paths).toEqual(["/", "/confianza", "/emergencias", "/admin", "/servicios", "/__smoke-no-existe"]);
-    expect(paths.some((p) => p.includes("?") || p.startsWith("/api"))).toBe(false);
+    expect(paths).toEqual(["/", "/confianza", "/emergencias", "/admin", "/servicios", "/__smoke-no-existe", REVALIDATE_PATH]);
+    expect(paths.some((p) => p.includes("?"))).toBe(false);
+    expect(paths.filter((p) => p.startsWith("/api"))).toEqual([REVALIDATE_PATH]);
   });
 
   it.each(HTML_PATHS)(
@@ -1397,6 +1419,37 @@ describe("smoke.mjs", () => {
     expect(run.status).toBe(1);
     expect(run.stderr).toBe(attemptLines("/__smoke-no-existe", "200", 5));
     expect(run.stdout + run.stderr).not.toContain(BODY_MARKER);
+  });
+
+  // 401 prueba que la firma SigV4 de un POST pasó por OAC y que la app rechazó por falta de token (AC-M5).
+  it("probes POST /api/revalidate with an empty body, its SHA-256 and no revalidation token", async () => {
+    const run = await smoke();
+    expect(run.stderr).toBe("");
+    expect(run.status).toBe(0);
+    expect(revalidateCalls).toEqual([{ method: "POST", hash: EMPTY_BODY_SHA256, token: undefined, body: "" }]);
+  });
+
+  it("fails after 5 attempts when /api/revalidate answers 403, naming a SigV4 failure but never the body or headers", async () => {
+    routes[REVALIDATE_PATH] = [page(403, BODY_MARKER)];
+    const run = await smoke();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(attemptLines(REVALIDATE_PATH, "403", 5, ": firma SigV4 rechazada"));
+    expect(run.stdout + run.stderr).not.toContain(BODY_MARKER);
+  });
+
+  it.each([200, 503, 404])("fails when /api/revalidate answers %i instead of exactly 401", async (status) => {
+    routes[REVALIDATE_PATH] = [page(status, BODY_MARKER)];
+    const run = await smoke();
+    expect(run.status).toBe(1);
+    expect(run.stderr).toBe(attemptLines(REVALIDATE_PATH, String(status), 5));
+    expect(run.stdout + run.stderr).not.toContain(BODY_MARKER);
+  });
+
+  it("recovers when /api/revalidate turns from 403 to 401 within the attempts", async () => {
+    routes[REVALIDATE_PATH] = [page(403, BODY_MARKER), signedRevalidate];
+    const run = await smoke();
+    expect(run.status).toBe(0);
+    expect(run.stderr).toBe(`smoke: ${REVALIDATE_PATH} 403 intento 1/5: firma SigV4 rechazada\n`);
   });
 
   it("treats a request that never answers as a failed attempt and ends red after 5 on /", async () => {
