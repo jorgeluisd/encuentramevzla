@@ -146,10 +146,10 @@ export class OpenNextSite extends Construct {
 
     const assetDeployments = this.deployAssets(output, logGroup("AssetsDeployment"));
 
-    // OAC NO_OVERRIDE sobre URLs NONE mientras dura la secuencia de ADR-0012 (R1 → R2 imagen → R3 server):
-    // CloudFront ya firma y los permisos existen, pero las URL todavía aceptan llamadas sin firma.
+    // Ambas URL exigen IAM: solo CloudFront (OAC) las invoca. Los POST llevan x-amz-content-sha256
+    // calculado en el navegador; sin ese hash del body la URL rechaza el POST (ADR-0012).
     const serverUrl = this.serverFunction.addFunctionUrl({
-      authType: lambda.FunctionUrlAuthType.NONE,
+      authType: lambda.FunctionUrlAuthType.AWS_IAM,
       invokeMode: output.server.streaming ? lambda.InvokeMode.RESPONSE_STREAM : lambda.InvokeMode.BUFFERED,
     });
     const imageUrl = imageFunction.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.AWS_IAM });
@@ -157,7 +157,7 @@ export class OpenNextSite extends Construct {
     const serverOrigin = origins.FunctionUrlOrigin.withOriginAccessControl(serverUrl, {
       customHeaders: { "x-origin-verify": props.originVerifyValue },
       originAccessControl: new cloudfront.FunctionUrlOriginAccessControl(this, "ServerOac", {
-        signing: cloudfront.Signing.SIGV4_NO_OVERRIDE,
+        signing: cloudfront.Signing.SIGV4_ALWAYS,
       }),
     });
     const imageOrigin = origins.FunctionUrlOrigin.withOriginAccessControl(imageUrl, {
