@@ -411,6 +411,11 @@ describe("function URL access (ADR-0012)", () => {
     expect(publicPermissions).toHaveLength(0);
   });
 
+  it("grants no public (*) Lambda permission anywhere in the template (T4b, AC-22)", () => {
+    const publicPermissions = entries("AWS::Lambda::Permission").filter(([, p]) => p.Properties.Principal === "*");
+    expect(publicPermissions.map(([id]) => id)).toEqual([]);
+  });
+
   it("keeps the revalidation token and the body hash out of the cache key and disables access logs (T5)", () => {
     const [, policy] = entries("AWS::CloudFront::CachePolicy").find(([id]) => id.includes("ServerCachePolicy")) ?? [];
     const headers = JSON.stringify(policy?.Properties.CachePolicyConfig);
