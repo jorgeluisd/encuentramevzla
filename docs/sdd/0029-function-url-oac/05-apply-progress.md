@@ -45,3 +45,43 @@ Checks:
 - `pnpm build` → `Tasks: 1 successful, 1 total`, exit 0 (bg-runs/T12-pnpm-build.log)
 Alcance: `git diff --name-only develop...HEAD` → `infra/lib/open-next-site.ts`, `infra/test/evzla-stack.test.ts` (más este archivo en el commit de docs).
 Commit: el de este registro (docs).
+
+## R3 — Function URL del server a AWS_IAM + SIGV4_ALWAYS
+
+> Las corridas de `evzla-stack.test.ts` de T-14 bajaron a ~20 s, así que RED, GREEN y REFACTOR van en primer plano con `exit` real en el log; el safety net, C1 y los checks globales fueron en background y su salida literal está en `bg-runs/` (local, gitignored por `*.log`).
+
+## T-14 — URL del server AWS_IAM y OAC always   estado: terminada
+TDD: ON (infrastructure CDK; se cambió primero `EXPECTED.server` y falló)
+Safety net: `pnpm --filter @evzla/infra test -- test/evzla-stack.test.ts --reporter=dot` → `Test Files 1 passed (1) · Tests 41 passed (41)`, exit 0 (2026-11-12T18:38:46Z, `WARN=backgrounded`; bg-runs/2026-11-12T18-38-46Z-T14-safety-net-stack.log)
+Archivos tocados: `infra/lib/open-next-site.ts`, `infra/test/evzla-stack.test.ts`   Desviaciones respecto al plan: ninguna de archivos; dentro del test se reescribió T4 (ver REFACTOR)
+
+TDD Cycle Evidence (comando: `pnpm --filter @evzla/infra test -- test/evzla-stack.test.ts --reporter=dot`)
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | T1 server AuthType · T2 OAC por URL (AC-19/AC-22) · T4 permisos `*` del server | ídem, con `EXPECTED.server = { authType: "AWS_IAM", signing: "always" }` | FAIL — `expected 'NONE' to be 'AWS_IAM'`; `- "SigningBehavior": "always" / + "SigningBehavior": "no-override"`; T4 `expected true to be false` · `Failed Tests 3 · Test Files 1 failed (1) Tests 3 failed \| 38 passed (41)`, exit 1 | 2026-11-12T18:39:58Z |
+| GREEN | archivo completo | ídem, tras `FunctionUrlAuthType.AWS_IAM` y `Signing.SIGV4_ALWAYS` en el server y el comentario nuevo | PASS — `Test Files 1 passed (1) Tests 41 passed (41)`, exit 0 | 2026-11-12T18:40:38Z |
+| TRIANGULATE | — | — | no aplica: T1/T2/T3/T4 corren por `it.each` sobre server e imagen | — |
+| REFACTOR | T4 → `grants no public (*) permission on the %s function (T4, AC-22)` | ídem | PASS — `Test Files 1 passed (1) Tests 41 passed (41)`, exit 0 | 2026-11-12T18:42:38Z |
+
+REFACTOR: tras GREEN, `tsc --noEmit` en `infra` falló con `TS2367` en T4 (`EXPECTED[name].authType === "NONE"` ya no puede ser cierto con ambos literales en `AWS_IAM` bajo `as const`). T4 pasa a afirmar AC-22 directamente: `expect(publicPermissions).toHaveLength(0)` para server e imagen.
+Confirmación AC-22..AC-25: T1 (ambas `AuthType: AWS_IAM`), T2 (ambos OAC lambda `SigningBehavior: always`, 3 OAC en total), T4 (0 `AWS::Lambda::Permission` con principal `*` sobre server e imagen) y T3 (`InvokeFunctionUrl` + `InvokeFunction` de `cloudfront.amazonaws.com` con `SourceArn` a la distribución, sin `*`) verdes. AC-23 (L301, `x-origin-verify` solo en el server), AC-24 (T6 y L120) y el bloque 0030 (`HtmlInvalidation`, `MaxTTL` 300) verdes sin tocar. AC-25: el comentario ya no habla de URLs NONE; dice que ambas URL exigen IAM y que los POST llevan `x-amz-content-sha256` calculado en el navegador (ADR-0012).
+Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `infra` → `tsc=0`) · lint ✔ (`pnpm exec eslint lib/open-next-site.ts test/evzla-stack.test.ts` → `eslint=0`) · tests ✔ (41 passed, 2026-11-12T18:42:38Z)
+Commit: 03cb307 fix(infra): require IAM auth on the server function URL
+Decisiones menores: nombre nuevo de T4 (incluye AC-22).
+Notas para el verifier: el guardrail post-escritura volvió a avisar de `no-reply@encuentramevzla.com` en el test: preexistente (ver T-7/T-11). Nada contra AWS: sin `cdk diff`/`deploy` (T-18 es manual).
+
+## T-15 — contrato de `/api/revalidate` en ADR-0012   estado: terminada
+TDD: OFF (confirmación documental, sin archivos)
+`adr/0012-function-url-aws-iam-oac.md:57` ya dice: "Desde R3, quien llame a `/api/revalidate` debe enviar `x-revalidate-token` y también `x-amz-content-sha256`." No requiere edición.
+
+## T-16 — C1 sobre el commit de R3   estado: terminada
+TDD: OFF (harness de verificación)
+`pnpm --filter @evzla/web test:content-hash` sobre 03cb307 (navegadores ya instalados: chromium-1254, webkit-2388, firefox-1572) → S1..S6 `PASS` en chromium, webkit y firefox; última línea `content-hash C1: PASS`, exit 0 (2026-11-12T18:43:45Z, `WARN=backgrounded`; bg-runs/2026-11-12T18-43-45Z-T16-content-hash-c1.log)
+
+## T-17 — verificación de R3   estado: terminada
+TDD: OFF (tarea de verificación, sin archivos)
+- `pnpm lint` → `Tasks: 5 successful, 5 total`, `lint=0` · `pnpm typecheck` → `Tasks: 5 successful, 5 total`, `typecheck=0` (bg-runs/T17-lint-typecheck.log; no los registra el hook)
+- `pnpm test` → `Tasks: 4 successful, 4 total`; core `Tests 286 passed (286)`, db `20 passed (20)`, web `107 passed (107)`, infra `318 passed (318)`, exit 0 (2026-11-12T18:47:31Z, `WARN=backgrounded`; bg-runs/2026-11-12T18-47-31Z-T17-pnpm-test.log)
+- `pnpm build` → `Tasks: 1 successful, 1 total`, exit 0 (bg-runs/T17-pnpm-build.log)
+Alcance: `git diff --name-only develop...HEAD` → `infra/lib/open-next-site.ts`, `infra/test/evzla-stack.test.ts`, más `05-apply-progress*.md` (rotación y este registro).
+Pendiente humano: T-18 (`cdk diff` de R3) y los requisitos C2, C3, C4 antes de aprobar.
