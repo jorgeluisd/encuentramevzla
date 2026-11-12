@@ -146,8 +146,8 @@ export class OpenNextSite extends Construct {
 
     const assetDeployments = this.deployAssets(output, logGroup("AssetsDeployment"));
 
-    // Ambas URL exigen IAM: solo CloudFront (OAC) las invoca. Los POST llevan x-amz-content-sha256
-    // calculado en el navegador; sin ese hash del body la URL rechaza el POST (ADR-0012).
+    // Ambas URL exigen IAM: solo CloudFront (OAC) las invoca. Los POST llevan x-amz-content-sha256, que calcula
+    // el navegador o el llamador externo de /api/revalidate; sin ese hash del body la URL rechaza el POST (ADR-0012).
     const serverUrl = this.serverFunction.addFunctionUrl({
       authType: lambda.FunctionUrlAuthType.AWS_IAM,
       invokeMode: output.server.streaming ? lambda.InvokeMode.RESPONSE_STREAM : lambda.InvokeMode.BUFFERED,
