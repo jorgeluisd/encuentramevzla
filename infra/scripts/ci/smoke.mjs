@@ -22,6 +22,7 @@ const SERVED_BUILD_ID = /\\?"b\\?":\\?"([A-Za-z0-9_-]{1,64})\\?"/;
 const STABLE_TITLE = "<title>EncuéntrameVzla —";
 const ADMIN_LOGIN_PATH = "/admin/login";
 const SERVICES_TEXT = "Ayuda gratuita tras el sismo";
+const EMPTY_BODY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 function millisecondsFromEnv(name, fallback) {
   const value = Number(process.env[name]);
@@ -76,6 +77,13 @@ async function checkNotFound(response) {
   return { ok: response.status === 404 };
 }
 
+// Con OAC SIGV4_ALWAYS, 403 es la Function URL rechazando la firma; 401 es la app sin token, o sea, la firma pasó.
+async function checkSignedPostReachesApp(response) {
+  await response.body?.cancel();
+  if (response.status === 401) return { ok: true };
+  return response.status === 403 ? { ok: false, reason: "firma SigV4 rechazada" } : { ok: false };
+}
+
 async function checkAdmin(response, url) {
   await response.body?.cancel();
   if (response.status < 300 || response.status > 399) return { ok: false };
@@ -90,8 +98,15 @@ const htmlPage = (buildId, ...problems) => ({
   check: pageWhere(...problems, servingBuild(buildId)),
 });
 const probe = (check) => ({ headers: {}, check });
+const unauthenticatedPost = (check) => ({
+  method: "POST",
+  headers: { "x-amz-content-sha256": EMPTY_BODY_SHA256 },
+  body: "",
+  check,
+});
 
-// Nunca /api ni el buscador con término: el smoke no debe dejar filas en search_log ni mandar correos.
+// Nunca el buscador con término: el smoke no debe dejar filas en search_log ni mandar correos.
+// /api/revalidate va sin x-revalidate-token: la app lo rechaza sin revalidar nada.
 // `/` sale de la caché de CloudFront; /servicios es force-dynamic y se renderiza en la Lambda desplegada.
 // /buscar no entra: es un redirect 307 a la home, sin HTML que comparar.
 function checksFor(buildId) {
@@ -102,14 +117,15 @@ function checksFor(buildId) {
     "/admin": probe(checkAdmin),
     "/servicios": probe(pageWhere(containing(SERVICES_TEXT, "texto ausente"))),
     "/__smoke-no-existe": probe(checkNotFound),
+    "/api/revalidate": unauthenticatedPost(checkSignedPostReachesApp),
   };
 }
 export const SMOKE_PATHS = Object.keys(checksFor(""));
 
-async function attempt(baseUrl, smokePath, { headers, check }, timeoutMs) {
+async function attempt(baseUrl, smokePath, { method, headers, body, check }, timeoutMs) {
   const url = new URL(smokePath, baseUrl);
   try {
-    const response = await fetch(url, { headers, redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
+    const response = await fetch(url, { method, headers, body, redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
     return { status: String(response.status), ...(await check(response, url)) };
   } catch {
     return { status: "sin-respuesta", ok: false };

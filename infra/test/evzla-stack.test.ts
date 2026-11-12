@@ -315,7 +315,7 @@ describe("origin verify header", () => {
 
 describe("function URL access (ADR-0012)", () => {
   const EXPECTED = {
-    server: { authType: "NONE", signing: "no-override" },
+    server: { authType: "AWS_IAM", signing: "always" },
     image: { authType: "AWS_IAM", signing: "always" },
   } as const;
   const ALL_VIEWER_EXCEPT_HOST_HEADER = "b689b0a8-53d0-40ab-baf2-68738e2966ac";
@@ -406,9 +406,14 @@ describe("function URL access (ADR-0012)", () => {
     }
   });
 
-  it.each(cases)("keeps public (*) permissions on the %s function only while its URL is NONE (T4)", (name, fn) => {
+  it.each(cases)("grants no public (*) permission on the %s function (T4, AC-22)", (_name, fn) => {
     const publicPermissions = permissionsOn(fn()).filter((p) => p.Properties.Principal === "*");
-    expect(publicPermissions.length > 0).toBe(EXPECTED[name].authType === "NONE");
+    expect(publicPermissions).toHaveLength(0);
+  });
+
+  it("grants no public (*) Lambda permission anywhere in the template (T4b, AC-22)", () => {
+    const publicPermissions = entries("AWS::Lambda::Permission").filter(([, p]) => p.Properties.Principal === "*");
+    expect(publicPermissions.map(([id]) => id)).toEqual([]);
   });
 
   it("keeps the revalidation token and the body hash out of the cache key and disables access logs (T5)", () => {
