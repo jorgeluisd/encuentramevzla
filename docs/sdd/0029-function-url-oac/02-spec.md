@@ -58,6 +58,7 @@ Verificación post-deploy (MANUAL; la ejecuta el humano con datos ficticios o pr
 - AC-M3 R1, R2 y R3 Given el sitio por CloudFront, When se piden la home, una página SSR, una imagen optimizada no cacheada (`/_next/image`) y un POST real de búsqueda, Then todos responden con éxito.
 - AC-M4 R3 Given el deploy completado, When se ejecuta una acción admin real y, si aplica, una subida Excel y un dictado de voz, Then terminan con éxito (cubre C3).
 - AC-M5 R1, R2 y R3 Given el token de revalidación, When se llama POST `/api/revalidate` con `x-revalidate-token`, Then responde 200 y el sello "Actualizado" se refresca. Desde R3 el llamador debe enviar además `x-amz-content-sha256` (con body vacío, el SHA-256 de la cadena vacía); sin él la llamada falla en la firma.
+  - Desde R3, el smoke de CI (`infra/scripts/ci/smoke.mjs`) cubre además la parte de firma: `POST /api/revalidate` sin `x-revalidate-token`, con body vacío y `x-amz-content-sha256` del body vacío, debe responder exactamente 401 (la firma pasó y la app rechazó por token); 403 significa firma SigV4 rechazada y el smoke falla. El 200 con token sigue siendo manual.
 - AC-M6 R2 y R3 Given credenciales humanas, When se ejecuta `aws lambda list-function-url-configs` por función, Then R2 muestra `AWS_IAM` en la de imágenes y R3 en ambas.
 - AC-M7 R2 Given la política de la función del server leída sin modificar, When se inspecciona, Then contiene los dos permisos de CloudFront (cubre C2); además una imagen no cacheada responde 200.
 

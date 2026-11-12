@@ -85,3 +85,44 @@ TDD: OFF (tarea de verificación, sin archivos)
 - `pnpm build` → `Tasks: 1 successful, 1 total`, exit 0 (bg-runs/T17-pnpm-build.log)
 Alcance: `git diff --name-only develop...HEAD` → `infra/lib/open-next-site.ts`, `infra/test/evzla-stack.test.ts`, más `05-apply-progress*.md` (rotación y este registro).
 Pendiente humano: T-18 (`cdk diff` de R3) y los requisitos C2, C3, C4 antes de aprobar.
+
+## T-18b — hallazgos de la revisión de R3   estado: terminada
+TDD: ON en la sonda del smoke y en la aserción de plantilla; OFF en el comentario y en docs (sin comportamiento).
+Safety net: `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts test/ci-workflow.test.ts --reporter=dot` → `Test Files 2 passed (2) Tests 201 passed (201)`, exit 0 (2026-11-12T19:00:23Z) · `pnpm --filter @evzla/infra test -- test/evzla-stack.test.ts --reporter=dot` → `Test Files 1 passed (1) Tests 41 passed (41)`, exit 0 (2026-11-12T19:00:52Z)
+Archivos tocados: `infra/scripts/ci/smoke.mjs`, `infra/test/ci-scripts.test.ts`, `infra/test/evzla-stack.test.ts`, `infra/lib/open-next-site.ts` (solo comentario), `02-spec.md`, `03-design.md`, `04-plan.md` (alta de T-18b)   Desviaciones respecto al plan: ninguna. `ci-workflow.test.ts` no depende de `SMOKE_PATHS` (solo del comando del step) y no se tocó.
+
+Hallazgo ALTO (403 cacheado por `x-amz-content-sha256` falso en GET): **no se mitiga**. El orquestador lo verificó en producción contra `/_next/image` (AWS_IAM + always desde R2): con un hash falso, con un `authorization` falso y con `x-amz-date`/`x-amz-security-token` falsos la respuesta fue 200. CloudFront reemplaza esos headers al firmar, así que el viewer no puede provocar el 403. No se reproduce.
+
+Comprobación previa: `apps/web/lib/revalidation/revalidate-request.ts` responde 401 `unauthorized` cuando falta `x-revalidate-token` (503 solo si el token no está configurado) y `app/api/revalidate/route.ts` solo exporta `POST`. No lee body ni revalida sin token.
+
+TDD Cycle Evidence
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | sonda POST `/api/revalidate` (método, hash del body vacío, sin token; 403 → `firma SigV4 rechazada`; 200/503/404 fallan; 403→401 se recupera) + `SMOKE_PATHS` y `ALL_PATHS` con la sonda | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts -t "smoke.mjs" --reporter=dot` | FAIL (razón: comportamiento ausente, el smoke no hacía el POST) · `Failed Tests 10 · Test Files 1 failed (1) Tests 10 failed \| 22 passed \| 126 skipped (158)`, exit 1 | 2026-11-12T19:02:16Z |
+| GREEN | ídem | ídem | PASS · `Test Files 1 passed (1) Tests 32 passed \| 126 skipped (158)`, exit 0 | 2026-11-12T19:02:39Z |
+| TRIANGULATE | mutante: body `"x"` con el hash del body vacío (el servidor local emula OAC y responde 403) | ídem | FAIL esperado (mutante muerto) · `Failed Tests 9 · Tests 9 failed \| 23 passed \| 126 skipped (158)`, exit 1; mutante revertido | 2026-11-12T19:02:56Z |
+| REFACTOR | archivos completos tras revertir el mutante | `pnpm --filter @evzla/infra test -- test/ci-scripts.test.ts test/ci-workflow.test.ts --reporter=dot` | PASS · `Test Files 2 passed (2) Tests 207 passed (207)`, exit 0 | 2026-11-12T19:03:34Z |
+| RED (mutante) | T4b `grants no public (*) Lambda permission anywhere in the template` | `pnpm --filter @evzla/infra test -- test/evzla-stack.test.ts -t "T4" --reporter=dot`, con la imagen temporalmente en NONE + no-override | FAIL · `Failed Tests 2 · Tests 2 failed \| 1 passed \| 39 skipped (42)`, exit 1 (T4b lista `SiteImageFunctioninvokefunctionurl…` y `SiteImageFunctioninvokefunction…`); mutante revertido, `git diff` de `open-next-site.ts` vacío | 2026-11-12T19:05:21Z |
+| GREEN | archivo completo | `pnpm --filter @evzla/infra test -- test/evzla-stack.test.ts --reporter=dot` | PASS · `Test Files 1 passed (1) Tests 42 passed (42)`, exit 0 | 2026-11-12T19:05:48Z |
+
+T4b es una guarda sobre un comportamiento que ya existía: el código actual ya cumple (0 permisos `*`), por eso no hay un RED con código vigente. El RED se demostró con un mutante.
+
+Checks locales:
+- typecheck ✔: `pnpm typecheck` → `Tasks: 5 successful, 5 total`, `typecheck=0` (bg-runs/T18b-typecheck.log)
+- lint ✔: `pnpm lint` → `Tasks: 5 successful, 5 total`, `lint=0` (bg-runs/T18b-lint.log)
+- tests ✔: `pnpm --filter @evzla/infra test --reporter=dot` → `Test Files 7 passed (7) Tests 325 passed (325)`, exit 0 (2026-11-12T19:08:33Z, `WARN=backgrounded`; bg-runs/2026-11-12T19-08-33Z-T18b-infra-test.log)
+
+Commits:
+- 860bb00 ci(infra): probe a signed POST to /api/revalidate in the smoke
+- 33db72e test(infra): assert no public Lambda permission in the whole template
+- 1bec0a8 fix(infra): name external revalidate callers in the function URL note
+- el de este registro: docs (plan, spec, diseño)
+
+Decisiones menores:
+- La sonda va al final de `checksFor`, con `method`/`body` opcionales en `attempt`. Los GET no cambian.
+- 403 tiene el motivo fijo `firma SigV4 rechazada`. Cualquier otro status distinto de 401 falla sin motivo, igual que el resto de las sondas. No se imprimen body ni headers: el test usa un marcador en ambos.
+
+Notas para el verifier:
+- La sonda corre en todo deploy. Antes de R3 (URL NONE) también da 401, así que no rompe un rollback a R2.
+- El guardrail post-escritura volvió a avisar de `no-reply@encuentramevzla.com` en `evzla-stack.test.ts`. Es preexistente (ver T-7/T-11/T-14).
+- Nada contra AWS.
