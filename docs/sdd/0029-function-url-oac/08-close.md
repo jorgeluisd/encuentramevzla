@@ -23,7 +23,7 @@ No se movió: queda en `docs/sdd/0029-function-url-oac/` (el repo no usa `_archi
 ## BACKLOG
 Vive en `README.md` ("Pendiente"). Origen: `06-code-review.md`, `06-review-r2.md`, `06-review-r3.md`, `06-security-review.md` (bajos al backlog por GATE 2) y avisos del orquestador. Cerrados: ninguno previo.
 Bajos de revisión:
-- C29-1 `content-hash-fetch.test.ts`: falta caso de `init.headers`/`signal`/`credentials` y de `Request` de entrada con `.clone()`; URL relativa se resuelve contra `deps.origin` y no `document.baseURI` (medios del code review de R1; verificar cierre en T-8 antes de dar por resuelto).
+- C29-1 RESUELTO: los medios M1..M4 del code review de R1 (tests de `init.headers`/`signal`/`credentials`, `Request` con `.clone()`, URL relativa contra `location.href`) se corrigieron en T-9b (aa0dd96); re-revisión aprobada en `06-code-review.md`.
 - C29-2 `hydrated-submit-guard`: no marca `input type=submit|image`; lista fija de archivos públicos (AC-14); riesgo de timeout de 5 s en disco lento.
 - C29-3 `e2e/content-hash/run.mjs`: S6 no prueba concurrencia real; S5 no compara bytes; `eslint.config.mjs` ignora todo `e2e/**`.
 - C29-4 Comentarios que narran el "qué" (`revalidate/route.ts:7`, `run.mjs:1-2`) y `as unknown as SubtleCrypto` en un test.
