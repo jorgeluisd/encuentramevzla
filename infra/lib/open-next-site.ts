@@ -152,7 +152,7 @@ export class OpenNextSite extends Construct {
       authType: lambda.FunctionUrlAuthType.NONE,
       invokeMode: output.server.streaming ? lambda.InvokeMode.RESPONSE_STREAM : lambda.InvokeMode.BUFFERED,
     });
-    const imageUrl = imageFunction.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.NONE });
+    const imageUrl = imageFunction.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.AWS_IAM });
 
     const serverOrigin = origins.FunctionUrlOrigin.withOriginAccessControl(serverUrl, {
       customHeaders: { "x-origin-verify": props.originVerifyValue },
@@ -162,7 +162,7 @@ export class OpenNextSite extends Construct {
     });
     const imageOrigin = origins.FunctionUrlOrigin.withOriginAccessControl(imageUrl, {
       originAccessControl: new cloudfront.FunctionUrlOriginAccessControl(this, "ImageOac", {
-        signing: cloudfront.Signing.SIGV4_NO_OVERRIDE,
+        signing: cloudfront.Signing.SIGV4_ALWAYS,
       }),
     });
     const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(this.assetsBucket, {

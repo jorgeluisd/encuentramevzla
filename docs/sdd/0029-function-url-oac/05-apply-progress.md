@@ -209,3 +209,35 @@ Decisiones menores:
 - Timeout explícito de 30 s solo en los dos tests que leen de disco (AC-13 y AC-14), con comentario del porqué.
 - La línea del log 2026-11-10T17:51:18Z (`exit=!0`, `sin salida capturada`) es una entrada del hook sin resumen para ese mismo comando; la corrida con resumen del runner, que es la que cuenta, es la de 17:52:30Z.
 Notas para el verifier: los mutantes viven en el scratchpad de la sesión, fuera del repo. Los TRIANGULATE de M3/M4 pasaron de entrada (guardas de comportamiento correcto por construcción); no se presentan como RED. Fixtures sintéticos (`Persona Prueba`, `V-00000000`).
+
+## R2 — Function URL de imágenes a AWS_IAM + SIGV4_ALWAYS
+
+> Las corridas de `evzla-stack.test.ts` y de los checks globales pasan a background (> 180 s o por lentitud del disco), así que el hook las registra `exit=? · WARN=backgrounded`. La salida literal de cada una está en `docs/sdd/0029-function-url-oac/bg-runs/<timestamp-log>-*.log` (local, gitignored por `*.log`); el timestamp del nombre es el de la línea del log.
+
+## T-11 — URL de imágenes AWS_IAM y OAC always   estado: terminada
+TDD: ON (infrastructure CDK; se cambió primero `EXPECTED` de la imagen y falló)
+Safety net: `pnpm --filter @evzla/infra test -- test/evzla-stack.test.ts --reporter=dot` → `Test Files 1 passed (1) · Tests 41 passed (41)`, exit 0 (2026-11-11T21:30:56Z, `WARN=backgrounded`; bg-runs/2026-11-11T21-30-56Z-T11-safety-net-stack.log)
+Archivos tocados: `infra/lib/open-next-site.ts`, `infra/test/evzla-stack.test.ts`   Desviaciones respecto al plan: ninguna
+
+TDD Cycle Evidence (comando: `pnpm --filter @evzla/infra test -- test/evzla-stack.test.ts --reporter=dot`)
+| Fase | Test | Comando | Resultado | Timestamp-log |
+|---|---|---|---|---|
+| RED | T1 image AuthType · T2 OAC por URL (AC-19/AC-21) · T4 permisos `*` de la imagen | ídem, con `EXPECTED.image = { authType: "AWS_IAM", signing: "always" }` | FAIL — `expected 'NONE' to be 'AWS_IAM'`; `- "SigningBehavior": "always" / + "SigningBehavior": "no-override"`; T4 `expected true to be false` · Tests 3 failed \| 38 passed (41), exit 1 (bg-runs/2026-11-11T21-33-03Z-T11-red.log, `WARN=backgrounded`) | 2026-11-11T21:33:03Z |
+| GREEN | archivo completo | ídem, tras `FunctionUrlAuthType.AWS_IAM` y `Signing.SIGV4_ALWAYS` solo en la imagen | PASS — Test Files 1 passed (1) · Tests 41 passed (41), exit 0 (bg-runs/2026-11-11T21-34-10Z-T11-green.log, `WARN=backgrounded`) | 2026-11-11T21:34:10Z |
+| TRIANGULATE | — | — | no aplica: T1/T2/T4 ya cubren server e imagen por `it.each`; el server sigue NONE + no-override en la misma corrida | — |
+| REFACTOR | — | — | sin cambios tras GREEN | — |
+
+Confirmación T4 / T3: en el GREEN pasa `keeps public (*) permissions on the image function only while its URL is NONE (T4)` con `EXPECTED.image.authType = "AWS_IAM"`, o sea, ya no hay `AWS::Lambda::Permission` con principal `*` sobre la imagen; la del server sigue teniéndolos (NONE). `lets only this distribution invoke the image URL through CloudFront (T3, AC-20)` sigue verde: `InvokeFunctionUrl` e `InvokeFunction` (`InvokedViaFunctionUrl: true`) de `cloudfront.amazonaws.com`, ambos con `SourceArn` a la distribución y sin `*`. AC-23 (L301, `x-origin-verify` solo en el server), AC-24 (T6 y L120) y el bloque 0030 (`HtmlInvalidation`, `MaxTTL` 300) verdes sin tocar.
+Checks locales: typecheck ✔ (`pnpm exec tsc --noEmit` en `infra` → `tsc=0`) · lint ✔ (`pnpm exec eslint lib/open-next-site.ts test/evzla-stack.test.ts` → `eslint=0`, en background) · tests ✔ (41 passed, 2026-11-11T21:34:10Z)
+Commit: 5d5b81d fix(infra): require IAM auth on the image function URL
+Decisiones menores: ninguna; solo los 2 literales de la imagen y la línea de `EXPECTED`.
+Notas para el verifier: el comentario sobre `serverUrl` (OAC NO_OVERRIDE sobre URLs NONE) queda impreciso para la imagen desde R2; el plan reserva su cambio a R3 (T-14) y no se tocó. El guardrail post-escritura volvió a avisar de `no-reply@encuentramevzla.com` en el test: preexistente (ver T-7). Nada contra AWS: sin `cdk diff`/`deploy` (T-13 es manual).
+
+## T-12 — verificación de R2   estado: terminada
+TDD: OFF (tarea de verificación, sin archivos)
+Checks:
+- `pnpm lint` → `Tasks: 5 successful, 5 total`, exit 0 · `pnpm typecheck` → `Tasks: 5 successful, 5 total`, exit 0 (bg-runs/T12-lint-typecheck.log; no los registra el hook)
+- `pnpm test` → `Tasks: 4 successful, 4 total`; core `Tests 286 passed (286)`, db `20 passed (20)`, web `107 passed (107)`, infra `318 passed (318)`, exit 0 (2026-11-11T21:46:14Z, `WARN=backgrounded`; bg-runs/2026-11-11T21-46-14Z-T12-pnpm-test.log)
+- `pnpm build` → `Tasks: 1 successful, 1 total`, exit 0 (bg-runs/T12-pnpm-build.log)
+Alcance: `git diff --name-only develop...HEAD` → `infra/lib/open-next-site.ts`, `infra/test/evzla-stack.test.ts` (más este archivo en el commit de docs).
+Commit: el de este registro (docs).

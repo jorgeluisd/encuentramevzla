@@ -316,7 +316,7 @@ describe("origin verify header", () => {
 describe("function URL access (ADR-0012)", () => {
   const EXPECTED = {
     server: { authType: "NONE", signing: "no-override" },
-    image: { authType: "NONE", signing: "no-override" },
+    image: { authType: "AWS_IAM", signing: "always" },
   } as const;
   const ALL_VIEWER_EXCEPT_HOST_HEADER = "b689b0a8-53d0-40ab-baf2-68738e2966ac";
 
