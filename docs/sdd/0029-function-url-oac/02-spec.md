@@ -9,7 +9,7 @@ RESUMEN
 - Fuera de alcance: migrar el runtime Node y cualquier otro cambio de infraestructura.
 - Hay DUDAS ABIERTAS al final.
 
-ESTADO: borrador
+ESTADO: implementada (e0dcba3)
 
 OBJETIVO · ACTORES
 - Objetivo: que las Function URL no sean invocables desde internet sin firma de CloudFront, sin romper ningún POST ni la revalidación.

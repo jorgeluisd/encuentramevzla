@@ -151,6 +151,9 @@ Calidad: typecheck 5/5 paquetes · **643 tests** (core 286 · db 20 · web 61 ·
 **Pendiente:**
 - **Deploy CI/CD (0026):** deuda de hardening/tests de baja severidad en
   `docs/sdd/0026-ci-deploy-production/08-close.md`.
+- **Function URL OAC y HTML en CDN (0029/0030):** AC-M5 y M-4 (revalidate con token), firma de ADR-0012/0013,
+  y backlog de baja severidad en `docs/sdd/0029-function-url-oac/08-close.md` y
+  `docs/sdd/0030-cloudfront-stale-html/08-close.md` (sin WAF/rate limit, dictado sin tope).
 - **Base de datos:** versionar en el repo los roles `evzla_*`, sus grants y `purge_search_log()` (hoy
   solo en los scripts de la migración, `draft/aws-migration/`).
 - **Opcional:** Service Worker PWA · extraer `@evzla/infrastructure` · undo de fusión · CSV en ingesta ·

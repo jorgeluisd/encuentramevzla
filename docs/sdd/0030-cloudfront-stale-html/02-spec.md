@@ -4,7 +4,7 @@ RESUMEN
 - Tras cada deploy, CloudFront sigue sirviendo HTML de un build anterior (`s-maxage` de 1 año). Se invalida `/*` dentro del `cdk deploy` (A1) y se acota `maxTtl` a 300 s (B1).
 - Es precondición de 0029 R3. No toca PII, schema `sensitive`, RPC ni el rol de CI.
 
-ESTADO: borrador (decisión humana 2026-11-11: A1 + B1; no-lista hasta resolver DUDAS ABIERTAS 1-2)
+ESTADO: implementada (39a4bb0)
 
 OBJETIVO · ACTORES
 - Que ningún deploy deje HTML de un build viejo en la CDN, y que la obsolescencia por revalidación quede acotada a 300 s.
