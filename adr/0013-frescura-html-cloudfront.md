@@ -1,6 +1,6 @@
 # ADR-0013 — Frescura del HTML en CloudFront: invalidación `/*` en el deploy y `maxTtl` de 300 s
 
-Fecha: 2026-11-11 · Estado: **PROPUESTO** · Complementa: [ADR-0010](./0010-migracion-supabase-vercel-a-aws.md), [ADR-0011](./0011-ci-cd-github-actions-oidc.md) y [ADR-0012](./0012-function-url-aws-iam-oac.md) (precondición de R3) · Feature: [`docs/sdd/0030-cloudfront-stale-html/`](../docs/sdd/0030-cloudfront-stale-html/01-proposal.md).
+Fecha: 2026-11-11 · Estado: **ACEPTADO** (2026-11-12, firmado por Jorge Diaz; registro en [`docs/sdd/0030-cloudfront-stale-html/gates.md`](../docs/sdd/0030-cloudfront-stale-html/gates.md)) · Complementa: [ADR-0010](./0010-migracion-supabase-vercel-a-aws.md), [ADR-0011](./0011-ci-cd-github-actions-oidc.md) y [ADR-0012](./0012-function-url-aws-iam-oac.md) (precondición de R3) · Feature: [`docs/sdd/0030-cloudfront-stale-html/`](../docs/sdd/0030-cloudfront-stale-html/01-proposal.md).
 
 ## Contexto
 

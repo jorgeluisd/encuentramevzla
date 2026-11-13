@@ -12,7 +12,7 @@
 
 ## ADRs
 - Aceptados (0). Enmiendas propuestas (0).
-- Pendientes de firma (2): ADR-0012 (2026-11-09) y ADR-0013 siguen `PROPUESTO`. Decisión del humano; no se ratifican aquí.
+- Firmados: ADR-0012 y ADR-0013 pasaron a `ACEPTADO` el 2026-11-12 (registro en `gates.md` de cada feature).
 
 ## CAPACIDAD reconciliada
 Ninguna. No existe `specs/<capacidad>/`; es endurecimiento de infraestructura sin comportamiento de producto nuevo. Lo duradero queda en ADR-0012 y `docs/ARCHITECTURE.md`.
@@ -48,6 +48,6 @@ Pendientes de verificación: AC-M5 y M-4 (token).
 Engram (sin datos personales): OAC SigV4 exige hash del body en POST (interceptor de `fetch`); 403 directo a la Function URL como sonda; condición de no activar logs de CloudFront con headers.
 
 ## PRÓXIMO PASO SUGERIDO
-1. Humano: decidir firma de ADR-0012 y ADR-0013 (hoy `PROPUESTO`).
+1. Hecho: ADR-0012 y ADR-0013 firmados (2026-11-12).
 2. Con OK humano, leer el token de `evzla/app` y cerrar AC-M5 y M-4 (POST `/api/revalidate` y sello "Actualizado" en 300 s o menos).
 3. Candidatos de siguiente feature: C29-8/C29-9 (revalidate con `timingSafeEqual` y rate limit) y A-3 (WAF o concurrencia reservada). Leer antes `06-review-r3.md`, `06-security-review.md` de ambas features y `adr/0012`, `adr/0013`.
