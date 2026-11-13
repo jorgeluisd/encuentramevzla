@@ -6,7 +6,7 @@
 - Merge: PR #142 a `develop`; release #143 a `main` (`39a4bb0`).
 - Deploy: run `43101434316` OK. Invalidación automática `I1Z7FMYKUU9YGJ7C2MHA22S4YT`, con `CallerReference` igual al build id servido.
 - Verificación manual post-deploy: M-1 OK (búsqueda, humano). M-2 OK (chunk del interceptor presente en el HTML). M-3 OK (Miss a Hit, age 10, con `Accept` de navegador).
-- M-4 PENDIENTE: `POST /api/revalidate` y sello "Actualizado" nuevo en 300 s o menos. Requiere leer el token de revalidación (Secrets Manager `evzla/app`) y necesita OK explícito del humano. Se resuelve junto con AC-M5 de 0029.
+- M-4 CONFIRMADO (2026-11-12): `POST /api/revalidate` con token → HTTP 200 (`revalidated: "/"`); el home siguiente salió `Miss from cloudfront`. El sello "Actualizado" es la fecha de la última carga en la BD (`getLastUpdateUseCase`), no la del render; sigue en 17 ago. porque no hubo cargas nuevas. Junto con AC-M5 de 0029.
 - Precondición de 0029 R3 cumplida (R3 ya desplegada, ver `0029-function-url-oac/08-close.md`).
 
 ## ADRs
@@ -33,7 +33,7 @@ Nuevos (todos baja, no bloquean):
 - C30-8 (security) El rol del handler lleva `AWSLambdaBasicExecutionRole` (logs sobre `*`); opcional: rol propio acotado a `HtmlInvalidationLogs`.
 - C30-9 (security, latente) Singleton compartido: otro `AwsCustomResource` heredaría `cloudfront:CreateInvalidation`. Mitigado por el test que exige un único `Custom::AWS`.
 - C30-10 Reintentos del smoke: 18 aplican a todo fallo de HTML, no solo a "build id distinto" (decisión explícita pendiente de documentar).
-- C30-11 Pendiente M-4 (ver RESUMEN).
+- C30-11 Cerrado: M-4 confirmado el 2026-11-12 (ver RESUMEN).
 Avisos transversales (sin WAF/rate limit, tag de costos, logs de CloudFront): ver `0029-function-url-oac/08-close.md`.
 
 ## MEMORIAS GUARDADAS

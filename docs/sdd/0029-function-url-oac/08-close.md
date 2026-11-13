@@ -7,7 +7,7 @@
 - R3: PR #146, release #147 (`e0dcba3`, 2026-11-12). Server a `AWS_IAM`. Deploy run `43291876486` OK, con smoke que incluye POST firmado a `/api/revalidate` → 401.
 - Verificado en producción (C3): ambas URLs `AWS_IAM` (`list/get-function-url-config`); directo al server GET y POST → 403; dominio 200; política del server con solo los 2 permisos de `cloudfront.amazonaws.com` acotados por `SourceArn`. El humano confirmó búsqueda y acción admin OK en el navegador.
 - Evidencia: `06-verify.md`, `06-verify-r2.md`, `06-verify-r3.md` (PASS; R3 sobre 4e36edf, infra 325/325). Gates en `gates.md` (GATE 2 de R2 y R3 delegados al merge, 2026-11-11 y 2026-11-12, Jorge Diaz).
-- PENDIENTE AC-M5: POST `/api/revalidate` con token válido (200; desde R3 con `x-amz-content-sha256`). Requiere leer el token (`evzla/app`) con OK humano; misma razón que M-4 de 0030.
+- AC-M5 CONFIRMADO (2026-11-12): POST `/api/revalidate` por CloudFront con el token de `evzla/app` y `x-amz-content-sha256` → `{"ok":true,"revalidated":"/"}` HTTP 200. El humano corrió el comando (el agente no leyó el token).
 - Tag de costos `project=encuentramevzla` activado en Billing el 2026-11-11.
 
 ## ADRs
@@ -42,12 +42,12 @@ Avisos del orquestador:
 - A-5 Handler de `AwsCustomResource` en `nodejs24.x` frente a `nodejs22.x` de la app (ver C30-6).
 - A-6 RDS y VPC compartidos sin el tag `project=encuentramevzla`.
 - Condición vigente: NO activar logs de CloudFront con headers (llevarían `Authorization` y tokens).
-Pendientes de verificación: AC-M5 y M-4 (token).
+Pendientes de verificación: ninguno (AC-M5 y M-4 confirmados el 2026-11-12).
 
 ## MEMORIAS GUARDADAS
 Engram (sin datos personales): OAC SigV4 exige hash del body en POST (interceptor de `fetch`); 403 directo a la Function URL como sonda; condición de no activar logs de CloudFront con headers.
 
 ## PRÓXIMO PASO SUGERIDO
 1. Hecho: ADR-0012 y ADR-0013 firmados (2026-11-12).
-2. Con OK humano, leer el token de `evzla/app` y cerrar AC-M5 y M-4 (POST `/api/revalidate` y sello "Actualizado" en 300 s o menos).
+2. Hecho: AC-M5 y M-4 confirmados (2026-11-12, HTTP 200).
 3. Candidatos de siguiente feature: C29-8/C29-9 (revalidate con `timingSafeEqual` y rate limit) y A-3 (WAF o concurrencia reservada). Leer antes `06-review-r3.md`, `06-security-review.md` de ambas features y `adr/0012`, `adr/0013`.
