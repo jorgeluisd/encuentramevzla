@@ -28,3 +28,7 @@ GATE 2 · 2026-11-11 · Jorge Diaz · APROBADO · token: "acepto" · alcance: T-
   1. Los hallazgos bajos de las revisiones pasan al backlog.
   2. Los recursos nuevos taggeables (log group, rol y Lambda del handler) llevan `project=encuentramevzla`; el custom resource y la policy no admiten tags ni tienen costo.
   3. El deploy a producción requiere release a `main` y aprobación del environment Production. Después: verificación M-1..M-4, precondición de 0029 R3.
+
+## Ratificación de ADR-0013
+
+RATIFICACIÓN · 2026-11-12 · Jorge Diaz · ACEPTADO · token: "si ok" · ADR-0013 pasa de PROPUESTO a ACEPTADO tras el deploy verificado en producción.

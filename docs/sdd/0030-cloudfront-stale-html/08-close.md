@@ -11,7 +11,7 @@
 
 ## ADRs
 - Aceptados (0). Enmiendas propuestas (0).
-- Pendientes de firma (1): ADR-0013 sigue `PROPUESTO` (2026-11-11). Decisión del humano; este cierre no lo ratifica. El GATE 2 aprobó el código, no firmó el ADR.
+- Firmado: ADR-0013 pasó a `ACEPTADO` el 2026-11-12 (registro en `gates.md`).
 
 ## CAPACIDAD reconciliada
 Ninguna. No existe `specs/<capacidad>/`; es infraestructura/CI sin comportamiento de producto nuevo. El comportamiento duradero queda en ADR-0013 y `docs/ARCHITECTURE.md`.

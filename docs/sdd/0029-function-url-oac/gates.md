@@ -59,3 +59,7 @@ GATE 2 · 2026-11-12 · Jorge Diaz · DELEGADO AL MERGE · alcance: R3 (T-14..T-
   2. Medio (firma de POST solo validada en producción): sonda POST agregada al smoke (T-18b).
   3. Medio (C2 sin registro): registrado arriba.
   4. Bajos: T4b sobre toda la plantilla y comentario corregidos en T-18b; el resto al backlog.
+
+## Ratificación de ADR-0012
+
+RATIFICACIÓN · 2026-11-12 · Jorge Diaz · ACEPTADO · token: "si ok" · ADR-0012 pasa de PROPUESTO a ACEPTADO tras el deploy verificado en producción.

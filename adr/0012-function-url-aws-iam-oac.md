@@ -1,6 +1,6 @@
 # ADR-0012 — Function URL con AWS_IAM y OAC, con hash del body calculado en el navegador
 
-Fecha: 2026-11-09 · Estado: **PROPUESTO** · Reemplaza: la decisión de mantener `AuthType NONE` + `x-origin-verify`, documentada solo en el comentario de `infra/lib/open-next-site.ts:147` · Complementa: [ADR-0010](./0010-migracion-supabase-vercel-a-aws.md) y [ADR-0011](./0011-ci-cd-github-actions-oidc.md) · Feature: [`docs/sdd/0029-function-url-oac/`](../docs/sdd/0029-function-url-oac/01-proposal.md).
+Fecha: 2026-11-09 · Estado: **ACEPTADO** (2026-11-12, firmado por Jorge Diaz; registro en [`docs/sdd/0029-function-url-oac/gates.md`](../docs/sdd/0029-function-url-oac/gates.md)) · Reemplaza: la decisión de mantener `AuthType NONE` + `x-origin-verify`, documentada solo en el comentario de `infra/lib/open-next-site.ts:147` · Complementa: [ADR-0010](./0010-migracion-supabase-vercel-a-aws.md) y [ADR-0011](./0011-ci-cd-github-actions-oidc.md) · Feature: [`docs/sdd/0029-function-url-oac/`](../docs/sdd/0029-function-url-oac/01-proposal.md).
 
 ## Contexto
 
